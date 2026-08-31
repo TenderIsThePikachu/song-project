@@ -27,6 +27,7 @@ const DEFAULT_AI_TEMPLATE = `분위기:
 const SAVE_BACKUP_STORAGE_KEY = 'song-maker-project-backups';
 const BAR_LENGTH = 16;
 const GO_TO_FIRST_BAR_EVENT = 'composer-go-to-first-bar';
+const MIN_AI_GENERATION_MS = 2_800;
 
 const GENRE_OPTIONS = [
   { value: 'ballad', label: '발라드' },
@@ -121,24 +122,22 @@ const FirstBarIcon = () => (
 export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
-  const {
-    bpm,
-    setBpm,
-    steps,
-    isPlaying,
-    setPlaying,
-    currentStep,
-    setCurrentStep,
-    volumes,
-    loopRange,
-    setLoopRange,
-    toggleLoopCurrentBar,
-    undo,
-    redo,
-    clear,
-    canUndo,
-    canRedo,
-  } = useSongStore();
+  const bpm = useSongStore((state) => state.bpm);
+  const setBpm = useSongStore((state) => state.setBpm);
+  const steps = useSongStore((state) => state.steps);
+  const isPlaying = useSongStore((state) => state.isPlaying);
+  const setPlaying = useSongStore((state) => state.setPlaying);
+  const currentStep = useSongStore((state) => state.currentStep);
+  const setCurrentStep = useSongStore((state) => state.setCurrentStep);
+  const volumes = useSongStore((state) => state.volumes);
+  const loopRange = useSongStore((state) => state.loopRange);
+  const setLoopRange = useSongStore((state) => state.setLoopRange);
+  const toggleLoopCurrentBar = useSongStore((state) => state.toggleLoopCurrentBar);
+  const undo = useSongStore((state) => state.undo);
+  const redo = useSongStore((state) => state.redo);
+  const clear = useSongStore((state) => state.clear);
+  const canUndo = useSongStore((state) => state.canUndo);
+  const canRedo = useSongStore((state) => state.canRedo);
 
   const user = useAuthStore((state) => state.user);
   const saveComposerProject = useComposerLibraryStore((state) => state.saveProject);
@@ -146,12 +145,23 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
   const [isExporting, setIsExporting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [aiCompletionToast, setAiCompletionToast] = useState<'compose' | null>(null);
   const [songDna, setSongDna] = useState<SongSketchDna | null>(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
 
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
+
+  useEffect(() => {
+    if (!aiCompletionToast) return undefined;
+
+    const timeout = window.setTimeout(() => {
+      setAiCompletionToast(null);
+    }, 2200);
+
+    return () => window.clearTimeout(timeout);
+  }, [aiCompletionToast]);
 
   const [saveTitle, setSaveTitle] = useState('');
   const [saveDescription, setSaveDescription] = useState('');
@@ -336,11 +346,14 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
       Tone.Transport.bpm.value = bpm;
       Tone.Transport.stop();
       Tone.Transport.position = 0;
-      setCurrentStep(loopRange?.start ?? 0);
-      Tone.Transport.start(`+${getPlaybackStartDelaySeconds()}`);
-      startBackingTrack(loopRange?.start ?? 0);
+      const startStep = loopRange?.start ?? 0;
+      setCurrentStep(startStep);
       setPlaying(true);
       onPlayStarted?.();
+      window.requestAnimationFrame(() => {
+        Tone.Transport.start(`+${getPlaybackStartDelaySeconds()}`);
+        startBackingTrack(startStep);
+      });
     } catch (error) {
       console.error('Playback start failed:', error);
       Tone.Transport.stop();
@@ -353,13 +366,17 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
   };
 
   const handleGoToFirstBar = () => {
+    Tone.Transport.stop();
     Tone.Transport.position = '0:0:0';
     stopBackingTrack(false);
     if (backingTrackAudioRef.current) backingTrackAudioRef.current.currentTime = 0;
     previousPlaybackStepRef.current = null;
     setLoopRange(null);
     setCurrentStep(0);
-    window.dispatchEvent(new Event(GO_TO_FIRST_BAR_EVENT));
+    setPlaying(false);
+    window.requestAnimationFrame(() => {
+      window.dispatchEvent(new Event(GO_TO_FIRST_BAR_EVENT));
+    });
   };
 
   const handleLoadProjectClick = () => {
@@ -537,15 +554,21 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
       details ? `상세 요청:\n${details}` : '',
       `프로젝트 설정:\n- BPM: ${bpm}\n- Steps: ${steps}\n- Melody Volume: ${volumes.melody}\n- Drums Volume: ${volumes.drums}\n- Bass Volume: ${volumes.bass} \n Guitar Volume: ${volumes.guitar}`,
     ]
+      .slice(0, 2)
       .filter(Boolean)
       .join('\n\n');
 
     setIsGenerating(true);
     try {
+      const generationStartedAt = performance.now();
       const aiGeneratedProject = (await fetchAiMusic(prompt)) as SongProject;
+      const elapsedMs = performance.now() - generationStartedAt;
+      if (elapsedMs < MIN_AI_GENERATION_MS) {
+        await new Promise((resolve) => window.setTimeout(resolve, MIN_AI_GENERATION_MS - elapsedMs));
+      }
       useSongStore.getState().loadProject(aiGeneratedProject);
+      setAiCompletionToast('compose');
       setIsAiPanelOpen(false);
-      alert('AI 생성 결과를 불러왔습니다.');
     } catch (error) {
       console.error('AI generation failed:', error);
       const message =
@@ -677,7 +700,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           }`}
           onClick={() => setIsAiPanelOpen((open) => !open)}
         >
-          AI 작곡
+          작곡 AI
         </button>
       </div>
 
@@ -964,10 +987,39 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
       {isAiPanelOpen ? (
         <section className="transport-ai-panel" aria-label="AI composition panel">
+          {isGenerating ? (
+            <div className="transport-ai-generating" role="status" aria-live="polite">
+              <div className="transport-ai-scan" aria-hidden="true" />
+              <div className="transport-ai-notes" aria-hidden="true">
+                {['♪', '♬', '✦', '♩', '✧'].map((note, index) => (
+                  <span key={`${note}-${index}`}>{note}</span>
+                ))}
+              </div>
+              <div className="transport-ai-orb" aria-hidden="true">
+                <span />
+                <span />
+                <span />
+              </div>
+              <strong>AI가 곡을 생성 중입니다</strong>
+              <p>
+                프롬프트에 맞는 장르, 코드 진행, 악기 구성을 고르고 있어요.
+              </p>
+              <div className="transport-ai-wave" aria-hidden="true">
+                {Array.from({ length: 18 }).map((_, index) => (
+                  <span key={index} style={{ animationDelay: `${index * 42}ms` }} />
+                ))}
+              </div>
+              <div className="transport-ai-steps" aria-hidden="true">
+                <span>프롬프트 분석</span>
+                <span>코드 진행</span>
+                <span>악기 배치</span>
+              </div>
+            </div>
+          ) : null}
           <div className="transport-ai-header">
             <div>
-              <span className="transport-ai-eyebrow">AI COMPOSER</span>
-              <strong>원하는 곡의 방향을 자세히 적어보세요.</strong>
+              <span className="transport-ai-eyebrow">작곡 AI</span>
+              <strong>원하는 곡을 바로 만들어보세요.</strong>
             </div>
             <button
               type="button"
@@ -1001,7 +1053,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           </label>
 
           <p className="transport-ai-helper">
-            참고곡, 악기 구성, 리듬, 포인트를 구체적으로 적을수록 원하는 결과에 가까워집니다.
+            AI가 장르, 분위기, BPM, 악기 조건을 분석해서 코드 진행과 필요한 악기 파트를 생성합니다.
           </p>
 
           <div className="transport-ai-actions">
@@ -1022,6 +1074,31 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
             </button>
           </div>
         </section>
+      ) : null}
+
+      {aiCompletionToast ? (
+        <div className="transport-ai-complete" role="status" aria-live="polite">
+          <div className="transport-ai-complete-burst" aria-hidden="true">
+            {Array.from({ length: 8 }).map((_, index) => (
+              <span key={index} />
+            ))}
+          </div>
+          <div className="transport-ai-complete-orb" aria-hidden="true">
+            <span />
+            <span />
+          </div>
+          <div className="transport-ai-complete-copy">
+            <strong>AI 곡이 배치됐습니다</strong>
+            <span>
+              프롬프트에 맞춰 피아노롤에 바로 펼쳐놨어요.
+            </span>
+          </div>
+          <div className="transport-ai-complete-wave" aria-hidden="true">
+            {Array.from({ length: 14 }).map((_, index) => (
+              <i key={index} style={{ animationDelay: `${index * 46}ms` }} />
+            ))}
+          </div>
+        </div>
       ) : null}
     </div>
   );
