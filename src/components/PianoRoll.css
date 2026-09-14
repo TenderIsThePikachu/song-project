@@ -441,6 +441,15 @@
     #1a1c21;
 }
 
+.piano-roll-grid--melody.piano-roll-grid--virtualized {
+  display: block;
+  position: relative;
+}
+
+.piano-roll-grid--virtualized .piano-roll-cell {
+  position: absolute;
+}
+
 .piano-roll-cell {
   position: relative;
   display: block;
@@ -463,7 +472,8 @@
   opacity: 0.46;
 }
 
-.piano-roll-cell.is-current::after {
+.piano-roll-cell.is-current::after,
+.piano-roll-cell.is-current-live::after {
   position: absolute;
   inset: 3px;
   border: 1px solid rgba(255, 255, 255, 0.45);
@@ -514,7 +524,8 @@
   background: rgba(248, 113, 113, 0.08);
 }
 
-.piano-roll-cell.is-melody.is-current::after {
+.piano-roll-cell.is-melody.is-current::after,
+.piano-roll-cell.is-melody.is-current-live::after {
   inset: 0;
   border-radius: 2px;
 }

@@ -3124,8 +3124,196 @@
     grid-template-columns: 40px minmax(0, 1fr);
   }
 
-  .composer-lyrics-note-row input {
+.composer-lyrics-note-row input {
     grid-column: 1 / -1;
+  }
+}
+
+/* Floating lyrics and memo workspace */
+.composer-notepad {
+  position: fixed;
+  z-index: 180;
+  right: 18px;
+  top: 176px;
+  bottom: 78px;
+  display: flex;
+  flex-direction: column;
+  width: min(390px, calc(100vw - 36px));
+  min-height: 280px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: rgba(12, 13, 15, 0.97);
+  color: #f7f8fa;
+  box-shadow: 0 22px 52px rgba(0, 0, 0, 0.42);
+  backdrop-filter: blur(14px);
+}
+
+.composer-notepad.is-collapsed {
+  top: 50%;
+  bottom: auto;
+  width: 48px;
+  min-height: 154px;
+  transform: translateY(-50%);
+}
+
+.composer-notepad-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex: 0 0 62px;
+  gap: 12px;
+  padding: 0 12px 0 20px;
+  border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+}
+
+.composer-notepad-head strong {
+  font-size: 20px;
+  font-weight: 850;
+}
+
+.composer-notepad-head > span {
+  writing-mode: vertical-rl;
+  color: #dce2e8;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.composer-notepad.is-collapsed .composer-notepad-head {
+  flex: 1;
+  flex-direction: column-reverse;
+  justify-content: center;
+  gap: 10px;
+  padding: 10px 5px;
+  border-bottom: 0;
+}
+
+.composer-notepad-toggle {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  flex: 0 0 38px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 8px;
+  background: #1b1d21;
+  color: #f5f7fa;
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.composer-notepad-toggle:hover {
+  border-color: rgba(75, 220, 176, 0.48);
+  background: #202a28;
+}
+
+.composer-notepad.is-collapsed .composer-notepad-toggle {
+  width: 34px;
+  height: 34px;
+  flex-basis: 34px;
+}
+
+.composer-notepad-body {
+  display: flex;
+  flex: 1;
+  min-height: 0;
+  flex-direction: column;
+  gap: 16px;
+  padding: 16px 20px 18px;
+}
+
+.composer-notepad-tabs {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.composer-notepad-tabs button,
+.composer-notepad-actions button {
+  min-height: 44px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #18191c;
+  color: #aeb3bb;
+  font: inherit;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.composer-notepad-tabs button.is-active {
+  border-color: rgba(255, 255, 255, 0.38);
+  background: #303033;
+  color: #ffffff;
+}
+
+.composer-notepad-title,
+.composer-notepad-editor {
+  width: 100%;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  outline: none;
+  background: #18191b;
+  color: #f5f7f9;
+  font: inherit;
+  box-sizing: border-box;
+}
+
+.composer-notepad-title {
+  height: 48px;
+  padding: 0 14px;
+  font-size: 16px;
+  font-weight: 750;
+}
+
+.composer-notepad-editor {
+  flex: 1;
+  min-height: 180px;
+  resize: none;
+  padding: 16px;
+  font-size: 15px;
+  line-height: 1.7;
+}
+
+.composer-notepad-title:focus,
+.composer-notepad-editor:focus {
+  border-color: rgba(75, 220, 176, 0.62);
+  box-shadow: 0 0 0 3px rgba(75, 220, 176, 0.1);
+}
+
+.composer-notepad-title::placeholder,
+.composer-notepad-editor::placeholder {
+  color: #6f747b;
+}
+
+.composer-notepad-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.composer-notepad-actions button:first-child {
+  border-color: rgba(75, 220, 176, 0.35);
+  background: #15352d;
+  color: #c9ffed;
+}
+
+.composer-notepad-actions button:hover {
+  border-color: rgba(75, 220, 176, 0.52);
+  color: #ffffff;
+}
+
+@media (max-width: 760px) {
+  .composer-notepad {
+    top: 122px;
+    right: 8px;
+    bottom: 76px;
+    width: calc(100vw - 16px);
+  }
+
+  .composer-notepad-body {
+    padding: 14px;
   }
 }
 

@@ -11,7 +11,7 @@ import {
   SUPPORTING_PIANO_NOTES,
   VIOLIN_NOTES,
 } from '../constants/composer.ts';
-import type { InstrumentKey, MusicEvent, SerializedExtraInstrumentTrack, SongProject } from '../store/songStore.ts';
+import type { InstrumentKey, MusicEvent, SerializedExtraInstrumentTrack, SongProject, TempoAutomationPoint } from '../store/songStore.ts';
 
 const TOTAL_STEPS = 640;
 const BAR_LENGTH = 16;
@@ -901,10 +901,17 @@ function getReadablePromptStyleProfile(text: string): PromptStyleProfile {
   };
 
   const hasCanonRequest = has(['canon', 'pachelbel', '\uce90\ub17c', '\ucf00\ub17c', '\ud30c\ud5ec\ubca8']);
+  const hasSupportingPianoRequest = has(['\uc11c\ud3ec\ud305 \ud53c\uc544\ub178', '\uc11c\ud3ec\ud305 \uce90\uc2a4\ud2b8 \ud53c\uc544\ub178', 'supporting piano']);
+  const hasEnsembleInstrumentRequest = has([
+    '\ub4dc\ub7fc', '\ubca0\uc774\uc2a4', '\uae30\ud0c0', '\ud1b5\uae30\ud0c0', '\ubc14\uc774\uc62c\ub9b0', '\uc0c9\uc18c\ud3f0',
+    '\uae00\ub85c\ucf04\uc288\ud544', '\ud53c\ucf5c\ub85c', 'drum', 'bass', 'guitar', 'violin', 'saxophone', 'sax', 'glockenspiel', 'piccolo',
+  ]);
   const soloPianoIntent =
-    hasCanonRequest ||
+    !hasSupportingPianoRequest &&
+    !hasEnsembleInstrumentRequest &&
+    (hasCanonRequest ||
     has([words.pianoSong, words.youtube, words.flower, 'flower dance', 'new age', '\ub274\uc5d0\uc774\uc9c0', 'ost', 'reminiscence', 'talesweaver', 'tales weaver', 'canon', 'pachelbel', '캐논', '케논', '파헬벨', '테일즈위버', '레미니센스']) ||
-    (has([words.piano]) && has([words.calm, words.lyrical, words.emotional, words.quiet]) && !has(['\ub4dc\ub7fc', '\ubca0\uc774\uc2a4', '\uae30\ud0c0', 'drum', 'bass', 'guitar', words.cityPop]));
+    (has([words.piano]) && has([words.calm, words.lyrical, words.emotional, words.quiet]) && !has(['\ub4dc\ub7fc', '\ubca0\uc774\uc2a4', '\uae30\ud0c0', 'drum', 'bass', 'guitar', words.cityPop])));
 
   if (soloPianoIntent) {
     const canonPiano = hasCanonRequest;
@@ -1630,7 +1637,8 @@ function getPromptStyleProfile(text: string): PromptStyleProfile {
   return mergedProfile;
 }
 
-function normalizeDiatonicNote(note: string) {
+function normalizeDiatonicNote(note: string | undefined | null) {
+  if (typeof note !== 'string' || note.length === 0) return 'C4';
   const normalized = note.replace('_sharp', '#');
   const match = /^([A-G])(#?)(-?\d+)$/.exec(normalized);
   if (!match) return note;
@@ -3368,11 +3376,19 @@ function parsePrompt(prompt: string): PromptAnalysis {
     getReadableExplicitInstrumentPlan(intentText) ??
     getExplicitInstrumentPlanFromPrompt(prompt) ??
     getExplicitInstrumentPlan(intentText);
+  const inlineInstrumentPlan = buildExplicitInstrumentPlanFromText(prompt);
   if (explicitInstrumentPlan) {
     (Object.keys(explicitInstrumentPlan) as InstrumentKey[]).forEach((instrument) => {
       const enabled = explicitInstrumentPlan[instrument];
       if (typeof enabled === 'boolean') {
         instruments[instrument] = enabled;
+      }
+    });
+  }
+  if (inlineInstrumentPlan) {
+    (Object.keys(inlineInstrumentPlan) as InstrumentKey[]).forEach((instrument) => {
+      if (inlineInstrumentPlan[instrument] === true) {
+        instruments[instrument] = true;
       }
     });
   }
@@ -3404,6 +3420,7 @@ function createRuntimeArrangementDiversity(analysis: PromptAnalysis, prompt: str
     getReadableExplicitInstrumentPlan(intentText) ??
     getExplicitInstrumentPlanFromPrompt(prompt) ??
     getExplicitInstrumentPlan(intentText);
+  const inlineInstrumentPlan = buildExplicitInstrumentPlanFromText(prompt);
   const progressionPool = [
     analysis.progression,
     analysis.secondaryProgression,
@@ -3424,7 +3441,7 @@ function createRuntimeArrangementDiversity(analysis: PromptAnalysis, prompt: str
   const densitySpread = analysis.mood === 'calm' || analysis.mood === 'sad' ? 0.08 : 0.12;
   const nextInstruments: Record<InstrumentKey, boolean> = { ...analysis.instruments };
 
-  if (!explicitInstrumentPlan && !isSoloPianoStyle(analysis)) {
+  if (!explicitInstrumentPlan && !inlineInstrumentPlan && !isSoloPianoStyle(analysis)) {
     const flavor = runtimeSeed % 6;
     if (analysis.genre === 'citypop' || analysis.theme === 'summerNight') {
       nextInstruments.guitar = flavor !== 1;
@@ -3445,6 +3462,14 @@ function createRuntimeArrangementDiversity(analysis: PromptAnalysis, prompt: str
       nextInstruments.glockenspiel = flavor === 1 || flavor === 3;
       nextInstruments.supportingPiano = flavor !== 5;
     }
+  }
+
+  if (inlineInstrumentPlan) {
+    (Object.keys(inlineInstrumentPlan) as InstrumentKey[]).forEach((instrument) => {
+      if (inlineInstrumentPlan[instrument] === true) {
+        nextInstruments[instrument] = true;
+      }
+    });
   }
 
   normalizeAiInstrumentPlanToComposerMenu(nextInstruments);
@@ -7442,28 +7467,1755 @@ function createSongProject(prompt: string): SongProject {
     extraTracks
   );
   const polished = polishGeneratedArrangement(analysis, arranged.tracks, arranged.extraTracks);
+  const promptAware = applyPromptAwareMelodyIdentity(prompt, analysis, polished);
+  const promptIdentity = createPromptMelodyIdentity(prompt, analysis);
 
   return {
     version: 2,
     steps: TOTAL_STEPS,
-    bpm: analysis.bpm,
+    bpm: promptAware.bpm,
+    tempoAutomation: createExpressiveTempoAutomation(promptAware.bpm, analysis, promptIdentity),
     volumes: {
-      melody: isSoloPianoStyle(analysis) ? 68 : 88,
-      drums: polished.tracks.drums.length > 0 ? (analysis.theme === 'christmas' ? 42 : analysis.genre === 'ballad' || analysis.mood === 'calm' ? 62 : 80) : 0,
-      bass: polished.tracks.bass.length > 0 ? (analysis.theme === 'christmas' ? 54 : analysis.mood === 'calm' || analysis.mood === 'dreamy' ? 56 : analysis.genre === 'citypop' ? 68 : 78) : 0,
-      guitar: polished.tracks.guitar.length > 0 ? (analysis.genre === 'rock' || analysis.genre === 'citypop' ? 74 : 58) : 0,
-      violin: polished.tracks.violin.length > 0 ? 54 : 0,
-      saxophone: polished.tracks.saxophone.length > 0 ? 56 : 0,
-      glockenspiel: polished.extraTracks.some((track) => track.instrument === 'glockenspiel') ? (analysis.theme === 'christmas' ? 70 : 58) : 0,
-      piccolo: polished.extraTracks.some((track) => track.instrument === 'piccolo') ? 46 : 0,
-      supportingPiano: polished.extraTracks.some((track) => track.instrument === 'supportingPiano') ? (isSoloPianoStyle(analysis) ? 90 : analysis.genre === 'citypop' || analysis.theme === 'summerNight' || analysis.mood === 'dreamy' ? 54 : 66) : 0,
-      chicagoStreet: polished.extraTracks.some((track) => track.instrument === 'chicagoStreet') ? 56 : 0,
-      studioAltoSax: polished.extraTracks.some((track) => track.instrument === 'studioAltoSax') ? 58 : 0,
+      melody: promptAware.volumes.melody,
+      drums: promptAware.tracks.drums.length > 0 ? promptAware.volumes.drums : 0,
+      bass: promptAware.tracks.bass.length > 0 ? promptAware.volumes.bass : 0,
+      guitar: promptAware.tracks.guitar.length > 0 ? promptAware.volumes.guitar : 0,
+      violin: promptAware.tracks.violin.length > 0 ? promptAware.volumes.violin : 0,
+      saxophone: promptAware.tracks.saxophone.length > 0 ? promptAware.volumes.saxophone : 0,
+      glockenspiel: promptAware.extraTracks.some((track) => track.instrument === 'glockenspiel') ? promptAware.volumes.glockenspiel : 0,
+      piccolo: promptAware.extraTracks.some((track) => track.instrument === 'piccolo') ? promptAware.volumes.piccolo : 0,
+      supportingPiano: promptAware.extraTracks.some((track) => track.instrument === 'supportingPiano') ? promptAware.volumes.supportingPiano : 0,
+      chicagoStreet: promptAware.extraTracks.some((track) => track.instrument === 'chicagoStreet') ? promptAware.volumes.chicagoStreet : 0,
+      studioAltoSax: promptAware.extraTracks.some((track) => track.instrument === 'studioAltoSax') ? promptAware.volumes.studioAltoSax : 0,
     },
     tracks: {
-      ...polished.tracks,
+      ...promptAware.tracks,
     },
-    extraTracks: polished.extraTracks,
+    extraTracks: promptAware.extraTracks,
+  };
+}
+
+type PromptAwareArrangement = {
+  bpm: number;
+  volumes: Record<InstrumentKey, number>;
+  tracks: SongProject['tracks'];
+  extraTracks: SerializedExtraInstrumentTrack[];
+};
+
+type PromptMelodyIdentity = {
+  isPiano: boolean;
+  isQuiet: boolean;
+  isDreamy: boolean;
+  isCityPop: boolean;
+  isChristmas: boolean;
+  isWinter: boolean;
+  isSummer: boolean;
+  isSpring: boolean;
+  isSad: boolean;
+  isMystic: boolean;
+  isNewAge: boolean;
+  isLofi: boolean;
+  isJazz: boolean;
+  isEnergetic: boolean;
+  isHighRegister: boolean;
+  isYoutubePianoStyle: boolean;
+  color: number;
+};
+
+function promptHas(text: string, words: readonly string[]) {
+  return words.some((word) => text.includes(word));
+}
+
+function clampAiVelocity(value: number) {
+  return Math.max(0.15, Math.min(1, value));
+}
+
+function createPromptMelodyIdentity(prompt: string, analysis: PromptAnalysis): PromptMelodyIdentity {
+  const text = prompt.toLowerCase();
+  const hasSupportingPianoRequest = promptHas(text, ['\uc11c\ud3ec\ud305 \ud53c\uc544\ub178', '\uc11c\ud3ec\ud305 \uce90\uc2a4\ud2b8 \ud53c\uc544\ub178', 'supporting piano']);
+  const hasEnsembleInstrumentRequest = promptHas(text, [
+    '\ub4dc\ub7fc', '\ubca0\uc774\uc2a4', '\uae30\ud0c0', '\ud1b5\uae30\ud0c0', '\ubc14\uc774\uc62c\ub9b0', '\uc0c9\uc18c\ud3f0',
+    '\uae00\ub85c\ucf04\uc288\ud544', '\ud53c\ucf5c\ub85c', 'drum', 'bass', 'guitar', 'violin', 'saxophone', 'sax', 'glockenspiel', 'piccolo',
+  ]);
+  const hasPianoRequest = promptHas(text, [
+    '\ud53c\uc544\ub178', '\ub274\uc5d0\uc774', '\ub274\uc5d0\uc774\uc9c0', 'piano', 'new age', 'newage',
+    '\uc794\uc794\ud55c \ud53c\uc544\ub178', '\uc870\uc6a9\ud55c \ud53c\uc544\ub178',
+  ]);
+  const isPiano =
+    !hasSupportingPianoRequest &&
+    !hasEnsembleInstrumentRequest &&
+    (isSoloPianoStyle(analysis) || hasPianoRequest);
+
+  return {
+    isPiano,
+    isQuiet: analysis.mood === 'calm' || promptHas(text, ['\uc794\uc794', '\uc870\uc6a9', '\ud3b8\uc548', '\ud3c9\ud654', '\uacf5\ubd80', 'calm', 'quiet', 'peaceful', 'soft']),
+    isDreamy: analysis.mood === 'dreamy' || promptHas(text, ['\ubabd\ud658', '\ub4dc\ub9bc\ud31d', '\uafc8', '\uc2e0\ube44', 'dream', 'dreamy', 'dreampop']),
+    isCityPop: analysis.genre === 'citypop' || promptHas(text, ['\uc2dc\ud2f0\ud31d', '\ub124\uc628', '\ub3c4\uc2dc', '\ub4dc\ub77c\uc774\ube0c', 'citypop', 'city pop', 'neon', 'drive']),
+    isChristmas: analysis.theme === 'christmas' || promptHas(text, ['\ud06c\ub9ac\uc2a4\ub9c8\uc2a4', '\uce90\ub7f4', '\uce74\ub864', 'christmas', 'carol']),
+    isWinter: analysis.theme === 'winter' || promptHas(text, ['\uaca8\uc6b8', '\ub208', '\uccab\ub208', 'winter', 'snow']),
+    isSummer: analysis.theme === 'summerSea' || analysis.theme === 'summerNight' || promptHas(text, ['\uc5ec\ub984', '\ubc14\ub2e4', '\ud574\ubcc0', '\uc5ec\ub984\ubc24', 'summer', 'sea', 'beach']),
+    isSpring: analysis.theme === 'spring' || promptHas(text, ['\ubd04', '\ubc9a\uaf43', '\ud53c\ud06c\ub2c9', 'spring', 'cherry blossom']),
+    isSad: analysis.mood === 'sad' || promptHas(text, ['\uc2ac\ud508', '\uc4f8\uc4f8', '\uc544\ub828', '\uc678\ub85c', '\uc6b0\uc6b8', 'sad', 'lonely', 'melancholy']),
+    isMystic: promptHas(text, ['\uc2e0\ube44', '\ud310\ud0c0\uc9c0', '\uc6b0\uc8fc', '\uc0ac\uc774\ubc84', 'mystic', 'fantasy', 'space', 'cyber']),
+    isNewAge: promptHas(text, ['\ub274\uc5d0\uc774', '\ub274\uc5d0\uc774\uc9c0', 'new age', 'newage']),
+    isLofi: analysis.genre === 'lofi' || promptHas(text, ['\ub85c\ud30c\uc774', '\ube57\uc18c\ub9ac', 'lofi', 'lo-fi', 'rain']),
+    isJazz: analysis.genre === 'jazz' || promptHas(text, ['\uc7ac\uc988', '\ubcf4\uc0ac\ub178\ubc14', 'jazz', 'bossa']),
+    isEnergetic: analysis.mood === 'energetic' || promptHas(text, ['\uc2e0\ub098', '\ucd95\uc81c', '\ud074\ub7fd', 'edm', 'dance', 'energetic']),
+    isHighRegister: promptHas(text, ['\ub192\uc740 \uc74c', '\uace0\uc74c', '\ub9d1\uc740', '\ubc18\uc9dd', '\ubc18\uc9dd\uc774\ub294', '\ud654\ub824\ud55c \ud53c\uc544\ub178', 'high note', 'high register', 'sparkle', 'bright piano', 'c8']),
+    isYoutubePianoStyle: promptHas(text, ['youtube', 'youtu.be', 'www.youtube.com', '\uc720\ud29c\ube0c', '\ud53c\uc544\ub178\uace1', '\uac10\uc131 \ud53c\uc544\ub178', 'ost', 'reminiscence', '\ud14c\uc77c\uc988\uc704\ubc84', '\uce90\ub17c', '\ucf00\ub17c']),
+    color: createSeed(`${prompt}:${analysis.styleId}:${analysis.genre}:${analysis.theme}`),
+  };
+}
+
+function getPromptAwareBpm(analysis: PromptAnalysis, identity: PromptMelodyIdentity) {
+  if (identity.isQuiet && identity.isPiano) return 66 + (identity.color % 10);
+  if (identity.isNewAge) return 72 + (identity.color % 12);
+  if (identity.isChristmas) return identity.isJazz ? 92 : 100;
+  if (identity.isCityPop && identity.isSummer) return 94 + (identity.color % 10);
+  if (identity.isDreamy) return 78 + (identity.color % 16);
+  if (identity.isSad) return 68 + (identity.color % 12);
+  if (identity.isEnergetic) return 116 + (identity.color % 14);
+  return analysis.bpm;
+}
+
+function createExpressiveTempoAutomation(
+  baseBpm: number,
+  analysis: PromptAnalysis,
+  identity: PromptMelodyIdentity
+): TempoAutomationPoint[] {
+  const clampTempo = (bpm: number) => Math.max(40, Math.min(220, Math.round(bpm)));
+  const gentle = identity.isPiano || identity.isQuiet || identity.isNewAge || analysis.mood === 'calm';
+  const push = identity.isEnergetic ? 12 : identity.isCityPop ? 9 : gentle ? 7 : 8;
+  const pull = identity.isSad || identity.isQuiet || identity.isNewAge ? 13 : gentle ? 10 : 8;
+  const introPull = identity.isPiano ? Math.max(7, Math.round(pull * 0.85)) : 4;
+  const points: TempoAutomationPoint[] = [
+    { step: 0, bpm: clampTempo(baseBpm - introPull) },
+    { step: 16, bpm: clampTempo(baseBpm - Math.max(1, Math.round(introPull * 0.6))) },
+    { step: 64, bpm: clampTempo(baseBpm) },
+    { step: 128, bpm: clampTempo(baseBpm + Math.max(2, Math.round(push * 0.35))) },
+    { step: 192, bpm: clampTempo(baseBpm + Math.max(3, Math.round(push * 0.65))) },
+    { step: 256, bpm: clampTempo(baseBpm + push) },
+    { step: 384, bpm: clampTempo(baseBpm + Math.max(3, Math.round(push * 0.65))) },
+    { step: 512, bpm: clampTempo(baseBpm) },
+    { step: 576, bpm: clampTempo(baseBpm - Math.max(4, Math.round(pull * 0.55))) },
+    { step: 624, bpm: clampTempo(baseBpm - pull) },
+    { step: TOTAL_STEPS - 1, bpm: clampTempo(baseBpm - pull) },
+  ];
+
+  return points.filter((point, index) => index === 0 || point.bpm !== points[index - 1]?.bpm);
+}
+
+function createPromptAwareAnalysis(prompt: string, analysis: PromptAnalysis, identity: PromptMelodyIdentity): PromptAnalysis {
+  const progression = getPromptAwareMelodyProgression(analysis, identity);
+  const alternateProgression =
+    identity.isChristmas
+      ? ['C', 'F', 'C', 'G'] as ChordName[]
+      : identity.isCityPop
+        ? ['F', 'G', 'C', 'A'] as ChordName[]
+        : identity.isDreamy || identity.isSad
+          ? ['A', 'G', 'F', 'C'] as ChordName[]
+          : rotateProgression(progression, 1);
+
+  return {
+    ...analysis,
+    bpm: getPromptAwareBpm(analysis, identity),
+    progression,
+    secondaryProgression: rotateProgression(alternateProgression, (createSeed(prompt) >>> 4) % Math.max(1, alternateProgression.length)),
+    density: identity.isQuiet || identity.isSad
+      ? Math.min(0.52, analysis.density)
+      : identity.isEnergetic
+        ? Math.max(0.72, analysis.density)
+        : analysis.density,
+    mood: identity.isQuiet ? 'calm' : identity.isDreamy ? 'dreamy' : identity.isSad ? 'sad' : analysis.mood,
+  };
+}
+
+function getPromptAwareMelodyProgression(analysis: PromptAnalysis, identity: PromptMelodyIdentity): ChordName[] {
+  const pools: ChordName[][] = [];
+  if (identity.isChristmas) pools.push(['C', 'F', 'G', 'C'], ['F', 'C', 'G', 'C'], ['C', 'G', 'A', 'F']);
+  if (identity.isCityPop) pools.push(['F', 'G', 'E', 'A'], ['D', 'G', 'E', 'A'], ['C', 'G', 'E', 'A']);
+  if (identity.isDreamy) pools.push(['A', 'F', 'C', 'G'], ['F', 'E', 'A', 'G'], ['C', 'A', 'F', 'G']);
+  if (identity.isSad || identity.isWinter) pools.push(['A', 'F', 'C', 'G'], ['F', 'G', 'E', 'A'], ['C', 'G', 'A', 'F']);
+  if (identity.isSpring) pools.push(['C', 'F', 'G', 'C'], ['F', 'C', 'G', 'C'], ['G', 'C', 'F', 'G']);
+  if (identity.isQuiet || identity.isNewAge) pools.push(['C', 'G', 'A', 'F'], ['A', 'F', 'C', 'G'], ['F', 'C', 'G', 'C']);
+  pools.push(analysis.progression, analysis.secondaryProgression);
+  const selected = pools[identity.color % Math.max(1, pools.length)] ?? analysis.progression;
+  return rotateProgression(selected, (identity.color >>> 5) % Math.max(1, selected.length));
+}
+
+function getPromptAwareRegister(identity: PromptMelodyIdentity, bar: number) {
+  const sectionLift = isChorusBar(bar) ? 8 : isBridgeBar(bar) ? -5 : bar >= 36 ? 3 : 0;
+  if (identity.isQuiet || identity.isSad) return { min: 48, max: 88 + Math.max(0, sectionLift) };
+  if (identity.isDreamy || identity.isMystic) return { min: 55, max: 103 };
+  if (identity.isChristmas || identity.isSpring) return { min: 60, max: 100 };
+  if (identity.isCityPop || identity.isSummer) return { min: 57, max: 96 };
+  return { min: 52, max: 100 };
+}
+
+function getPromptAwareRhythm(identity: PromptMelodyIdentity, bar: number) {
+  const family =
+    identity.isQuiet || identity.isNewAge
+      ? [
+          { offsets: [0, 4, 7, 10, 14], durations: [3, 2, 2, 3, 2] },
+          { offsets: [0, 3, 6, 10, 12, 15], durations: [2, 1, 2, 2, 2, 1] },
+          { offsets: [1, 4, 8, 11, 14], durations: [2, 3, 2, 2, 2] },
+        ]
+      : identity.isDreamy
+        ? [
+            { offsets: [0, 2, 5, 9, 12, 15], durations: [2, 2, 3, 2, 2, 1] },
+            { offsets: [1, 4, 6, 10, 13], durations: [2, 1, 3, 2, 2] },
+            { offsets: [0, 3, 7, 8, 11, 14], durations: [2, 2, 1, 2, 2, 2] },
+          ]
+        : identity.isCityPop || identity.isJazz
+          ? [
+              { offsets: [0, 2, 4, 7, 9, 11, 14], durations: [1, 1, 2, 1, 1, 2, 2] },
+              { offsets: [1, 3, 6, 8, 10, 13, 15], durations: [1, 2, 1, 1, 2, 1, 1] },
+              { offsets: [0, 3, 5, 7, 10, 12, 15], durations: [2, 1, 1, 2, 1, 2, 1] },
+            ]
+          : identity.isChristmas
+            ? [
+                { offsets: [0, 2, 4, 8, 10, 12], durations: [1, 1, 2, 1, 1, 4] },
+                { offsets: [0, 3, 4, 7, 8, 12, 14], durations: [2, 1, 1, 1, 2, 2, 2] },
+                { offsets: [0, 2, 5, 6, 8, 10, 13], durations: [1, 2, 1, 1, 1, 2, 2] },
+              ]
+            : [
+                { offsets: [0, 2, 4, 6, 8, 11, 14], durations: [1, 1, 2, 1, 2, 1, 2] },
+                { offsets: [0, 3, 5, 8, 10, 12, 15], durations: [2, 1, 1, 2, 1, 2, 1] },
+                { offsets: [1, 2, 5, 7, 9, 12, 14], durations: [1, 2, 1, 1, 2, 1, 2] },
+              ];
+  return family[(bar + identity.color) % family.length];
+}
+
+function getPromptAwareChordPitchClasses(chord: ChordName, identity: PromptMelodyIdentity, strongBeat: boolean) {
+  const allowPassingTones = !strongBeat && !identity.isCityPop;
+  const safeRoots = new Set([
+    ...CHORD_TONES[chord].melody,
+    ...CHORD_TONES[chord].guitar,
+    ...(allowPassingTones ? CHORD_TONES[chord].passing : []),
+  ].map((note) => getPitchClass(note)));
+  if (allowPassingTones && (identity.isDreamy || identity.isJazz)) {
+    CHORD_TONES[chord].passing.forEach((note) => safeRoots.add(getPitchClass(note)));
+  }
+  return Array.from(safeRoots);
+}
+
+function getPromptAwareScalePitchClasses(identity: PromptMelodyIdentity) {
+  if (identity.isSad || identity.isWinter || identity.isDreamy || identity.isLofi) {
+    return [9, 11, 0, 2, 4, 5, 7];
+  }
+  return [0, 2, 4, 5, 7, 9, 11];
+}
+
+function createHumanLikePromptPianoTrack(prompt: string, analysis: PromptAnalysis, identity: PromptMelodyIdentity) {
+  const random = createRandom(createSeed(`${prompt}:${analysis.promptSeed}:${Date.now()}:${Math.random()}:human-piano`));
+  const progression = getPromptAwareMelodyProgression(analysis, identity);
+  const scalePitchClasses = getPromptAwareScalePitchClasses(identity);
+  const events: MusicEvent[] = [];
+  let previousLeadMidi: number | null = null;
+  const phraseShapes =
+    identity.isQuiet || identity.isNewAge
+      ? [
+          [0, 2, 4, 7, 5, 4, 2, 0],
+          [4, 5, 7, 9, 7, 5, 4, 2],
+          [7, 9, 12, 11, 9, 7, 5, 4],
+          [5, 4, 2, 0, -2, 0, 2, 4],
+        ]
+      : identity.isDreamy
+        ? [
+            [0, 4, 7, 11, 14, 11, 9, 7],
+            [7, 9, 11, 16, 14, 11, 9, 4],
+            [4, 7, 12, 14, 16, 14, 12, 9],
+            [9, 7, 4, 2, 0, 4, 7, 11],
+          ]
+        : [
+            [0, 4, 7, 9, 12, 9, 7, 4],
+            [7, 9, 12, 14, 12, 9, 7, 5],
+            [4, 7, 9, 12, 16, 12, 9, 7],
+            [12, 9, 7, 5, 4, 2, 0, 4],
+          ];
+  const rightRhythms =
+    identity.isQuiet || identity.isNewAge
+      ? [
+          { offsets: [0, 3, 6, 10, 13], durations: [2, 2, 3, 2, 3] },
+          { offsets: [1, 4, 8, 11, 14], durations: [2, 3, 2, 2, 2] },
+          { offsets: [0, 4, 7, 9, 12, 15], durations: [3, 2, 1, 2, 2, 1] },
+        ]
+      : [
+          { offsets: [0, 2, 4, 7, 9, 12, 14], durations: [1, 1, 2, 1, 2, 1, 2] },
+          { offsets: [0, 3, 5, 8, 10, 13, 15], durations: [2, 1, 1, 2, 1, 1, 1] },
+          { offsets: [1, 2, 5, 7, 10, 12, 15], durations: [1, 2, 1, 2, 1, 2, 1] },
+        ];
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const base = bar * BAR_LENGTH;
+    const phrase = Math.floor(bar / 4);
+    const phrasePos = bar % 4;
+    const chord = progression[(bar + Math.floor(phrase / 2)) % progression.length] ?? getChordForBar(analysis, bar);
+    const nextChord = progression[(bar + 1 + Math.floor(phrase / 2)) % progression.length] ?? chord;
+    const register = getPromptAwareRegister(identity, bar);
+    const leftChordPcs = getPromptAwareChordPitchClasses(chord, identity, true);
+    const rightChordPcs = getPromptAwareChordPitchClasses(chord, identity, true);
+    const nextRightPcs = getPromptAwareChordPitchClasses(nextChord, identity, true);
+    const lowRoot = findNearestMidiWithPitchClass(40 + ((identity.color + bar * 3) % 12), leftChordPcs, 33, 53);
+    const lowFifth = findNearestMidiWithPitchClass(lowRoot + 7, leftChordPcs, 38, 60);
+    const lowThird = findNearestMidiWithPitchClass(lowRoot + 12, leftChordPcs, 45, 64);
+    const midChord = findNearestMidiWithPitchClass(lowRoot + 24, rightChordPcs, 52, 72);
+    const leftPattern =
+      identity.isQuiet || identity.isNewAge
+        ? [
+            { offset: 0, midi: lowRoot, duration: 4 },
+            { offset: 4, midi: lowFifth, duration: 3 },
+            { offset: 8, midi: lowThird, duration: 3 },
+            { offset: 12, midi: midChord, duration: 3 },
+          ]
+        : [
+            { offset: 0, midi: lowRoot, duration: 2 },
+            { offset: 2, midi: lowFifth, duration: 1 },
+            { offset: 4, midi: lowThird, duration: 1 },
+            { offset: 6, midi: midChord, duration: 1 },
+            { offset: 8, midi: lowRoot, duration: 2 },
+            { offset: 10, midi: lowFifth, duration: 1 },
+            { offset: 12, midi: lowThird, duration: 1 },
+            { offset: 14, midi: midChord, duration: 1 },
+          ];
+
+    leftPattern.forEach((item) => {
+      addNote(events, midiToMelodyNote(item.midi), base + item.offset, item.duration, isValidMelodyNote);
+    });
+
+    const shape = phraseShapes[(phrase + phrasePos + (identity.color % phraseShapes.length)) % phraseShapes.length];
+    const rhythm = rightRhythms[(bar + identity.color) % rightRhythms.length];
+    const anchorBase =
+      identity.isQuiet || identity.isNewAge
+        ? 62 + ((identity.color + phrase * 5) % 14)
+        : identity.isDreamy
+          ? 67 + ((identity.color + phrase * 7) % 16)
+          : 64 + ((identity.color + phrase * 9) % 18);
+    const sectionLift = isChorusBar(bar) ? (identity.isQuiet ? 5 : 10) : isBridgeBar(bar) ? -6 : 0;
+
+    rhythm.offsets.forEach((offset, index) => {
+      const activeChord = offset >= 13 ? nextChord : chord;
+      const strongBeat = offset === 0 || offset === 4 || offset === 8 || offset === 12 || offset >= 14;
+      const chordPcs: number[] = offset >= 13 ? nextRightPcs : getPromptAwareChordPitchClasses(activeChord, identity, true);
+      const allowedPcs: number[] =
+        strongBeat || identity.isQuiet || identity.isNewAge
+          ? chordPcs
+          : Array.from(new Set([...scalePitchClasses, ...chordPcs]));
+      let targetMidi =
+        anchorBase +
+        (shape[index % shape.length] ?? 0) +
+        sectionLift +
+        Math.round((random() - 0.5) * (identity.isQuiet || identity.isNewAge ? 2 : 5));
+
+      if (previousLeadMidi !== null) {
+        const maxStep = identity.isQuiet || identity.isNewAge ? 7 : 10;
+        const diff = targetMidi - previousLeadMidi;
+        if (Math.abs(diff) > maxStep) {
+          targetMidi = previousLeadMidi + Math.sign(diff) * maxStep;
+        }
+      }
+
+      const leadMidi = findNearestMidiWithPitchClass(targetMidi, allowedPcs, register.min, register.max);
+      const duration = rhythm.durations[index] ?? 1;
+      addNote(events, midiToMelodyNote(leadMidi), base + offset, duration, isValidMelodyNote);
+
+      const shouldAddHarmony =
+        !identity.isQuiet &&
+        (identity.isNewAge || identity.isDreamy || isChorusBar(bar)) &&
+        (index === 1 || index === 3 || index === rhythm.offsets.length - 1);
+      if (shouldAddHarmony) {
+        const harmonyMidi = findNearestMidiWithPitchClass(leadMidi - 7, chordPcs, Math.max(48, register.min - 12), Math.min(88, register.max));
+        if (Math.abs(leadMidi - harmonyMidi) >= 5) {
+          addNote(events, midiToMelodyNote(harmonyMidi), base + offset, Math.min(2, duration), isValidMelodyNote);
+        }
+      }
+
+      previousLeadMidi = leadMidi;
+    });
+
+    if (phrasePos === 3) {
+      const resolveTarget = previousLeadMidi !== null ? previousLeadMidi + (identity.isSad ? -5 : 4) : anchorBase;
+      const resolveMidi = findNearestMidiWithPitchClass(resolveTarget, nextRightPcs, register.min, register.max);
+      addNote(events, midiToMelodyNote(resolveMidi), base + 14, identity.isQuiet ? 3 : 2, isValidMelodyNote);
+      previousLeadMidi = resolveMidi;
+    }
+  }
+
+  return finalizeMelodicEvents(events, 4);
+}
+
+void createHumanLikePromptPianoTrack;
+
+const PROMPT_PIANO_CHORD_PITCH_CLASSES: Record<ChordName, number[]> = {
+  C: [0, 4, 7],
+  D: [2, 5, 9],
+  E: [4, 7, 11],
+  F: [5, 9, 0],
+  G: [7, 11, 2],
+  A: [9, 0, 4],
+  B: [11, 2, 5],
+};
+
+const PROMPT_PIANO_SCALE_MAJOR = [0, 2, 4, 5, 7, 9, 11] as const;
+const PROMPT_PIANO_SCALE_MINOR = [9, 11, 0, 2, 4, 5, 7] as const;
+
+function findNearestPromptPianoMidi(targetMidi: number, pitchClasses: readonly number[], minMidi: number, maxMidi: number) {
+  return findNearestMidiWithPitchClass(targetMidi, [...pitchClasses], minMidi, maxMidi);
+}
+
+function chooseMovingPromptPianoMidi(
+  targetMidi: number,
+  pitchClasses: readonly number[],
+  minMidi: number,
+  maxMidi: number,
+  previousMidi: number | null,
+  salt: number
+) {
+  let candidate = findNearestPromptPianoMidi(targetMidi, pitchClasses, minMidi, maxMidi);
+  if (previousMidi === null) return candidate;
+
+  const repeated = Math.abs(candidate - previousMidi) <= 1 || candidate % 12 === previousMidi % 12;
+  if (!repeated) return candidate;
+
+  const nudges = [2, -2, 4, -4, 5, -5, 7, -7, 9, -9, 12, -12];
+  for (let i = 0; i < nudges.length; i += 1) {
+    const nudge = nudges[(i + salt) % nudges.length];
+    const moved = findNearestPromptPianoMidi(
+      targetMidi + nudge,
+      pitchClasses,
+      minMidi,
+      maxMidi
+    );
+    if (Math.abs(moved - previousMidi) > 1 && moved % 12 !== previousMidi % 12) {
+      candidate = moved;
+      break;
+    }
+  }
+
+  return candidate;
+}
+
+function applyPromptPianoVelocities(events: MusicEvent[], identity: PromptMelodyIdentity) {
+  return polishEvents(events).map((event) => {
+    const midi = noteToMidi(event.note ?? 'C4');
+    const bar = Math.floor(event.start / BAR_LENGTH);
+    const offset = event.start % BAR_LENGTH;
+    const isLeftHand = midi < 57;
+    const isPeak = isChorusBar(bar) || (bar >= 24 && bar < 32);
+    const isPhraseStart = offset === 0 || offset === 1 || offset === 2;
+    const isCadence = offset >= 13;
+    const roleVelocity = typeof event.velocity === 'number' ? event.velocity : null;
+    const baseVelocity = isLeftHand
+      ? identity.isQuiet || identity.isNewAge ? 0.22 : 0.3
+      : isPeak
+        ? 0.92
+        : identity.isQuiet || identity.isNewAge
+          ? 0.68
+          : 0.78;
+    const accent =
+      isLeftHand
+        ? offset === 0 ? 0.08 : offset === 8 ? 0.04 : -0.04
+        : isPhraseStart ? 0.14 : isCadence ? -0.08 : offset % 4 === 0 ? 0.07 : -0.04;
+    const phraseSwell = isLeftHand
+      ? 0
+      : Math.sin(((offset / BAR_LENGTH) + (bar % 4)) * Math.PI) * (isPeak ? 0.07 : 0.04);
+    const highSoftener = midi >= 96 ? -0.16 : midi >= 84 ? -0.08 : 0;
+    const shapedVelocity = baseVelocity + accent + phraseSwell + highSoftener;
+    const blendedVelocity = roleVelocity === null
+      ? shapedVelocity
+      : roleVelocity * 0.55 + shapedVelocity * 0.45;
+
+    return {
+      ...event,
+      velocity: clampAiVelocity(blendedVelocity),
+    };
+  });
+}
+
+function getPromptPianoChordAtBar(progression: readonly ChordName[], bar: number) {
+  const phrase = Math.floor(bar / 4);
+  return progression[(bar + Math.floor(phrase / 2)) % Math.max(1, progression.length)] ?? 'C';
+}
+
+function lockPromptPianoToProgression(
+  events: MusicEvent[],
+  progression: readonly ChordName[],
+  identity: PromptMelodyIdentity
+) {
+  let previousRightMidi: number | null = null;
+  let previousRightStart = -1;
+
+  return polishEvents(events)
+    .sort((a, b) => a.start - b.start || noteToMidi(a.note ?? 'C4') - noteToMidi(b.note ?? 'C4'))
+    .map((event) => {
+    const originalMidi = noteToMidi(event.note ?? 'C4');
+    const safeMidi = Number.isFinite(originalMidi) ? originalMidi : 60;
+    const bar = Math.floor(event.start / BAR_LENGTH);
+    const offset = event.start % BAR_LENGTH;
+    const chord = offset >= 13
+      ? getPromptPianoChordAtBar(progression, bar + 1)
+      : getPromptPianoChordAtBar(progression, bar);
+    const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord] ?? PROMPT_PIANO_CHORD_PITCH_CLASSES.C;
+    const scalePcs = identity.isSad || identity.isWinter || identity.isDreamy || identity.isMystic
+      ? PROMPT_PIANO_SCALE_MINOR
+      : PROMPT_PIANO_SCALE_MAJOR;
+    const isStrongBeat = offset === 0 || offset === 4 || offset === 8 || offset === 12 || offset >= 14;
+    const safePcs = isStrongBeat || (event.duration ?? 1) >= 3
+      ? chordPcs
+      : Array.from(new Set([...scalePcs, ...chordPcs]));
+    const isLeftHand = safeMidi < 57;
+    const minMidi = isLeftHand
+      ? 36
+      : safeMidi >= 84
+        ? 72
+        : identity.isQuiet || identity.isNewAge
+          ? 57
+          : 60;
+    const maxMidi = isLeftHand
+      ? 64
+      : identity.isHighRegister
+        ? 108
+        : identity.isQuiet || identity.isDreamy || identity.isNewAge
+          ? 100
+          : 96;
+    let targetMidi = safeMidi;
+
+    if (!isLeftHand && previousRightMidi !== null && previousRightStart !== event.start) {
+      const maxJump =
+        identity.isQuiet || identity.isNewAge
+          ? 5
+          : identity.isDreamy || identity.isMystic
+            ? 7
+            : 9;
+      const jump = safeMidi - previousRightMidi;
+      if (Math.abs(jump) > maxJump) {
+        targetMidi = previousRightMidi + Math.sign(jump) * maxJump;
+      }
+    }
+
+    const lockedMidi = findNearestPromptPianoMidi(targetMidi, safePcs, minMidi, maxMidi);
+    if (!isLeftHand) {
+      previousRightMidi = lockedMidi;
+      previousRightStart = event.start;
+    }
+
+    return {
+      ...event,
+      note: midiToMelodyNote(lockedMidi),
+    };
+  });
+}
+
+function getPromptPianoProgression(identity: PromptMelodyIdentity): ChordName[] {
+  if (identity.isChristmas) return ['C', 'G', 'A', 'F', 'C', 'F', 'G', 'C'];
+  if (identity.isDreamy || identity.isWinter || identity.isSad) return ['A', 'F', 'C', 'G', 'A', 'G', 'F', 'C'];
+  if (identity.isCityPop) return ['F', 'G', 'E', 'A', 'D', 'G', 'C', 'A'];
+  if (identity.isSpring) return ['C', 'F', 'G', 'C', 'A', 'F', 'G', 'C'];
+  return ['C', 'G', 'A', 'F', 'C', 'F', 'A', 'G'];
+}
+
+function getPromptPianoRootMidi(chord: ChordName) {
+  switch (chord) {
+    case 'A':
+      return 45;
+    case 'B':
+      return 47;
+    case 'C':
+      return 48;
+    case 'D':
+      return 50;
+    case 'E':
+      return 52;
+    case 'F':
+      return 53;
+    case 'G':
+      return 43;
+    default:
+      return 48;
+  }
+}
+
+function degreeToPromptPianoMidi(degree: number, octaveBase = 60, minor = false) {
+  const scale = minor ? PROMPT_PIANO_SCALE_MINOR : PROMPT_PIANO_SCALE_MAJOR;
+  const octaveShift = Math.floor(degree / scale.length) * 12;
+  const index = ((degree % scale.length) + scale.length) % scale.length;
+  return octaveBase + octaveShift + scale[index];
+}
+
+function createMotifBasedPianoTrack(prompt: string, analysis: PromptAnalysis, identity: PromptMelodyIdentity) {
+  const seed = createSeed(`${prompt}:${analysis.promptSeed}:${Date.now()}:${Math.random()}:motif-piano`);
+  const events: MusicEvent[] = [];
+  const minor = identity.isSad || identity.isWinter || identity.isDreamy || identity.isMystic;
+  const quiet = identity.isQuiet || identity.isNewAge || analysis.mood === 'calm';
+  const progression = rotateProgression(getPromptPianoProgression(identity), seed % 4);
+  const motifBank = minor
+    ? [
+        [4, 2, 0, 2, 5, 4, 2, 0, -2, 0, 2, 4],
+        [0, 2, 4, 7, 5, 4, 2, 0, 2, 4, 5, 4],
+        [7, 5, 4, 2, 0, -2, 0, 2, 4, 2, 0, -2],
+        [2, 5, 7, 9, 7, 5, 4, 2, 0, 2, 4, 5],
+      ]
+    : [
+        [0, 2, 4, 7, 5, 4, 2, 0, 2, 4, 5, 4],
+        [4, 5, 7, 9, 7, 5, 4, 2, 0, 2, 4, 0],
+        [7, 9, 11, 12, 11, 9, 7, 5, 4, 5, 7, 4],
+        [2, 4, 5, 7, 9, 7, 5, 4, 2, 0, 2, 4],
+      ];
+  const rhythmBank = quiet
+    ? [
+        { offsets: [0, 3, 6, 10, 13], durations: [3, 2, 3, 2, 3] },
+        { offsets: [1, 4, 8, 11, 14], durations: [2, 3, 2, 2, 2] },
+        { offsets: [0, 4, 7, 10, 14], durations: [3, 2, 2, 3, 2] },
+      ]
+    : [
+        { offsets: [0, 2, 4, 7, 9, 12, 14], durations: [1, 1, 2, 1, 2, 1, 2] },
+        { offsets: [1, 3, 5, 8, 10, 13, 15], durations: [1, 2, 1, 2, 1, 1, 1] },
+        { offsets: [0, 3, 6, 8, 11, 13], durations: [2, 1, 2, 1, 2, 2] },
+      ];
+  const mainMotif = motifBank[seed % motifBank.length];
+  let previousLead: number | null = null;
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const base = bar * BAR_LENGTH;
+    const section = getArrangementSection(bar);
+    const phrase = Math.floor(bar / 4);
+    const phrasePos = bar % 4;
+    const chord = progression[(bar + Math.floor(phrase / 2)) % progression.length] ?? 'C';
+    const nextChord = progression[(bar + 1 + Math.floor(phrase / 2)) % progression.length] ?? chord;
+    const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord] ?? PROMPT_PIANO_CHORD_PITCH_CLASSES.C;
+    const nextPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[nextChord] ?? chordPcs;
+    const scalePcs = minor ? PROMPT_PIANO_SCALE_MINOR : PROMPT_PIANO_SCALE_MAJOR;
+    const rootMidi = getPromptPianoRootMidi(chord);
+    const lowRoot = findNearestPromptPianoMidi(rootMidi - (quiet ? 0 : 12), chordPcs, quiet ? 40 : 33, 53);
+    const lowFifth = findNearestPromptPianoMidi(lowRoot + 7, chordPcs, 43, 60);
+    const lowThird = findNearestPromptPianoMidi(lowRoot + 12, chordPcs, 48, 64);
+    const midChord = findNearestPromptPianoMidi(lowRoot + 24, chordPcs, 55, 72);
+    const isPeak = section === 2 || section === 3;
+    const leftPattern = quiet
+      ? [
+          { offset: 0, midi: lowRoot, duration: 4 },
+          { offset: 6, midi: lowFifth, duration: 3 },
+          { offset: 11, midi: midChord, duration: 4 },
+        ]
+      : [
+          { offset: 0, midi: lowRoot, duration: 2 },
+          { offset: 3, midi: lowFifth, duration: 1 },
+          { offset: 6, midi: lowThird, duration: 1 },
+          { offset: 9, midi: lowFifth, duration: 1 },
+          { offset: 12, midi: midChord, duration: 2 },
+        ];
+
+    leftPattern.forEach((item) => {
+      addNote(events, midiToMelodyNote(item.midi), base + item.offset, item.duration, isValidMelodyNote);
+    });
+
+    const rhythm = rhythmBank[(phrasePos + Math.floor(phrase / 2) + seed) % rhythmBank.length];
+    const motifShift = phrasePos === 1 ? 2 : phrasePos === 2 ? isPeak ? 5 : 4 : phrasePos === 3 ? -2 : 0;
+    const sectionLift =
+      section === 0 ? -2 :
+      section === 2 ? 4 :
+      section === 3 ? 7 :
+      section === 4 ? -4 :
+      0;
+    const octaveBase =
+      identity.isHighRegister
+        ? isPeak ? 78 : 72
+        : identity.isDreamy || identity.isNewAge
+          ? isPeak ? 67 : 62
+          : quiet
+            ? 60
+            : isPeak ? 69 : 64;
+
+    rhythm.offsets.forEach((offset, index) => {
+      const phraseIndex = (phrasePos * 3 + index) % mainMotif.length;
+      const repeatedTheme = mainMotif[phraseIndex] ?? 0;
+      const answer = motifBank[(Math.floor(phrase / 2) + 1 + seed) % motifBank.length][phraseIndex] ?? repeatedTheme;
+      const motifDegree = phrase % 2 === 0 ? repeatedTheme : Math.round((repeatedTheme + answer) / 2);
+      const strong = offset === 0 || offset === 4 || offset === 8 || offset === 12 || offset >= 14;
+      const activePcs = strong ? (offset >= 13 ? nextPcs : chordPcs) : Array.from(new Set([...scalePcs, ...(offset >= 13 ? nextPcs : chordPcs)]));
+      let targetMidi =
+        degreeToPromptPianoMidi(motifDegree + motifShift + sectionLift, octaveBase, minor) +
+        (index === rhythm.offsets.length - 1 && phrasePos === 3 ? -5 : 0);
+
+      if (previousLead !== null) {
+        const maxMove = quiet ? 5 : identity.isDreamy || identity.isNewAge ? 7 : 9;
+        const diff = targetMidi - previousLead;
+        if (Math.abs(diff) > maxMove) {
+          targetMidi = previousLead + Math.sign(diff) * maxMove;
+        }
+      }
+
+      const minLead = identity.isHighRegister ? 64 : quiet ? 57 : 60;
+      const maxLead = identity.isHighRegister ? 108 : quiet || identity.isDreamy || identity.isNewAge ? 96 : 91;
+      const lead = chooseMovingPromptPianoMidi(
+        targetMidi,
+        activePcs,
+        minLead,
+        isPeak && !quiet ? Math.min(108, maxLead + 5) : maxLead,
+        previousLead,
+        seed + bar + index
+      );
+      addNote(events, midiToMelodyNote(lead), base + offset, rhythm.durations[index] ?? 2, isValidMelodyNote);
+
+      const shouldAddHarmony = isPeak && !quiet && index % 3 === 1;
+      if (shouldAddHarmony) {
+        const harmony = findNearestPromptPianoMidi(lead - 7, chordPcs, 50, 76);
+        if (Math.abs(lead - harmony) >= 5) {
+          addNote(events, midiToMelodyNote(harmony), base + offset, 1, isValidMelodyNote);
+        }
+      }
+
+      const shouldAddTopColor =
+        isPeak &&
+        (identity.isHighRegister || identity.isDreamy || identity.isNewAge || identity.isYoutubePianoStyle) &&
+        phrasePos !== 0 &&
+        index === rhythm.offsets.length - 2;
+      if (shouldAddTopColor) {
+        const top = findNearestPromptPianoMidi(
+          lead + (identity.isHighRegister ? 19 : 12),
+          chordPcs,
+          identity.isHighRegister ? 91 : 79,
+          identity.isHighRegister ? 108 : 100
+        );
+        if (top > lead + 5) {
+          addNote(events, midiToMelodyNote(top), base + Math.min(15, offset + 1), 1, isValidMelodyNote);
+        }
+      }
+
+      previousLead = lead;
+    });
+
+    if (phrasePos === 3) {
+      const resolveTarget = previousLead !== null ? previousLead + (minor || quiet ? -3 : 4) : octaveBase;
+      const resolve = findNearestPromptPianoMidi(resolveTarget, nextPcs, quiet ? 57 : 60, identity.isHighRegister ? 103 : 91);
+      addNote(events, midiToMelodyNote(resolve), base + 14, quiet ? 3 : 2, isValidMelodyNote);
+      previousLead = resolve;
+    }
+  }
+
+  return applyPromptPianoVelocities(lockPromptPianoToProgression(finalizeMelodicEvents(events, 3), progression, identity), identity);
+}
+
+function enrichPianoPerformanceTexture(
+  events: MusicEvent[],
+  analysis: PromptAnalysis,
+  identity: PromptMelodyIdentity
+) {
+  if (events.length === 0) return events;
+  const next = [...polishEvents(events)];
+  const occupied = new Set(next.map((event) => `${event.start}:${event.note}`));
+  const variant = getSoloPianoVariant(analysis);
+  const quiet = identity.isQuiet || variant === 'quiet' || variant === 'calm' || analysis.mood === 'calm';
+  const dreamy = identity.isDreamy || variant === 'night' || analysis.mood === 'dreamy';
+  const add = (midi: number, start: number, duration: number, velocity: number) => {
+    const note = midiToMelodyNote(midi);
+    const key = `${start}:${note}`;
+    if (occupied.has(key) || start < 0 || start >= TOTAL_STEPS || !isValidMelodyNote(note)) return;
+    const stackAtStart = next.filter((event) => event.start === start).length;
+    if (stackAtStart >= (quiet ? 3 : 4)) return;
+    next.push({ note, start, duration: Math.max(1, Math.min(duration, TOTAL_STEPS - start)), velocity });
+    occupied.add(key);
+  };
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const base = bar * BAR_LENGTH;
+    const chord = getChordForBar(analysis, bar);
+    const nextChord = getChordForBar(analysis, bar + 1);
+    const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord] ?? PROMPT_PIANO_CHORD_PITCH_CLASSES.C;
+    const nextPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[nextChord] ?? chordPcs;
+    const root = getPromptPianoRootMidi(chord);
+    const isPeak = isChorusBar(bar) || (bar >= 24 && bar < 32);
+    const isBridge = isBridgeBar(bar);
+    const leftRoot = findNearestPromptPianoMidi(root - (quiet ? 0 : 12), chordPcs, quiet ? 40 : 33, 52);
+    const leftFifth = findNearestPromptPianoMidi(leftRoot + 7, chordPcs, 43, 60);
+    const leftThird = findNearestPromptPianoMidi(leftRoot + 12, chordPcs, 48, 64);
+    const inner = findNearestPromptPianoMidi(leftRoot + 24, chordPcs, 55, 72);
+    const leftFlow = quiet
+      ? [
+          { offset: 0, midi: leftRoot, duration: 5 },
+          { offset: 8, midi: leftFifth, duration: 4 },
+        ]
+      : [
+          { offset: 0, midi: leftRoot, duration: 2 },
+          { offset: 2, midi: leftFifth, duration: 1 },
+          { offset: 4, midi: leftThird, duration: 1 },
+          { offset: 6, midi: inner, duration: 1 },
+          { offset: 8, midi: leftRoot, duration: 2 },
+          { offset: 10, midi: leftFifth, duration: 1 },
+          { offset: 12, midi: leftThird, duration: 1 },
+          { offset: 14, midi: inner, duration: 1 },
+        ];
+    leftFlow.forEach((item) => add(item.midi, base + item.offset, item.duration, quiet ? 0.28 : 0.34));
+
+    if (!quiet && isPeak) {
+      const upperStart = bar % 4 === 3 ? 10 : 12;
+      const topBase = findNearestPromptPianoMidi(84 + ((bar + identity.color) % 12), bar % 4 === 3 ? nextPcs : chordPcs, dreamy ? 76 : 79, identity.isHighRegister ? 108 : 100);
+      add(topBase, base + upperStart, 1, 0.58);
+      add(findNearestPromptPianoMidi(topBase + 7, chordPcs, topBase, identity.isHighRegister ? 108 : 100), base + upperStart + 2, 1, 0.54);
+    }
+
+    if (quiet && (bar % 4 === 1 || bar % 4 === 3) && !isBridge) {
+      const answer = findNearestPromptPianoMidi(72 + ((bar + identity.color) % 8), bar % 4 === 3 ? nextPcs : chordPcs, 64, 88);
+      add(answer, base + 14, 2, 0.52);
+    }
+  }
+
+  return polishEvents(next);
+}
+
+function refinePianoIntoSongArrangement(
+  events: MusicEvent[],
+  analysis: PromptAnalysis,
+  identity: PromptMelodyIdentity
+) {
+  const grouped = new Map<number, MusicEvent[]>();
+  polishEvents(events).forEach((event) => {
+    grouped.set(event.start, [...(grouped.get(event.start) ?? []), event]);
+  });
+
+  const result: MusicEvent[] = [];
+  let previousTopMidi: number | null = null;
+  let repeatedTopCount = 0;
+  const variant = getSoloPianoVariant(analysis);
+  const quiet = identity.isQuiet || variant === 'quiet' || variant === 'calm' || analysis.mood === 'calm';
+
+  [...grouped.entries()]
+    .sort((a, b) => a[0] - b[0])
+    .forEach(([start, bucket]) => {
+      const bar = Math.floor(start / BAR_LENGTH);
+      const offset = start % BAR_LENGTH;
+      const isPeak = isChorusBar(bar) || (bar >= 24 && bar < 32);
+      const isStrong = offset === 0 || offset === 4 || offset === 8 || offset === 12 || offset >= 14;
+      const chord = getChordForBar(analysis, bar);
+      const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord] ?? PROMPT_PIANO_CHORD_PITCH_CLASSES.C;
+      const scalePcs = analysis.mood === 'sad' || analysis.theme === 'winter' || analysis.mood === 'dreamy'
+        ? PROMPT_PIANO_SCALE_MINOR
+        : PROMPT_PIANO_SCALE_MAJOR;
+      const allowedPcs = isStrong ? chordPcs : Array.from(new Set([...scalePcs, ...chordPcs]));
+      const normalized = bucket
+        .map((event) => {
+          const midi = noteToMidi(event.note ?? 'C4');
+          const isLeft = midi < 57;
+          const min = isLeft ? 33 : quiet ? 57 : 60;
+          const max = isLeft ? 60 : identity.isHighRegister ? 108 : quiet ? 91 : isPeak ? 100 : 96;
+          const locked = findNearestPromptPianoMidi(midi, isLeft ? chordPcs : allowedPcs, min, max);
+          return {
+            ...event,
+            note: midiToMelodyNote(locked),
+            duration: Math.max(1, Math.min(event.duration ?? 1, isLeft ? 5 : quiet ? 4 : 3, BAR_LENGTH - offset)),
+          };
+        })
+        .sort((a, b) => noteToMidi(a.note ?? 'C4') - noteToMidi(b.note ?? 'C4'));
+
+      const left = normalized.filter((event) => noteToMidi(event.note ?? 'C4') < 57);
+      const right = normalized.filter((event) => noteToMidi(event.note ?? 'C4') >= 57);
+      const selected: MusicEvent[] = [];
+      const leftCandidate = left[0];
+      if (leftCandidate && (isStrong || isPeak || start % 8 === 0 || !quiet)) {
+        selected.push(leftCandidate);
+      }
+
+      const topCandidate = right.at(-1);
+      if (topCandidate) {
+        let topMidi = noteToMidi(topCandidate.note ?? 'C4');
+        if (previousTopMidi !== null) {
+          if (Math.abs(topMidi - previousTopMidi) <= 1) {
+            repeatedTopCount += 1;
+          } else {
+            repeatedTopCount = 0;
+          }
+
+          if (repeatedTopCount >= 2) {
+            const direction = (bar + offset + identity.color) % 2 === 0 ? 1 : -1;
+            topMidi = findNearestPromptPianoMidi(
+              topMidi + direction * (quiet ? 3 : 5),
+              allowedPcs,
+              quiet ? 57 : 60,
+              identity.isHighRegister ? 108 : isPeak ? 100 : 96
+            );
+            repeatedTopCount = 0;
+          }
+
+          const maxLeap = quiet ? 7 : identity.isDreamy || identity.isNewAge ? 9 : 12;
+          if (Math.abs(topMidi - previousTopMidi) > maxLeap) {
+            topMidi = findNearestPromptPianoMidi(
+              previousTopMidi + Math.sign(topMidi - previousTopMidi) * maxLeap,
+              allowedPcs,
+              quiet ? 57 : 60,
+              identity.isHighRegister ? 108 : isPeak ? 100 : 96
+            );
+          }
+        }
+
+        const topEvent = {
+          ...topCandidate,
+          note: midiToMelodyNote(topMidi),
+          velocity: isPeak ? 0.84 : quiet ? 0.66 : 0.76,
+        };
+        selected.push(topEvent);
+        previousTopMidi = topMidi;
+      }
+
+      const harmonyCandidate = right
+        .slice(0, -1)
+        .reverse()
+        .find((event) => {
+          if (!topCandidate) return false;
+          const interval = Math.abs(noteToMidi(topCandidate.note ?? 'C4') - noteToMidi(event.note ?? 'C4')) % 12;
+          return interval === 3 || interval === 4 || interval === 7 || interval === 8 || interval === 9;
+        });
+      if (harmonyCandidate && (isPeak || (!quiet && isStrong)) && selected.length < (isPeak ? 4 : 3)) {
+        selected.splice(leftCandidate ? 1 : 0, 0, {
+          ...harmonyCandidate,
+          velocity: isPeak ? 0.58 : 0.48,
+        });
+      }
+
+      selected
+        .slice(0, quiet ? 2 : isPeak ? 4 : 3)
+        .forEach((event) => result.push(event));
+    });
+
+  return polishEvents(result);
+}
+
+function createFlowingYoutubeStylePianoTrack(prompt: string, analysis: PromptAnalysis, identity: PromptMelodyIdentity) {
+  void analysis;
+  const random = createRandom(createSeed(`${prompt}:${Date.now()}:${Math.random()}:youtube-flowing-piano`));
+  const events: MusicEvent[] = [];
+  const minor = identity.isSad || identity.isWinter || identity.isDreamy || identity.isMystic;
+  const progression = rotateProgression(
+    getPromptPianoProgression(identity),
+    Math.floor(random() * 4)
+  );
+  const phraseFamilies = minor
+    ? [
+        [2, 4, 5, 7, 9, 7, 5, 4, 2],
+        [4, 5, 7, 11, 9, 7, 5, 2, 4],
+        [7, 9, 11, 12, 14, 12, 9, 7, 5],
+        [9, 7, 5, 4, 2, 0, 2, 4, 5],
+      ]
+    : [
+        [0, 2, 4, 5, 7, 9, 7, 5, 4],
+        [4, 5, 7, 9, 11, 9, 7, 5, 4],
+        [7, 9, 11, 12, 14, 12, 11, 9, 7],
+        [12, 11, 9, 7, 5, 4, 2, 0, 2],
+      ];
+  const leadOffsets = [0, 2, 4, 6, 9, 11, 13, 15];
+  let previousLead: number | null = null;
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const base = bar * BAR_LENGTH;
+    const section = getArrangementSection(bar);
+    const phrase = Math.floor(bar / 4);
+    const phrasePos = bar % 4;
+    const chord = progression[(bar + Math.floor(phrase / 2)) % progression.length] ?? 'C';
+    const nextChord = progression[(bar + 1 + Math.floor(phrase / 2)) % progression.length] ?? chord;
+    const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord];
+    const nextPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[nextChord];
+    const rootMidi = getPromptPianoRootMidi(chord);
+    const leftRoot = findNearestPromptPianoMidi(rootMidi, chordPcs, 41, 53);
+    const leftFifth = findNearestPromptPianoMidi(rootMidi + 7, chordPcs, 48, 60);
+    const leftThird = findNearestPromptPianoMidi(rootMidi + 12, chordPcs, 52, 65);
+    const leftTop = findNearestPromptPianoMidi(rootMidi + 19, chordPcs, 57, 72);
+    const isPeak = section === 2 || section === 3;
+    const leftPattern = isPeak
+      ? [
+          { offset: 0, midi: leftRoot, duration: 2 },
+          { offset: 3, midi: leftFifth, duration: 1 },
+          { offset: 6, midi: leftThird, duration: 1 },
+          { offset: 9, midi: leftFifth, duration: 1 },
+          { offset: 12, midi: leftTop, duration: 2 },
+        ]
+      : [
+          { offset: 0, midi: leftRoot, duration: 3 },
+          { offset: 5, midi: leftFifth, duration: 2 },
+          { offset: 10, midi: leftThird, duration: 2 },
+        ];
+
+    leftPattern.forEach((item) => addNote(events, midiToMelodyNote(item.midi), base + item.offset, item.duration, isValidMelodyNote));
+
+    const family = phraseFamilies[(phrase + phrasePos + Math.floor(random() * phraseFamilies.length)) % phraseFamilies.length];
+    const octaveBase =
+      identity.isHighRegister
+        ? section >= 2 ? 84 : 76
+        : identity.isDreamy || identity.isNewAge
+          ? isPeak ? 72 : 64
+          : isPeak
+            ? 72
+            : identity.isQuiet
+              ? 60
+              : 64;
+    const sectionDegreeLift = section === 0 ? -2 : section === 2 ? 2 : section === 3 ? 4 : section === 4 ? -3 : 0;
+    const phraseTurn = phrasePos === 3 ? -2 : phrasePos === 2 ? 2 : 0;
+
+    leadOffsets.forEach((offset, index) => {
+      const strongBeat = offset === 0 || offset === 4 || offset >= 13;
+      const activeChordPcs = offset >= 13 ? nextPcs : chordPcs;
+      const scalePcs = minor ? PROMPT_PIANO_SCALE_MINOR : PROMPT_PIANO_SCALE_MAJOR;
+      const allowedPcs = strongBeat
+        ? activeChordPcs
+        : Array.from(new Set([...scalePcs, ...activeChordPcs]));
+      const degree = (family[index % family.length] ?? 0) + sectionDegreeLift + phraseTurn + Math.floor(random() * 2);
+      let target = degreeToPromptPianoMidi(degree, octaveBase, minor);
+
+      if (previousLead !== null) {
+        const diff = target - previousLead;
+        const maxMove = isPeak || identity.isHighRegister ? 9 : 7;
+        if (Math.abs(diff) > maxMove) {
+          target = previousLead + Math.sign(diff) * maxMove;
+        }
+      }
+
+      const lead = chooseMovingPromptPianoMidi(
+        target,
+        allowedPcs,
+        isPeak || identity.isHighRegister ? 67 : 58,
+        isPeak || identity.isHighRegister ? 108 : 91,
+        previousLead,
+        bar + index + identity.color
+      );
+      const duration = index % 3 === 0 ? 2 : 1;
+      addNote(events, midiToMelodyNote(lead), base + offset, duration, isValidMelodyNote);
+
+      if (isPeak && index === 4) {
+        const harmony = findNearestPromptPianoMidi(lead - 7, activeChordPcs, 52, 79);
+        if (Math.abs(lead - harmony) >= 5) {
+          addNote(events, midiToMelodyNote(harmony), base + offset, 1, isValidMelodyNote);
+        }
+      }
+
+      const shouldAddSoftUpperEcho =
+        isPeak &&
+        (identity.isHighRegister || identity.isDreamy || identity.isNewAge || identity.isYoutubePianoStyle) &&
+        (index === 2 || index === 5);
+      if (shouldAddSoftUpperEcho) {
+        const upperEcho = findNearestPromptPianoMidi(
+          lead + (identity.isHighRegister ? 24 : 12),
+          activeChordPcs,
+          identity.isHighRegister ? 96 : 84,
+          identity.isHighRegister ? 108 : 100
+        );
+        if (upperEcho > lead + 7) {
+          addNote(events, midiToMelodyNote(upperEcho), base + Math.min(15, offset + 1), 1, isValidMelodyNote);
+        }
+      }
+
+      previousLead = lead;
+    });
+
+    if (isPeak && (phrasePos === 1 || phrasePos === 3)) {
+      const sparkle = chooseMovingPromptPianoMidi(
+        (previousLead ?? 84) + (identity.isHighRegister ? 19 : 12),
+        Array.from(new Set([...(minor ? PROMPT_PIANO_SCALE_MINOR : PROMPT_PIANO_SCALE_MAJOR), ...(phrasePos === 3 ? nextPcs : chordPcs)])),
+        identity.isHighRegister ? 96 : 84,
+        identity.isHighRegister ? 108 : 100,
+        previousLead,
+        phrase + bar
+      );
+      addNote(events, midiToMelodyNote(sparkle), base + 15, 1, isValidMelodyNote);
+      previousLead = sparkle;
+    }
+  }
+
+  return applyPromptPianoVelocities(lockPromptPianoToProgression(finalizeMelodicEvents(events, 2), progression, identity), identity);
+}
+
+void createFlowingYoutubeStylePianoTrack;
+
+function createSongLikePromptPianoTrack(prompt: string, analysis: PromptAnalysis, identity: PromptMelodyIdentity) {
+  void prompt;
+  void analysis;
+  const events: MusicEvent[] = [];
+  const quiet = identity.isQuiet || identity.isNewAge || identity.isSad;
+  const dreamy = identity.isDreamy || identity.isMystic;
+  const scale = identity.isSad || identity.isWinter || dreamy ? PROMPT_PIANO_SCALE_MINOR : PROMPT_PIANO_SCALE_MAJOR;
+  const progression = getPromptPianoProgression(identity);
+  const motifBank = quiet
+    ? [
+        { offsets: [0, 3, 6, 10, 13], degrees: [0, 2, 4, 3, 1], durations: [2, 2, 3, 2, 3] },
+        { offsets: [1, 4, 8, 11, 14], degrees: [2, 4, 5, 4, 2], durations: [2, 3, 2, 2, 2] },
+        { offsets: [0, 4, 7, 10, 14], degrees: [4, 5, 7, 5, 4], durations: [3, 2, 2, 2, 2] },
+        { offsets: [2, 6, 9, 12, 15], degrees: [3, 2, 1, 0, 2], durations: [2, 2, 2, 3, 1] },
+      ]
+    : [
+        { offsets: [0, 2, 4, 7, 9, 12, 14], degrees: [0, 2, 4, 5, 4, 2, 1], durations: [1, 1, 2, 1, 2, 1, 2] },
+        { offsets: [1, 3, 6, 8, 11, 13, 15], degrees: [2, 4, 7, 5, 4, 2, 0], durations: [1, 2, 1, 2, 1, 1, 1] },
+        { offsets: [0, 3, 5, 8, 10, 12, 15], degrees: [4, 5, 7, 8, 7, 5, 4], durations: [2, 1, 1, 2, 1, 2, 1] },
+        { offsets: [0, 2, 5, 7, 10, 12, 14], degrees: [5, 4, 2, 1, 2, 4, 5], durations: [1, 2, 1, 2, 1, 2, 2] },
+      ];
+  let previousLeadMidi: number | null = null;
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const base = bar * BAR_LENGTH;
+    const section = getArrangementSection(bar);
+    const phrase = Math.floor(bar / 4);
+    const phrasePos = bar % 4;
+    const chord = progression[(bar + Math.floor(phrase / 2)) % progression.length] ?? 'C';
+    const nextChord = progression[(bar + 1 + Math.floor(phrase / 2)) % progression.length] ?? chord;
+    const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord];
+    const nextPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[nextChord];
+    const root = getPromptPianoRootMidi(chord);
+    const leftRoot = findNearestPromptPianoMidi(root, chordPcs, 41, 55);
+    const leftFifth = findNearestPromptPianoMidi(root + 7, chordPcs, 47, 62);
+    const leftThird = findNearestPromptPianoMidi(root + 12, chordPcs, 50, 66);
+    const leftTop = findNearestPromptPianoMidi(root + 19, chordPcs, 55, 72);
+    const leftPattern = quiet
+      ? [
+          { offset: 0, midi: leftRoot, duration: 5 },
+          { offset: 6, midi: leftFifth, duration: 3 },
+          { offset: 10, midi: leftThird, duration: 3 },
+          { offset: 14, midi: leftTop, duration: 2 },
+        ]
+      : [
+          { offset: 0, midi: leftRoot, duration: 3 },
+          { offset: 3, midi: leftFifth, duration: 1 },
+          { offset: 6, midi: leftThird, duration: 2 },
+          { offset: 9, midi: leftFifth, duration: 1 },
+          { offset: 12, midi: leftTop, duration: 2 },
+          { offset: 15, midi: leftThird, duration: 1 },
+        ];
+
+    leftPattern.forEach((item) => {
+      addNote(events, midiToMelodyNote(item.midi), base + item.offset, item.duration, isValidMelodyNote);
+    });
+
+    const motif = motifBank[(phrase + phrasePos + (identity.color % motifBank.length)) % motifBank.length];
+    const sectionLift =
+      section === 0 ? -2 :
+      section === 2 || section === 3 ? (quiet ? 4 : 7) :
+      section === 4 ? -5 :
+      0;
+    const anchor =
+      quiet
+        ? 62 + ((identity.color + phrase * 2) % 4) * 2
+        : dreamy
+          ? 65 + ((identity.color + phrase * 3) % 5) * 2
+          : 64 + ((identity.color + phrase) % 5) * 2;
+
+    motif.offsets.forEach((offset, index) => {
+      const activeChordPcs = offset >= 13 ? nextPcs : chordPcs;
+      const strongBeat = offset === 0 || offset === 4 || offset === 8 || offset === 12 || offset >= 14;
+      const phraseTurn = phrasePos === 3 && index >= motif.offsets.length - 2 ? -2 : 0;
+      let target = anchor + (motif.degrees[index] ?? 0) + sectionLift + phraseTurn;
+
+      if (previousLeadMidi !== null) {
+        const diff = target - previousLeadMidi;
+        const maxMove = quiet ? 5 : 8;
+        if (Math.abs(diff) > maxMove) {
+          target = previousLeadMidi + Math.sign(diff) * maxMove;
+        }
+      }
+
+      const allowedPcs = strongBeat ? activeChordPcs : Array.from(new Set([...scale, ...activeChordPcs]));
+      const lead = findNearestPromptPianoMidi(target, allowedPcs, quiet ? 58 : 60, section === 2 || section === 3 ? 91 : 84);
+      addNote(events, midiToMelodyNote(lead), base + offset, motif.durations[index] ?? 2, isValidMelodyNote);
+
+      const addSoftHarmony = !quiet && (section === 2 || section === 3 || dreamy) && (index === 2 || index === motif.offsets.length - 2);
+      if (addSoftHarmony) {
+        const harmony = findNearestPromptPianoMidi(lead - 7, activeChordPcs, 52, 76);
+        if (Math.abs(lead - harmony) >= 5) {
+          addNote(events, midiToMelodyNote(harmony), base + offset, 1, isValidMelodyNote);
+        }
+      }
+
+      previousLeadMidi = lead;
+    });
+
+    if (phrasePos === 3) {
+      const resolve = findNearestPromptPianoMidi(
+        previousLeadMidi !== null ? previousLeadMidi + (identity.isSad || quiet ? -3 : 4) : anchor,
+        nextPcs,
+        quiet ? 58 : 60,
+        86
+      );
+      addNote(events, midiToMelodyNote(resolve), base + 14, quiet ? 3 : 2, isValidMelodyNote);
+      previousLeadMidi = resolve;
+    }
+  }
+
+  return finalizeMelodicEvents(events, quiet ? 2 : 3);
+}
+
+void createSongLikePromptPianoTrack;
+
+function createCuratedPromptPianoTrack(prompt: string, analysis: PromptAnalysis, identity: PromptMelodyIdentity) {
+  void analysis;
+  const events: MusicEvent[] = [];
+  const promptVariant = createSeed(`${prompt}:${identity.color}:piano-phrase`) >>> 0;
+  const quiet = identity.isQuiet || identity.isNewAge || identity.isSad;
+  const dreamy = identity.isDreamy || identity.isMystic;
+  const highRegisterLead = identity.isHighRegister || identity.isDreamy || identity.isMystic;
+  const scale = identity.isSad || identity.isWinter || dreamy ? PROMPT_PIANO_SCALE_MINOR : PROMPT_PIANO_SCALE_MAJOR;
+  const baseProgression = getPromptPianoProgression(identity);
+  const progression = rotateProgression(baseProgression, (promptVariant >>> 5) % Math.max(1, baseProgression.length));
+  const rightMotifs = quiet
+    ? [
+        { offsets: [2, 6, 10, 14], steps: [7, 4, 2, 0], highSteps: [12, 9, 7, 5], durations: [3, 3, 3, 2] },
+        { offsets: [2, 5, 9, 13], steps: [4, 7, 9, 7], highSteps: [9, 12, 14, 12], durations: [2, 3, 3, 2] },
+        { offsets: [1, 5, 8, 12, 15], steps: [0, 2, 4, 7, 4], highSteps: [7, 9, 12, 16, 12], durations: [2, 2, 3, 2, 1] },
+        { offsets: [2, 6, 10, 13], steps: [5, 4, 2, 0], highSteps: [14, 12, 9, 7], durations: [3, 2, 3, 2] },
+      ]
+    : [
+        { offsets: [1, 3, 6, 9, 12, 14], steps: [0, 4, 7, 9, 7, 4], highSteps: [7, 11, 14, 16, 14, 11], durations: [1, 2, 2, 1, 2, 2] },
+        { offsets: [0, 3, 5, 8, 11, 13, 15], steps: [4, 7, 9, 12, 9, 7, 5], highSteps: [12, 14, 16, 19, 16, 14, 12], durations: [2, 1, 2, 2, 1, 1, 1] },
+        { offsets: [1, 4, 7, 10, 12, 14], steps: [7, 9, 12, 14, 12, 9], highSteps: [14, 16, 19, 21, 19, 16], durations: [2, 2, 1, 2, 1, 2] },
+        { offsets: [0, 2, 5, 8, 12, 15], steps: [9, 7, 5, 4, 2, 0], highSteps: [16, 14, 12, 11, 9, 7], durations: [2, 2, 2, 2, 2, 1] },
+      ];
+  let previousLeadMidi: number | null = null;
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const base = bar * BAR_LENGTH;
+    const section = getArrangementSection(bar);
+    const phrase = Math.floor(bar / 4);
+    const phrasePos = bar % 4;
+    const chord = progression[(bar + Math.floor(phrase / 2)) % progression.length] ?? 'C';
+    const nextChord = progression[(bar + 1 + Math.floor(phrase / 2)) % progression.length] ?? chord;
+    const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord];
+    const nextPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[nextChord];
+    const rootMidi = getPromptPianoRootMidi(chord);
+    const bassRoot = findNearestPromptPianoMidi(rootMidi, chordPcs, 41, 53);
+    const bassFifth = findNearestPromptPianoMidi(rootMidi + 7, chordPcs, 47, 60);
+    const bassThird = findNearestPromptPianoMidi(rootMidi + 12, chordPcs, 52, 64);
+    const leftPattern = quiet
+      ? [
+          { offset: 0, midi: bassRoot, duration: 3 },
+          { offset: 8, midi: bassFifth, duration: 3 },
+        ]
+      : [
+          { offset: 0, midi: bassRoot, duration: 2 },
+          { offset: 6, midi: bassFifth, duration: 1 },
+          { offset: 8, midi: bassThird, duration: 2 },
+          { offset: 14, midi: bassFifth, duration: 1 },
+        ];
+
+    leftPattern.forEach((item) => {
+      addNote(events, midiToMelodyNote(item.midi), base + item.offset, item.duration, isValidMelodyNote);
+    });
+
+    const motif = rightMotifs[(phrase * 2 + phrasePos + (promptVariant % rightMotifs.length)) % rightMotifs.length];
+    const phraseLift = phrasePos === 1 ? 2 : phrasePos === 2 ? 5 : phrasePos === 3 ? -2 : 0;
+    const sectionLift =
+      section === 0 ? -2 :
+      section === 2 || section === 3 ? (quiet ? 7 : 11) :
+      section === 4 ? -5 :
+      0;
+    const baseAnchor = quiet
+      ? (highRegisterLead ? 72 : 62) + ((promptVariant + phrase * 3) % 5) * 2
+      : dreamy
+        ? 72 + ((promptVariant + phrase * 5) % 6) * 2
+        : (identity.isHighRegister ? 74 : 64) + ((promptVariant + phrase * 7) % 6) * 2;
+
+    motif.offsets.forEach((offset, index) => {
+      const chordOnlyPcs = offset >= 13 ? nextPcs : chordPcs;
+      const strongBeat = offset === 0 || offset === 4 || offset === 8 || offset === 12 || offset >= 14;
+      const activePcs = strongBeat && !highRegisterLead
+        ? chordOnlyPcs
+        : Array.from(new Set([...scale, ...chordOnlyPcs]));
+      const melodicSteps = highRegisterLead && (section >= 1 || phrasePos >= 1)
+        ? motif.highSteps ?? motif.steps
+        : motif.steps;
+      let targetMidi =
+        baseAnchor +
+        (melodicSteps[index] ?? 0) +
+        phraseLift +
+        sectionLift +
+        (((promptVariant >>> ((bar + index) % 11)) % 3) - 1) * (quiet ? 1 : 2);
+
+      if (previousLeadMidi !== null) {
+        const diff = targetMidi - previousLeadMidi;
+        const maxMove = highRegisterLead ? 9 : quiet ? 5 : 7;
+        if (Math.abs(diff) > maxMove) {
+          targetMidi = previousLeadMidi + Math.sign(diff) * maxMove;
+        }
+      }
+
+      const leadMax =
+        section === 3
+          ? (highRegisterLead ? 108 : quiet ? 96 : 103)
+          : section === 2
+            ? (highRegisterLead ? 104 : quiet ? 91 : 98)
+            : highRegisterLead ? 100 : 88;
+      const leadMin = highRegisterLead && section >= 1 ? 72 : quiet ? 57 : 60;
+      const leadMidi = chooseMovingPromptPianoMidi(
+        targetMidi,
+        activePcs,
+        leadMin,
+        leadMax,
+        previousLeadMidi,
+        bar + index + promptVariant
+      );
+      addNote(events, midiToMelodyNote(leadMidi), base + offset, motif.durations[index] ?? 2, isValidMelodyNote);
+
+      const addHarmony = !quiet && !identity.isNewAge && !identity.isQuiet && (section === 3) && index === motif.offsets.length - 2;
+      if (addHarmony) {
+        const harmonyMidi = findNearestPromptPianoMidi(leadMidi - 7, chordOnlyPcs, 52, 76);
+        if (Math.abs(leadMidi - harmonyMidi) >= 5) {
+          addNote(events, midiToMelodyNote(harmonyMidi), base + offset, 1, isValidMelodyNote);
+        }
+      }
+
+      previousLeadMidi = leadMidi;
+    });
+
+    const shouldAddUpperAnswer =
+      (section === 2 || section === 3) &&
+      (phrasePos === 1 || phrasePos === 2 || (dreamy && phrasePos === 3));
+    if (shouldAddUpperAnswer) {
+      const upperPcs = phrasePos === 3 ? nextPcs : chordPcs;
+      const upperTarget =
+        (previousLeadMidi ?? baseAnchor) +
+        (identity.isHighRegister ? 19 : quiet ? 12 : dreamy ? 17 : 14) +
+        ((promptVariant >>> (bar % 13)) % 5);
+      const upperMidi = chooseMovingPromptPianoMidi(
+        upperTarget,
+        upperPcs,
+        quiet ? 72 : 76,
+        quiet ? 100 : 108,
+        previousLeadMidi,
+        promptVariant + bar
+      );
+      addNote(events, midiToMelodyNote(upperMidi), base + (quiet ? 15 : 13), quiet ? 1 : 2, isValidMelodyNote);
+      previousLeadMidi = upperMidi;
+    }
+
+    const shouldAddTopOctaveSparkle =
+      section === 3 &&
+      (phrasePos === 1 || phrasePos === 3) &&
+      (identity.isNewAge || identity.isDreamy || identity.isMystic || !quiet);
+    if (shouldAddTopOctaveSparkle) {
+      const sparkleTarget =
+        identity.isDreamy || identity.isMystic
+          ? 100 + ((promptVariant + bar + phrasePos) % 9)
+          : 96 + ((promptVariant + bar + phrasePos) % 13);
+      const sparkleMidi = chooseMovingPromptPianoMidi(
+        sparkleTarget,
+        Array.from(new Set([...scale, ...(phrasePos === 3 ? nextPcs : chordPcs)])),
+        96,
+        108,
+        previousLeadMidi,
+        promptVariant + phrasePos
+      );
+      addNote(events, midiToMelodyNote(sparkleMidi), base + (phrasePos === 3 ? 15 : 13), 1, isValidMelodyNote);
+    }
+
+    if (phrasePos === 3) {
+      const resolveMidi = findNearestPromptPianoMidi(
+        previousLeadMidi !== null ? previousLeadMidi + (quiet || identity.isSad ? -3 : 4) : baseAnchor,
+        nextPcs,
+        quiet ? 57 : 60,
+        section === 3 ? 96 : 88
+      );
+      addNote(events, midiToMelodyNote(resolveMidi), base + 14, quiet ? 3 : 2, isValidMelodyNote);
+      previousLeadMidi = resolveMidi;
+    }
+  }
+
+  return applyPromptPianoVelocities(lockPromptPianoToProgression(finalizeMelodicEvents(events, 2), progression, identity), identity);
+}
+
+void createCuratedPromptPianoTrack;
+
+function createConsonantPromptPianoTrack(prompt: string, analysis: PromptAnalysis, identity: PromptMelodyIdentity) {
+  void prompt;
+  void analysis;
+  const events: MusicEvent[] = [];
+  const progression = rotateProgression(
+    getPromptPianoProgression(identity),
+    identity.isQuiet || identity.isNewAge ? 0 : (identity.color >>> 7) % 4
+  );
+  let previousLeadMidi: number | null = null;
+  const quiet = identity.isQuiet || identity.isNewAge || identity.isSad;
+  const rightHandPatterns = quiet
+    ? [
+        { offsets: [2, 5, 8, 11, 14], contour: [0, 4, 7, 4, 2], durations: [2, 2, 3, 2, 2] },
+        { offsets: [1, 4, 7, 10, 13], contour: [4, 7, 9, 7, 4], durations: [2, 2, 2, 2, 3] },
+        { offsets: [0, 4, 8, 12, 15], contour: [7, 9, 12, 9, 7], durations: [3, 2, 2, 2, 1] },
+        { offsets: [2, 6, 10, 13], contour: [5, 4, 2, 0], durations: [3, 2, 2, 3] },
+      ]
+    : [
+        { offsets: [0, 2, 4, 7, 9, 12, 14], contour: [0, 4, 7, 9, 7, 4, 2], durations: [1, 1, 2, 1, 2, 1, 2] },
+        { offsets: [1, 3, 6, 8, 11, 13, 15], contour: [4, 7, 11, 9, 7, 4, 0], durations: [1, 2, 1, 2, 1, 1, 1] },
+        { offsets: [0, 3, 5, 8, 10, 12, 15], contour: [7, 9, 12, 14, 12, 9, 7], durations: [2, 1, 1, 2, 1, 2, 1] },
+      ];
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const base = bar * BAR_LENGTH;
+    const phrase = Math.floor(bar / 4);
+    const phrasePos = bar % 4;
+    const chord = progression[(bar + Math.floor(phrase / 2)) % progression.length] ?? 'C';
+    const nextChord = progression[(bar + 1 + Math.floor(phrase / 2)) % progression.length] ?? chord;
+    const chordPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[chord];
+    const nextPcs = PROMPT_PIANO_CHORD_PITCH_CLASSES[nextChord];
+    const rootTarget =
+      chord === 'A' ? 45 :
+      chord === 'G' ? 43 :
+      chord === 'F' ? 41 :
+      chord === 'E' ? 40 :
+      chord === 'D' ? 38 :
+      36;
+    const root = findNearestPromptPianoMidi(rootTarget, chordPcs, 33, 52);
+    const fifth = findNearestPromptPianoMidi(root + 7, chordPcs, 40, 59);
+    const third = findNearestPromptPianoMidi(root + 12, chordPcs, 45, 64);
+    const upper = findNearestPromptPianoMidi(root + 24, chordPcs, 52, 72);
+    const leftPattern = quiet
+      ? [
+          { offset: 0, midi: root, duration: 4 },
+          { offset: 4, midi: fifth, duration: 3 },
+          { offset: 8, midi: third, duration: 3 },
+          { offset: 12, midi: upper, duration: 4 },
+        ]
+      : [
+          { offset: 0, midi: root, duration: 2 },
+          { offset: 2, midi: fifth, duration: 1 },
+          { offset: 4, midi: third, duration: 1 },
+          { offset: 6, midi: upper, duration: 1 },
+          { offset: 8, midi: root, duration: 2 },
+          { offset: 10, midi: fifth, duration: 1 },
+          { offset: 12, midi: third, duration: 1 },
+          { offset: 14, midi: upper, duration: 1 },
+        ];
+    leftPattern.forEach((item) => addNote(events, midiToMelodyNote(item.midi), base + item.offset, item.duration, isValidMelodyNote));
+
+    const pattern = rightHandPatterns[(phrase + phrasePos + identity.color) % rightHandPatterns.length];
+    const sectionLift = isChorusBar(bar) ? (quiet ? 5 : 9) : isBridgeBar(bar) ? -5 : 0;
+    const phraseLift = phrasePos === 2 ? 5 : phrasePos === 3 ? -2 : 0;
+    const anchor = quiet
+      ? 64 + ((phrase + identity.color) % 5) * 2
+      : 67 + ((phrase + identity.color) % 6) * 2;
+
+    pattern.offsets.forEach((offset, index) => {
+      const activePcs = offset >= 13 ? nextPcs : chordPcs;
+      let target = anchor + (pattern.contour[index] ?? 0) + sectionLift + phraseLift;
+      if (previousLeadMidi !== null) {
+        const diff = target - previousLeadMidi;
+        const maxMove = quiet ? 7 : 10;
+        if (Math.abs(diff) > maxMove) {
+          target = previousLeadMidi + Math.sign(diff) * maxMove;
+        }
+      }
+      const lead = findNearestPromptPianoMidi(target, activePcs, quiet ? 55 : 57, isChorusBar(bar) ? 96 : 88);
+      addNote(events, midiToMelodyNote(lead), base + offset, pattern.durations[index] ?? 2, isValidMelodyNote);
+
+      if (!quiet && (isChorusBar(bar) || identity.isDreamy) && index % 3 === 1) {
+        const harmony = findNearestPromptPianoMidi(lead - 7, activePcs, 48, 79);
+        if (Math.abs(lead - harmony) >= 5) {
+          addNote(events, midiToMelodyNote(harmony), base + offset, 1, isValidMelodyNote);
+        }
+      }
+      previousLeadMidi = lead;
+    });
+
+    if (phrasePos === 3) {
+      const resolve = findNearestPromptPianoMidi(
+        previousLeadMidi !== null ? previousLeadMidi + (identity.isSad ? -4 : 5) : anchor,
+        nextPcs,
+        quiet ? 55 : 57,
+        91
+      );
+      addNote(events, midiToMelodyNote(resolve), base + 14, quiet ? 3 : 2, isValidMelodyNote);
+      previousLeadMidi = resolve;
+    }
+  }
+
+  return finalizeMelodicEvents(events, 3);
+}
+
+void createConsonantPromptPianoTrack;
+
+function createPromptAwareLeadMelody(prompt: string, analysis: PromptAnalysis) {
+  const identity = createPromptMelodyIdentity(prompt, analysis);
+  if (identity.isChristmas && promptHas(prompt.toLowerCase(), ['canon', '\uce90\ub17c', '\ucf00\ub17c'])) {
+    return createPachelbelCanonLeadMelody();
+  }
+  if (identity.isPiano) {
+    return createMotifBasedPianoTrack(prompt, analysis, identity);
+  }
+
+  const random = createRandom(createSeed(`${prompt}:${analysis.promptSeed}:${Date.now()}:${Math.random()}:prompt-aware-melody`));
+  const events: MusicEvent[] = [];
+  let previousMidi: number | null = null;
+  let repeatedZoneCount = 0;
+  const globalOffset = identity.color % 7;
+
+  for (let bar = 0; bar < BAR_COUNT; bar += 1) {
+    const phrase = Math.floor(bar / 4);
+    const phrasePos = bar % 4;
+    const chord = getChordForBar(analysis, bar);
+    const nextChord = getChordForBar(analysis, bar + 1);
+    const base = bar * BAR_LENGTH;
+    const rhythm = getPromptAwareRhythm(identity, bar);
+    const register = getPromptAwareRegister(identity, bar);
+    const phraseShape =
+      identity.isQuiet || identity.isSad
+        ? [0, 2, 5, 7, 4, 2, -2, 0]
+        : identity.isDreamy
+          ? [0, 5, 9, 12, 7, 14, 9, 5]
+          : identity.isChristmas
+            ? [0, 4, 7, 12, 7, 4, 5, 7]
+            : identity.isCityPop
+              ? [0, 7, 11, 14, 9, 12, 7, 4]
+              : [0, 4, 7, 9, 12, 7, 5, 2];
+    const baseAnchor =
+      register.min +
+      7 +
+      ((identity.color + phrase * 11 + phrasePos * 5 + globalOffset) % Math.max(12, register.max - register.min - 8));
+    const sectionLift = isChorusBar(bar) ? (identity.isQuiet ? 4 : 9) : isBridgeBar(bar) ? -6 : 0;
+
+    rhythm.offsets.forEach((offset, index) => {
+      const activeChord = identity.isCityPop ? chord : offset >= 12 ? nextChord : chord;
+      const strongBeat = offset === 0 || offset === 4 || offset === 8 || offset === 12;
+      const pitchClasses = getPromptAwareChordPitchClasses(activeChord, identity, strongBeat);
+      const phraseStep = phraseShape[(index + phrase + globalOffset) % phraseShape.length] ?? 0;
+      const randomNudge = Math.round((random() - 0.5) * (identity.isQuiet ? 4 : 9));
+      let targetMidi = baseAnchor + phraseStep + sectionLift + randomNudge;
+
+      if (previousMidi !== null) {
+        const maxLeap = identity.isQuiet || identity.isSad ? 7 : identity.isDreamy ? 12 : 14;
+        if (Math.abs(targetMidi - previousMidi) > maxLeap) {
+          targetMidi = previousMidi + Math.sign(targetMidi - previousMidi) * maxLeap;
+        }
+        const sameZone = Math.abs(targetMidi - previousMidi) <= 2;
+        repeatedZoneCount = sameZone ? repeatedZoneCount + 1 : 0;
+        if (repeatedZoneCount >= 2) {
+          targetMidi += ((phrase + index + globalOffset) % 2 === 0 ? 5 : -5);
+          repeatedZoneCount = 0;
+        }
+      }
+
+      const midi = findNearestMidiWithPitchClass(
+        targetMidi,
+        pitchClasses,
+        register.min,
+        register.max
+      );
+      const start = base + offset;
+      const duration = rhythm.durations[index] ?? (identity.isQuiet ? 2 : 1);
+      addNote(events, midiToMelodyNote(midi), start, duration, isValidMelodyNote);
+
+      if (identity.isPiano) {
+        const lowChord = findNearestMidiWithPitchClass(
+          midi - (identity.isQuiet ? 24 : 19),
+          getPromptAwareChordPitchClasses(activeChord, identity, true),
+          33,
+          60
+        );
+        if (index === 0 || offset === 8 || (isChorusBar(bar) && index % 3 === 1)) {
+          addNote(events, midiToMelodyNote(lowChord), start, identity.isQuiet ? 4 : 2, isValidMelodyNote);
+        }
+
+        if (!identity.isQuiet && (isChorusBar(bar) || identity.isNewAge || identity.isDreamy) && index % 2 === 0) {
+          const harmonyMidi = findNearestMidiWithPitchClass(
+            midi - 7,
+            getPromptAwareChordPitchClasses(activeChord, identity, true),
+            Math.max(45, register.min - 12),
+            Math.min(96, register.max)
+          );
+          if (Math.abs(harmonyMidi - midi) >= 5) {
+            addNote(events, midiToMelodyNote(harmonyMidi), start, Math.min(2, duration), isValidMelodyNote);
+          }
+        }
+      }
+
+      previousMidi = midi;
+    });
+
+    if (identity.isPiano && !identity.isQuiet && phrasePos === 3) {
+      const resolvePc = getPromptAwareChordPitchClasses(nextChord, identity, true);
+      const resolveMidi = findNearestMidiWithPitchClass(
+        (previousMidi ?? baseAnchor) + (identity.isSad ? -5 : 7),
+        resolvePc,
+        register.min,
+        register.max
+      );
+      addNote(events, midiToMelodyNote(resolveMidi), base + 14, 2, isValidMelodyNote);
+      previousMidi = resolveMidi;
+    }
+  }
+
+  return polishPromptAwareMelodyPhraseFlow(polishEvents(events), analysis, identity);
+}
+
+function polishPromptAwareMelodyPhraseFlow(
+  events: MusicEvent[],
+  analysis: PromptAnalysis,
+  identity: PromptMelodyIdentity
+) {
+  const sorted = polishEvents(events);
+  const result: MusicEvent[] = [];
+  let previousLeadMidi: number | null = null;
+  let previousLeadRoot = '';
+  let sameRootCount = 0;
+
+  sorted.forEach((event) => {
+    const bar = Math.floor(event.start / BAR_LENGTH);
+    const offset = event.start % BAR_LENGTH;
+    const midi = noteToMidi(event.note ?? 'C4');
+    const isLeftHand = identity.isPiano && midi < 57;
+    const chord = getChordForBar(analysis, bar);
+    const nextChord = getChordForBar(analysis, bar + 1);
+    const activeChord = identity.isCityPop ? chord : offset >= 13 ? nextChord : chord;
+    const strongBeat = offset === 0 || offset === 4 || offset === 8 || offset === 12 || offset >= 14;
+    const pitchClasses = getPromptAwareChordPitchClasses(activeChord, identity, strongBeat);
+    const register = isLeftHand ? { min: 33, max: 60 } : getPromptAwareRegister(identity, bar);
+    let targetMidi = findNearestMidiWithPitchClass(midi, pitchClasses, register.min, register.max);
+
+    if (!isLeftHand && previousLeadMidi !== null) {
+      const leap = targetMidi - previousLeadMidi;
+      const maxLeap = identity.isQuiet || identity.isSad ? 8 : identity.isDreamy ? 12 : 15;
+      if (Math.abs(leap) > maxLeap) {
+        targetMidi = findNearestMidiWithPitchClass(
+          previousLeadMidi + Math.sign(leap) * maxLeap,
+          pitchClasses,
+          register.min,
+          register.max
+        );
+      }
+
+      const root = midiToMelodyNote(targetMidi).replace(/-?\d+$/, '');
+      sameRootCount = root === previousLeadRoot ? sameRootCount + 1 : 0;
+      if (sameRootCount >= 2) {
+        targetMidi = findNearestMidiWithPitchClass(
+          targetMidi + ((bar + offset + identity.color) % 2 === 0 ? 5 : -5),
+          pitchClasses,
+          register.min,
+          register.max
+        );
+        sameRootCount = 0;
+      }
+      previousLeadRoot = midiToMelodyNote(targetMidi).replace(/-?\d+$/, '');
+      previousLeadMidi = targetMidi;
+    } else if (!isLeftHand) {
+      previousLeadMidi = targetMidi;
+      previousLeadRoot = midiToMelodyNote(targetMidi).replace(/-?\d+$/, '');
+    }
+
+    result.push({
+      ...event,
+      note: midiToMelodyNote(targetMidi),
+      duration: Math.max(1, Math.min(event.duration ?? 1, isLeftHand ? 6 : identity.isQuiet ? 4 : 3, BAR_LENGTH - offset)),
+    });
+  });
+
+  for (let phraseStart = 0; phraseStart < BAR_COUNT; phraseStart += 4) {
+    const resolveBar = Math.min(BAR_COUNT - 1, phraseStart + 3);
+    const start = resolveBar * BAR_LENGTH + 14;
+    const chord = getChordForBar(analysis, resolveBar + (identity.isCityPop ? 0 : 1));
+    const register = getPromptAwareRegister(identity, resolveBar);
+    const resolutionTarget = identity.isSad || identity.isQuiet ? register.min + 14 : register.min + 24;
+    const resolveMidi = findNearestMidiWithPitchClass(
+      resolutionTarget + ((identity.color + phraseStart) % 7),
+      getPromptAwareChordPitchClasses(chord, identity, true),
+      register.min,
+      register.max
+    );
+    addNote(result, midiToMelodyNote(resolveMidi), start, identity.isQuiet ? 3 : 2, isValidMelodyNote);
+  }
+
+  return finalizeMelodicEvents(result, identity.isPiano ? 3 : 2);
+}
+
+function applyPromptAwareMelodyIdentity(
+  prompt: string,
+  analysis: PromptAnalysis,
+  arrangement: { tracks: SongProject['tracks']; extraTracks: SerializedExtraInstrumentTrack[] }
+): PromptAwareArrangement {
+  const identity = createPromptMelodyIdentity(prompt, analysis);
+  const promptAnalysis = createPromptAwareAnalysis(prompt, analysis, identity);
+  const isPianoFirst = identity.isPiano;
+  const promptMelody = isPianoFirst ? [] : createPromptAwareLeadMelody(prompt, promptAnalysis);
+  const existingPianoMelody = arrangement.tracks.melody ?? [];
+  const isCanonRequest = promptHas(prompt.toLowerCase(), ['canon', '\uce90\ub17c', '\ucf00\ub17c']);
+  const pianoBaseMelody = addSoloPianoMelodicMotion(
+    analysis,
+    cleanSoloPianoMelodyVoicing(analysis, existingPianoMelody)
+  );
+  const performancePianoMelody = refinePianoIntoSongArrangement(
+    enrichPianoPerformanceTexture(pianoBaseMelody, analysis, identity),
+    analysis,
+    identity
+  );
+  const polishedPianoMelody = isCanonRequest
+    ? applyPromptPianoVelocities(polishEvents(existingPianoMelody), identity)
+    : applyPromptPianoVelocities(finalizeMelodicEvents(performancePianoMelody, 4), identity);
+  const tracks: SongProject['tracks'] = {
+    ...arrangement.tracks,
+    melody: isPianoFirst
+      ? polishedPianoMelody.length > 0
+        ? polishedPianoMelody
+        : createMotifBasedPianoTrack(prompt, promptAnalysis, identity)
+      : promptMelody.length > 0
+        ? promptMelody
+        : arrangement.tracks.melody,
+  };
+  const bpm = promptAnalysis.bpm;
+  const extraTracks = isPianoFirst
+    ? arrangement.extraTracks.filter((track) => track.instrument !== 'supportingPiano')
+    : arrangement.extraTracks.map((track) => {
+        const instrument = track.instrument as ExtraInstrumentKey;
+        return {
+          ...track,
+          events: instrument === 'supportingPiano'
+            ? polishEvents(harmonizeSupportingPianoToProgression(track.events ?? [], promptAnalysis))
+            : harmonizeEventsToProgression(
+                track.events ?? [],
+                promptAnalysis,
+                getExtraTrackAllowedNotes(instrument),
+                getExtraTrackHarmonyOptions(instrument, promptAnalysis)
+              ),
+        };
+      });
+
+  if (isPianoFirst) {
+    tracks.drums = [];
+    tracks.bass = [];
+    tracks.guitar = [];
+    tracks.violin = [];
+    tracks.saxophone = [];
+  }
+
+  if (identity.isQuiet || identity.isSad) {
+    tracks.bass = simplifyEvents(tracks.bass, 4);
+    tracks.drums = simplifyEvents(tracks.drums, 18);
+  } else {
+    tracks.bass = harmonizeBassEventsToProgression(tracks.bass, promptAnalysis);
+    tracks.guitar = harmonizeEventsToProgression(tracks.guitar, promptAnalysis, GUITAR_TRACK_LABELS, {
+      maxPerStep: 2,
+      maxPerBar: identity.isCityPop ? 10 : 7,
+      includePassing: false,
+      maxDuration: 4,
+    });
+    tracks.violin = harmonizeEventsToProgression(tracks.violin, promptAnalysis, VIOLIN_NOTES, {
+      maxPerStep: 1,
+      maxPerBar: identity.isSad || identity.isDreamy ? 5 : 4,
+      includePassing: false,
+      maxDuration: 3,
+    });
+    tracks.saxophone = harmonizeEventsToProgression(tracks.saxophone, promptAnalysis, SAXOPHONE_NOTES, {
+      maxPerStep: 1,
+      maxPerBar: identity.isCityPop || identity.isJazz ? 5 : 3,
+      includePassing: false,
+      maxDuration: 2,
+    });
+  }
+
+  return {
+    bpm,
+    tracks,
+    extraTracks,
+    volumes: {
+      melody: isPianoFirst ? 52 : identity.isQuiet ? 68 : 82,
+      drums: identity.isQuiet || identity.isSad ? 45 : identity.isChristmas ? 42 : analysis.genre === 'ballad' ? 58 : 78,
+      bass: identity.isQuiet || identity.isSad || identity.isDreamy ? 48 : identity.isCityPop ? 60 : 72,
+      guitar: identity.isCityPop ? 70 : identity.isQuiet ? 50 : 58,
+      violin: identity.isSad || identity.isWinter ? 56 : 50,
+      saxophone: identity.isCityPop || identity.isJazz ? 60 : 48,
+      glockenspiel: identity.isChristmas || identity.isWinter ? 66 : 54,
+      piccolo: 42,
+      supportingPiano: identity.isCityPop || identity.isDreamy ? 52 : 60,
+      chicagoStreet: 54,
+      studioAltoSax: identity.isCityPop || identity.isJazz ? 60 : 52,
+    },
   };
 }
 

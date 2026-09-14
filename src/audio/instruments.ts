@@ -10,59 +10,47 @@ import {
   SUPPORTING_PIANO_NOTES,
 } from "../constants/composer.ts";
 
-const pianoReverb = new Tone.Reverb({
-  decay: 2.0,
-  preDelay: 0.01,
-  wet: 0.2,
-}).toDestination();
+function createReverb(options: ConstructorParameters<typeof Tone.Reverb>[0]) {
+  return new Tone.Reverb(options).toDestination();
+}
 
-const guitarReverb = new Tone.Reverb({
-  decay: 1.8,
-  preDelay: 0.01,
-  wet: 0.18,
-}).toDestination();
+function lazySampler(factory: () => Tone.Sampler): Tone.Sampler {
+  let sampler: Tone.Sampler | null = null;
 
-const violinReverb = new Tone.Reverb({
-  decay: 1.65,
-  preDelay: 0.012,
-  wet: 0.16,
-}).toDestination();
+  const getSampler = () => {
+    sampler ??= factory();
+    return sampler;
+  };
 
-const saxophoneReverb = new Tone.Reverb({
-  decay: 1.15,
-  preDelay: 0.008,
-  wet: 0.11,
-}).toDestination();
+  return new Proxy({} as Tone.Sampler, {
+    get(_target, property, receiver) {
+      const value = Reflect.get(getSampler(), property, receiver);
+      return typeof value === "function" ? value.bind(getSampler()) : value;
+    },
+    set(_target, property, value, receiver) {
+      return Reflect.set(getSampler(), property, value, receiver);
+    },
+  });
+}
 
-const glockenspielReverb = new Tone.Reverb({
-  decay: 1.45,
-  preDelay: 0.01,
-  wet: 0.2,
-}).toDestination();
+function lazyPlayers(factory: () => Tone.Players): Tone.Players {
+  let players: Tone.Players | null = null;
 
-const piccoloReverb = new Tone.Reverb({
-  decay: 1.25,
-  preDelay: 0.008,
-  wet: 0.13,
-}).toDestination();
+  const getPlayers = () => {
+    players ??= factory();
+    return players;
+  };
 
-const supportingPianoReverb = new Tone.Reverb({
-  decay: 1.9,
-  preDelay: 0.01,
-  wet: 0.18,
-}).toDestination();
-
-const chicagoStreetReverb = new Tone.Reverb({
-  decay: 1.35,
-  preDelay: 0.01,
-  wet: 0.14,
-}).toDestination();
-
-const studioAltoSaxReverb = new Tone.Reverb({
-  decay: 1.1,
-  preDelay: 0.008,
-  wet: 0.12,
-}).toDestination();
+  return new Proxy({} as Tone.Players, {
+    get(_target, property, receiver) {
+      const value = Reflect.get(getPlayers(), property, receiver);
+      return typeof value === "function" ? value.bind(getPlayers()) : value;
+    },
+    set(_target, property, value, receiver) {
+      return Reflect.set(getPlayers(), property, value, receiver);
+    },
+  });
+}
 
 const SHARP_TO_FLAT_NOTE: Record<string, string> = {
   "C#": "Db",
@@ -105,7 +93,7 @@ function buildTransposedSampleUrls(displayNotes: readonly string[], sampleNotes:
   return buildSampleUrls(sampleNotes);
 }
 
-export const pianoSynth = new Tone.Sampler({
+export const pianoSynth = lazySampler(() => new Tone.Sampler({
   urls: withFlatAliases({
     "A#4": "A_sharp4.mp3",
     A4: "A4.mp3",
@@ -121,9 +109,13 @@ export const pianoSynth = new Tone.Sampler({
     "G#4": "G_sharp4.mp3",
     G4: "G4.mp3",
   }),
-  release: 1,
+  release: 0.42,
   baseUrl: "/samples/piano/",
-}).connect(pianoReverb);
+}).connect(createReverb({
+  decay: 1.25,
+  preDelay: 0.008,
+  wet: 0.1,
+})));
 
 export const GUITAR_SAMPLE_URLS = withFlatAliases({
   A3: "A3.mp3",
@@ -165,11 +157,15 @@ export const GUITAR_SAMPLE_URLS = withFlatAliases({
   C6: "C6.mp3",
 } as const);
 
-export const acousticGuitarSynth = new Tone.Sampler({
+export const acousticGuitarSynth = lazySampler(() => new Tone.Sampler({
   urls: GUITAR_SAMPLE_URLS,
   release: 1.2,
   baseUrl: "/samples/guitar/",
-}).connect(guitarReverb);
+}).connect(createReverb({
+  decay: 1.8,
+  preDelay: 0.01,
+  wet: 0.18,
+})));
 
 export const VIOLIN_SAMPLE_URLS = withFlatAliases({
   C3: "C3.mp3",
@@ -237,19 +233,27 @@ export const SAXOPHONE_SAMPLE_URLS = withFlatAliases({
   B4: "B4.mp3",
 } as const);
 
-export const violinSynth = new Tone.Sampler({
+export const violinSynth = lazySampler(() => new Tone.Sampler({
   urls: VIOLIN_SAMPLE_URLS,
   attack: 0.018,
   release: 0.58,
   baseUrl: "/samples/violin/",
-}).connect(violinReverb);
+}).connect(createReverb({
+  decay: 1.65,
+  preDelay: 0.012,
+  wet: 0.16,
+})));
 
-export const saxophoneSynth = new Tone.Sampler({
+export const saxophoneSynth = lazySampler(() => new Tone.Sampler({
   urls: SAXOPHONE_SAMPLE_URLS,
   attack: 0.008,
   release: 0.28,
   baseUrl: "/samples/sax/",
-}).connect(saxophoneReverb);
+}).connect(createReverb({
+  decay: 1.15,
+  preDelay: 0.008,
+  wet: 0.11,
+})));
 
 export const GLOCKENSPIEL_SAMPLE_URLS = buildTransposedSampleUrls(
   GLOCKENSPIEL_NOTES,
@@ -266,38 +270,58 @@ export const STUDIO_ALTO_SAX_SAMPLE_URLS = buildTransposedSampleUrls(
   STUDIO_ALTO_SAX_SAMPLE_NOTES
 );
 
-export const glockenspielSynth = new Tone.Sampler({
+export const glockenspielSynth = lazySampler(() => new Tone.Sampler({
   urls: GLOCKENSPIEL_SAMPLE_URLS,
   release: 1.1,
   baseUrl: "/samples/glockenspiel/",
-}).connect(glockenspielReverb);
+}).connect(createReverb({
+  decay: 1.45,
+  preDelay: 0.01,
+  wet: 0.2,
+})));
 
-export const piccoloSynth = new Tone.Sampler({
+export const piccoloSynth = lazySampler(() => new Tone.Sampler({
   urls: PICCOLO_SAMPLE_URLS,
   attack: 0.006,
   release: 0.34,
   baseUrl: "/samples/piccolo/",
-}).connect(piccoloReverb);
+}).connect(createReverb({
+  decay: 1.25,
+  preDelay: 0.008,
+  wet: 0.13,
+})));
 
-export const supportingPianoSynth = new Tone.Sampler({
+export const supportingPianoSynth = lazySampler(() => new Tone.Sampler({
   urls: SUPPORTING_PIANO_SAMPLE_URLS,
   release: 1.1,
   baseUrl: "/samples/supporting_piano/",
-}).connect(supportingPianoReverb);
+}).connect(createReverb({
+  decay: 1.9,
+  preDelay: 0.01,
+  wet: 0.18,
+})));
 
-export const chicagoStreetSynth = new Tone.Sampler({
+export const chicagoStreetSynth = lazySampler(() => new Tone.Sampler({
   urls: CHICAGO_STREET_SAMPLE_URLS,
   attack: 0.008,
   release: 0.42,
   baseUrl: "/samples/chicago_street/",
-}).connect(chicagoStreetReverb);
+}).connect(createReverb({
+  decay: 1.35,
+  preDelay: 0.01,
+  wet: 0.14,
+})));
 
-export const studioAltoSaxSynth = new Tone.Sampler({
+export const studioAltoSaxSynth = lazySampler(() => new Tone.Sampler({
   urls: STUDIO_ALTO_SAX_SAMPLE_URLS,
   attack: 0.008,
   release: 0.3,
   baseUrl: "/samples/studio_alto_sax/",
-}).connect(studioAltoSaxReverb);
+}).connect(createReverb({
+  decay: 1.1,
+  preDelay: 0.008,
+  wet: 0.12,
+})));
 
 export const BASS_SAMPLE_URLS = withFlatAliases({
   C2: "01_C2.mp3",
@@ -353,8 +377,8 @@ export function createDrumSampler() {
   }).toDestination();
 }
 
-export const bassSampler = createBassSampler();
-export const drumSampler = createDrumSampler();
+export const bassSampler = lazySampler(createBassSampler);
+export const drumSampler = lazySampler(createDrumSampler);
 
 
 export const STROKE_SAMPLE_URLS = {
@@ -380,10 +404,11 @@ export const STROKE_SAMPLE_URLS = {
   B_UP: "B_Up-.mp3",
 } as const;
   
-export const strokePlayer =
+export const strokePlayer = lazyPlayers(() =>
   new Tone.Players({
     urls: STROKE_SAMPLE_URLS,
     baseUrl: "/samples/stroke/",
-  }).toDestination();
+  }).toDestination()
+);
 
 

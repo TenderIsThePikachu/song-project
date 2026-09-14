@@ -380,11 +380,6 @@ export default function SessionRecruitPage() {
           <div className="session-hero-copy">
             <span className="session-eyebrow">SESSION BOARD</span>
             <h1>합주와 세션 모집을 한곳에서 바로 이어보세요</h1>
-            <p>
-              보컬, 기타, 드럼, 베이스부터 프로듀서와 믹스 파트너까지 찾을 수
-              있는 커뮤니티 모집 페이지입니다. 메시지와 협업 페이지로 바로
-              연결해 흐름이 끊기지 않게 정리했습니다.
-            </p>
 
             <div className="session-hero-actions">
               <button
@@ -461,13 +456,6 @@ export default function SessionRecruitPage() {
                 >
                   음악 공유
                 </button>
-                <button
-                  type="button"
-                  className="session-shortcut-button"
-                  onClick={() => navigate('/community/market')}
-                >
-                  중고 거래
-                </button>
               </div>
             </section>
 
@@ -530,7 +518,6 @@ export default function SessionRecruitPage() {
               <div className="session-board-head">
                 <div>
                   <span className="session-board-kicker">BAND / SESSION RECRUIT</span>
-                  <h2>합주 / 세션 모집</h2>
                 </div>
 
                 <button
@@ -556,7 +543,7 @@ export default function SessionRecruitPage() {
                 <form className="session-write-panel" onSubmit={handleSubmitRecruit}>
                   <div className="session-write-head">
                     <span>SESSION WRITE</span>
-                    <strong>합주 / 세션 모집글 작성</strong>
+                    <strong>모집글 작성</strong>
                     <p>현재 작업에 필요한 파트, 일정, 진행 방식을 적어 팀원을 모집하세요.</p>
                   </div>
 

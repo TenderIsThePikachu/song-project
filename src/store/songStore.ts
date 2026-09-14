@@ -59,6 +59,12 @@ export type MusicEvent = {
   type?: string;
   start: number;
   duration?: number;
+  velocity?: number;
+};
+
+export type TempoAutomationPoint = {
+  step: number;
+  bpm: number;
 };
 
 export type InstrumentKey =
@@ -96,6 +102,7 @@ type BarClipboard = {
   length: number;
   melody: boolean[][];
   melodyLengths: number[][];
+  melodyVelocities: number[][];
   violin: boolean[][];
   violinLengths: number[][];
   saxophone: boolean[][];
@@ -114,11 +121,13 @@ type BarClipboard = {
 
 type SongHistorySnapshot = {
   bpm: number;
+  tempoAutomation: TempoAutomationPoint[];
   steps: number;
   currentStep: number;
   noteLyrics: Record<string, string>;
   melody: boolean[][];
   melodyLengths: number[][];
+  melodyVelocities: number[][];
   violin: boolean[][];
   violinLengths: number[][];
   saxophone: boolean[][];
@@ -134,6 +143,7 @@ type SongHistorySnapshot = {
 
 export type SongState = {
   bpm: number;
+  tempoAutomation: TempoAutomationPoint[];
   steps: number;
   currentStep: number;
   isPlaying: boolean;
@@ -141,6 +151,7 @@ export type SongState = {
   volumes: InstrumentVolumes;
   melody: boolean[][];
   melodyLengths: number[][];
+  melodyVelocities: number[][];
   violin: boolean[][];
   violinLengths: number[][];
   saxophone: boolean[][];
@@ -193,6 +204,7 @@ export type SongState = {
 export type SongProject = {
   version: 2;
   bpm: number;
+  tempoAutomation?: TempoAutomationPoint[];
   steps: number;
   noteLyrics?: Record<string, string>;
   volumes?: Partial<InstrumentVolumes>;
@@ -210,11 +222,13 @@ export type SongProject = {
 type SongProjectSnapshotInput = Pick<
   SongState,
   | 'bpm'
+  | 'tempoAutomation'
   | 'steps'
   | 'noteLyrics'
   | 'volumes'
   | 'melody'
   | 'melodyLengths'
+  | 'melodyVelocities'
   | 'violin'
   | 'violinLengths'
   | 'saxophone'
@@ -237,6 +251,17 @@ function createEmptyLengthMatrix(rows: number, cols: number): number[][] {
   return Array.from({ length: rows }, () =>
     Array.from({ length: cols }, () => 0)
   );
+}
+
+function createEmptyVelocityMatrix(rows: number, cols: number): number[][] {
+  return Array.from({ length: rows }, () =>
+    Array.from({ length: cols }, () => 0)
+  );
+}
+
+function clampVelocity(value: unknown, fallback = 0.78) {
+  const numeric = typeof value === 'number' && Number.isFinite(value) ? value : fallback;
+  return Math.max(0.15, Math.min(1, numeric));
 }
 
 function resizeMatrix(source: boolean[][], rows: number, cols: number): boolean[][] {
@@ -268,6 +293,10 @@ function cloneMatrix(matrix: boolean[][]): boolean[][] {
 }
 
 function cloneLengthMatrix(matrix: number[][]): number[][] {
+  return matrix.map((row) => [...row]);
+}
+
+function cloneVelocityMatrix(matrix: number[][]): number[][] {
   return matrix.map((row) => [...row]);
 }
 
@@ -535,6 +564,7 @@ function findMelodyNoteAt(
 function clearMelodyNote(
   melodyRow: boolean[],
   melodyLengthRow: number[],
+  melodyVelocityRow: number[] | undefined,
   start: number
 ) {
   if (start < 0 || start >= melodyRow.length) {
@@ -543,6 +573,32 @@ function clearMelodyNote(
 
   melodyRow[start] = false;
   melodyLengthRow[start] = 0;
+  if (melodyVelocityRow) {
+    melodyVelocityRow[start] = 0;
+  }
+}
+
+function clampBpm(bpm: number) {
+  return Math.max(40, Math.min(220, Math.round(Number(bpm) || 100)));
+}
+
+function normalizeTempoAutomation(
+  automation: TempoAutomationPoint[] | undefined,
+  steps: number,
+  fallbackBpm: number
+) {
+  if (!Array.isArray(automation)) {
+    return [] as TempoAutomationPoint[];
+  }
+
+  const byStep = new Map<number, TempoAutomationPoint>();
+  automation.forEach((point) => {
+    const step = clampStep(Math.floor(Number(point.step) || 0), steps);
+    const bpm = clampBpm(point.bpm || fallbackBpm);
+    byStep.set(step, { step, bpm });
+  });
+
+  return [...byStep.values()].sort((a, b) => a.step - b.step);
 }
 
 function rangesOverlap(startA: number, lengthA: number, startB: number, lengthB: number) {
@@ -565,7 +621,7 @@ function clearOverlappingNotes(
 
     const noteLength = lengthRow[start] ?? 1;
     if (rangesOverlap(start, noteLength, col, length)) {
-      clearMelodyNote(gridRow, lengthRow, start);
+      clearMelodyNote(gridRow, lengthRow, undefined, start);
     }
   }
 }
@@ -590,7 +646,7 @@ function toggleTimedNote(
       return false;
     }
 
-    clearMelodyNote(grid[row], lengths[row], existingNote.start);
+    clearMelodyNote(grid[row], lengths[row], undefined, existingNote.start);
     return true;
   }
 
@@ -623,11 +679,13 @@ function setTimedNote(
 function createHistorySnapshot(state: Pick<
   SongState,
   | 'bpm'
+  | 'tempoAutomation'
   | 'steps'
   | 'currentStep'
   | 'noteLyrics'
   | 'melody'
   | 'melodyLengths'
+  | 'melodyVelocities'
   | 'violin'
   | 'violinLengths'
   | 'saxophone'
@@ -642,11 +700,13 @@ function createHistorySnapshot(state: Pick<
 >): SongHistorySnapshot {
   return {
     bpm: state.bpm,
+    tempoAutomation: normalizeTempoAutomation(state.tempoAutomation, state.steps, state.bpm),
     steps: state.steps,
     currentStep: state.currentStep,
     noteLyrics: { ...state.noteLyrics },
     melody: cloneMatrix(state.melody),
     melodyLengths: cloneLengthMatrix(state.melodyLengths),
+    melodyVelocities: cloneVelocityMatrix(state.melodyVelocities),
     violin: cloneMatrix(state.violin),
     violinLengths: cloneLengthMatrix(state.violinLengths),
     saxophone: cloneMatrix(state.saxophone),
@@ -844,7 +904,8 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
         melodyEvents.push({
           note: MELODY_NOTES[r] as string, 
           start: s,
-          duration: duration
+          duration: duration,
+          velocity: clampVelocity(state.melodyVelocities?.[r]?.[s], 0.78)
         });
         s += (duration - 1); // duration만큼 건너뛰기
       }
@@ -943,6 +1004,7 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
   return {
     version: 2,
     bpm: state.bpm,
+    tempoAutomation: normalizeTempoAutomation(state.tempoAutomation, state.steps, state.bpm),
     steps: state.steps,
     noteLyrics: state.noteLyrics,
     volumes: {
@@ -990,12 +1052,14 @@ function restoreHistorySnapshot(
 ): Partial<SongState> {
   return {
     bpm: snapshot.bpm,
+    tempoAutomation: normalizeTempoAutomation(snapshot.tempoAutomation, snapshot.steps, snapshot.bpm),
     steps: snapshot.steps,
     currentStep: clampStep(snapshot.currentStep, snapshot.steps),
     noteLyrics: { ...snapshot.noteLyrics },
     isPlaying: false,
     melody: cloneMatrix(snapshot.melody),
     melodyLengths: cloneLengthMatrix(snapshot.melodyLengths),
+    melodyVelocities: cloneVelocityMatrix(snapshot.melodyVelocities),
     violin: cloneMatrix(snapshot.violin),
     violinLengths: cloneLengthMatrix(snapshot.violinLengths),
     saxophone: cloneMatrix(snapshot.saxophone),
@@ -1017,6 +1081,7 @@ function restoreHistorySnapshot(
 function parseV2TracksToGrids(project: SongProject, steps: number) {
   const melody = createEmptyMatrix(MELODY_ROWS, steps);
   const melodyLengths = createEmptyLengthMatrix(MELODY_ROWS, steps);
+  const melodyVelocities = createEmptyVelocityMatrix(MELODY_ROWS, steps);
   const violin = createEmptyMatrix(VIOLIN_ROWS, steps);
   const violinLengths = createEmptyLengthMatrix(VIOLIN_ROWS, steps);
   const saxophone = createEmptyMatrix(SAXOPHONE_ROWS, steps);
@@ -1037,6 +1102,7 @@ function parseV2TracksToGrids(project: SongProject, steps: number) {
         // 💡 반복문 제거: 시작 위치 딱 한 칸만 true로 찍고 길이만 저장합니다.
         melody[row][e.start] = true;
         melodyLengths[row][e.start] = dur;
+        melodyVelocities[row][e.start] = clampVelocity(e.velocity, 0.78);
       }
     });
 
@@ -1135,6 +1201,7 @@ function parseV2TracksToGrids(project: SongProject, steps: number) {
   return {
     melody,
     melodyLengths,
+    melodyVelocities,
     violin,
     violinLengths,
     saxophone,
@@ -1152,6 +1219,7 @@ export const useSongStore = create<SongState>()(
   persist(
     (set, get) => ({
   bpm: 100,
+  tempoAutomation: [],
   steps: DEFAULT_STEPS,
   currentStep: 0,
   isPlaying: false,
@@ -1171,6 +1239,7 @@ export const useSongStore = create<SongState>()(
   },
   melody: createEmptyMatrix(MELODY_ROWS, DEFAULT_STEPS),
   melodyLengths: createEmptyLengthMatrix(MELODY_ROWS, DEFAULT_STEPS),
+  melodyVelocities: createEmptyVelocityMatrix(MELODY_ROWS, DEFAULT_STEPS),
   violin: createEmptyMatrix(VIOLIN_ROWS, DEFAULT_STEPS),
   violinLengths: createEmptyLengthMatrix(VIOLIN_ROWS, DEFAULT_STEPS),
   saxophone: createEmptyMatrix(SAXOPHONE_ROWS, DEFAULT_STEPS),
@@ -1193,6 +1262,7 @@ export const useSongStore = create<SongState>()(
     set((state) => {
       const melody = cloneMatrix(state.melody);
       const melodyLengths = cloneLengthMatrix(state.melodyLengths);
+      const melodyVelocities = cloneVelocityMatrix(state.melodyVelocities);
       const existingNote = findMelodyNoteAt(melody[row] ?? [], melodyLengths[row] ?? [], col);
       const requestedLength = Math.floor(length);
 
@@ -1201,8 +1271,8 @@ export const useSongStore = create<SongState>()(
           return {};
         }
 
-        clearMelodyNote(melody[row], melodyLengths[row], existingNote.start);
-        return buildHistoryUpdate(state, { melody, melodyLengths });
+        clearMelodyNote(melody[row], melodyLengths[row], melodyVelocities[row], existingNote.start);
+        return buildHistoryUpdate(state, { melody, melodyLengths, melodyVelocities });
       }
 
       const nextLength = snapMelodyLength(requestedLength, state.steps - col);
@@ -1212,7 +1282,7 @@ export const useSongStore = create<SongState>()(
           return {};
         }
 
-        clearMelodyNote(melody[row], melodyLengths[row], existingNote.start);
+        clearMelodyNote(melody[row], melodyLengths[row], melodyVelocities[row], existingNote.start);
       }
 
       for (let start = 0; start < state.steps; start += 1) {
@@ -1222,14 +1292,15 @@ export const useSongStore = create<SongState>()(
 
         const noteLength = melodyLengths[row]?.[start] ?? 1;
         if (rangesOverlap(start, noteLength, col, nextLength)) {
-          clearMelodyNote(melody[row], melodyLengths[row], start);
+          clearMelodyNote(melody[row], melodyLengths[row], melodyVelocities[row], start);
         }
       }
 
       melody[row][col] = true;
       melodyLengths[row][col] = nextLength;
+      melodyVelocities[row][col] = 0.78;
 
-      return buildHistoryUpdate(state, { melody, melodyLengths });
+      return buildHistoryUpdate(state, { melody, melodyLengths, melodyVelocities });
     }),
 
   toggleViolin: (row, col, length = 1) =>
@@ -1296,6 +1367,7 @@ export const useSongStore = create<SongState>()(
             noteLyrics: {},
             melody: createEmptyMatrix(MELODY_ROWS, state.steps),
             melodyLengths: createEmptyLengthMatrix(MELODY_ROWS, state.steps),
+            melodyVelocities: createEmptyVelocityMatrix(MELODY_ROWS, state.steps),
           });
         case 'violin':
           return buildHistoryUpdate(state, {
@@ -1452,6 +1524,7 @@ export const useSongStore = create<SongState>()(
         length: range.length,
         melody: extractBar(state.melody, range.start, range.length),
         melodyLengths: extractLengthBar(state.melodyLengths, range.start, range.length),
+        melodyVelocities: extractLengthBar(state.melodyVelocities, range.start, range.length),
         violin: extractBar(state.violin, range.start, range.length),
         violinLengths: extractLengthBar(state.violinLengths, range.start, range.length),
         saxophone: extractBar(state.saxophone, range.start, range.length),
@@ -1491,6 +1564,12 @@ export const useSongStore = create<SongState>()(
         melodyLengths: pasteLengthBar(
           state.melodyLengths,
           state.barClipboard.melodyLengths,
+          range.start,
+          state.steps
+        ),
+        melodyVelocities: pasteLengthBar(
+          state.melodyVelocities,
+          state.barClipboard.melodyVelocities,
           range.start,
           state.steps
         ),
@@ -1599,6 +1678,12 @@ export const useSongStore = create<SongState>()(
           nextStart,
           state.steps
         ),
+        melodyVelocities: pasteLengthBar(
+          state.melodyVelocities,
+          extractLengthBar(state.melodyVelocities, range.start, range.length),
+          nextStart,
+          state.steps
+        ),
         violin: pasteBar(
           state.violin,
           extractBar(state.violin, range.start, range.length),
@@ -1694,6 +1779,12 @@ export const useSongStore = create<SongState>()(
         melodyLengths: pasteLengthBar(
           state.melodyLengths,
           createEmptyLengthMatrix(MELODY_ROWS, BAR_LENGTH),
+          range.start,
+          state.steps
+        ),
+        melodyVelocities: pasteLengthBar(
+          state.melodyVelocities,
+          createEmptyVelocityMatrix(MELODY_ROWS, BAR_LENGTH),
           range.start,
           state.steps
         ),
@@ -1819,6 +1910,7 @@ export const useSongStore = create<SongState>()(
       const hasExpectedShape =
         state.melody.length === MELODY_ROWS &&
         state.melodyLengths.length === MELODY_ROWS &&
+        state.melodyVelocities.length === MELODY_ROWS &&
         state.violin.length === VIOLIN_ROWS &&
         state.violinLengths.length === VIOLIN_ROWS &&
         state.saxophone.length === SAXOPHONE_ROWS &&
@@ -1843,6 +1935,12 @@ export const useSongStore = create<SongState>()(
       const extraTracks = state.extraTracks.map((track) => resizeExtraTrack(track, steps));
       const melodyLengths = resizeLengthMatrix(
         state.melodyLengths,
+        melody,
+        MELODY_ROWS,
+        steps
+      );
+      const melodyVelocities = resizeLengthMatrix(
+        state.melodyVelocities,
         melody,
         MELODY_ROWS,
         steps
@@ -1877,6 +1975,7 @@ export const useSongStore = create<SongState>()(
         currentStep: clampStep(state.currentStep, steps),
         melody,
         melodyLengths,
+        melodyVelocities,
         violin,
         violinLengths,
         saxophone,
@@ -1918,9 +2017,11 @@ export const useSongStore = create<SongState>()(
     set((state) =>
       buildHistoryUpdate(state, {
         currentStep: 0,
+        tempoAutomation: [],
         noteLyrics: {},
         melody: createEmptyMatrix(MELODY_ROWS, state.steps),
         melodyLengths: createEmptyLengthMatrix(MELODY_ROWS, state.steps),
+        melodyVelocities: createEmptyVelocityMatrix(MELODY_ROWS, state.steps),
         violin: createEmptyMatrix(VIOLIN_ROWS, state.steps),
         violinLengths: createEmptyLengthMatrix(VIOLIN_ROWS, state.steps),
         saxophone: createEmptyMatrix(SAXOPHONE_ROWS, state.steps),
@@ -1945,12 +2046,14 @@ export const useSongStore = create<SongState>()(
   loadProject: (project) => {
     const steps = FIXED_COMPOSER_STEPS;
     const bpm = typeof project.bpm === 'number' && project.bpm > 0 ? project.bpm : 100;
+    const tempoAutomation = normalizeTempoAutomation(project.tempoAutomation, steps, bpm);
     const grids = parseV2TracksToGrids(project, steps); // V2 파싱
 
     
     set((state) =>
       buildHistoryUpdate(state, {
         bpm,
+        tempoAutomation,
         steps,
         noteLyrics: project.noteLyrics ?? {},
         currentStep: 0,
@@ -1970,6 +2073,7 @@ export const useSongStore = create<SongState>()(
         },
         melody: grids.melody,
         melodyLengths: grids.melodyLengths,
+        melodyVelocities: grids.melodyVelocities,
         violin: grids.violin,
         violinLengths: grids.violinLengths,
         saxophone: grids.saxophone,
@@ -1989,10 +2093,12 @@ export const useSongStore = create<SongState>()(
   applyRemoteProject: (project) => {
     const steps = FIXED_COMPOSER_STEPS;
     const bpm = typeof project.bpm === 'number' && project.bpm > 0 ? project.bpm : 100;
+    const tempoAutomation = normalizeTempoAutomation(project.tempoAutomation, steps, bpm);
     const grids = parseV2TracksToGrids(project, steps); // V2 파싱
 
     set((state) => ({
       bpm,
+      tempoAutomation,
       steps,
       noteLyrics: project.noteLyrics ?? {},
       currentStep: clampStep(state.currentStep, steps),
@@ -2011,6 +2117,7 @@ export const useSongStore = create<SongState>()(
       },
       melody: grids.melody,
       melodyLengths: grids.melodyLengths,
+      melodyVelocities: grids.melodyVelocities,
       violin: grids.violin,
       violinLengths: grids.violinLengths,
       saxophone: grids.saxophone,
@@ -2034,12 +2141,14 @@ export const useSongStore = create<SongState>()(
       name: 'song-maker-composer-draft',
       partialize: (state) => ({
         bpm: state.bpm,
+        tempoAutomation: state.tempoAutomation,
         steps: state.steps,
         currentStep: state.currentStep,
         noteLyrics: state.noteLyrics,
         volumes: state.volumes,
         melody: state.melody,
         melodyLengths: state.melodyLengths,
+        melodyVelocities: state.melodyVelocities,
         violin: state.violin,
         violinLengths: state.violinLengths,
         saxophone: state.saxophone,

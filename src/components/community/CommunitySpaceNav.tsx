@@ -2,13 +2,12 @@ import { useNavigate } from 'react-router-dom';
 import './CommunitySpaceNav.css';
 
 type CommunitySpaceNavProps = {
-  active: 'board' | 'music' | 'market';
+  active: 'board' | 'music';
 };
 
 const ITEMS = [
   { key: 'board', label: '게시판', route: '/community' },
   { key: 'music', label: '음악 공유', route: '/community/music' },
-  { key: 'market', label: '중고 거래', route: '/community/market' },
 ] as const;
 
 export default function CommunitySpaceNav({ active }: CommunitySpaceNavProps) {

@@ -248,8 +248,40 @@ function getSixteenthDurationSeconds(bpm: number) {
   return (60 / bpm) / 4;
 }
 
+function getAutomationBpmAtStep(state: ReturnType<typeof useSongStore.getState>, step: number) {
+  const automation = state.tempoAutomation;
+  if (!automation || automation.length === 0) {
+    return state.bpm;
+  }
+
+  const safeStep = Math.max(0, Math.min(state.steps - 1, step));
+  const points = automation
+    .filter((point) => Number.isFinite(point.step) && Number.isFinite(point.bpm))
+    .sort((a, b) => a.step - b.step);
+  if (points.length === 0) {
+    return state.bpm;
+  }
+
+  const first = points[0];
+  if (safeStep <= first.step) {
+    return first.bpm;
+  }
+
+  for (let index = 0; index < points.length - 1; index += 1) {
+    const from = points[index];
+    const to = points[index + 1];
+    if (safeStep >= from.step && safeStep <= to.step) {
+      const span = Math.max(1, to.step - from.step);
+      const progress = (safeStep - from.step) / span;
+      return from.bpm + (to.bpm - from.bpm) * progress;
+    }
+  }
+
+  return points[points.length - 1].bpm;
+}
+
 function getMelodyGateSeconds(durationSteps: number, bpm: number) {
-  return getSixteenthDurationSeconds(bpm) * Math.max(1, durationSteps);
+  return getSixteenthDurationSeconds(bpm) * Math.max(1, durationSteps) * 0.86;
 }
 
 function getMelodyVelocity(row: number, durationSteps: number) {
@@ -257,18 +289,18 @@ function getMelodyVelocity(row: number, durationSteps: number) {
   const midi = MELODY_MIDI[row] ?? MELODY_MIDI[MELODY_MIDI.length - 1];
 
   if (midi <= 36) {
-    return 1.85;
+    return 0.78;
   }
 
   if (midi <= 48) {
-    return 1.55;
+    return 0.82;
   }
 
   if (midi <= 56) {
-    return 1.25;
+    return 0.9;
   }
 
-  return 1;
+  return midi >= 84 ? 0.92 : 1;
 }
 
 function triggerLiveMelodyNote(
@@ -409,11 +441,13 @@ function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
     rowArr.forEach((active, step) => {
       if (!active) return;
       const durationSteps = Math.max(1, state.melodyLengths[rowIndex]?.[step] ?? 1);
+      const expressiveVelocity = state.melodyVelocities?.[rowIndex]?.[step] || 0;
+      const stepBpm = getAutomationBpmAtStep(state, step);
       addEvent(step, {
         type: "melody",
         note: getMelodyPlaybackNote(rowIndex),
-        durationSeconds: getMelodyGateSeconds(durationSteps, state.bpm),
-        velocity: getMelodyVelocity(rowIndex, durationSteps) * melodyVelocityScale,
+        durationSeconds: getMelodyGateSeconds(durationSteps, stepBpm),
+        velocity: getMelodyVelocity(rowIndex, durationSteps) * melodyVelocityScale * (expressiveVelocity || 0.82),
       });
     });
   });
@@ -422,10 +456,11 @@ function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
     rowArr.forEach((active, step) => {
       if (!active) return;
       const durationSteps = Math.max(1, state.violinLengths[rowIndex]?.[step] ?? 1);
+      const stepBpm = getAutomationBpmAtStep(state, step);
       addEvent(step, {
         type: "violin",
         row: rowIndex,
-        durationSeconds: getMelodyGateSeconds(durationSteps, state.bpm),
+        durationSeconds: getMelodyGateSeconds(durationSteps, stepBpm),
         velocity: 0.86 * violinVelocityScale,
       });
     });
@@ -435,10 +470,11 @@ function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
     rowArr.forEach((active, step) => {
       if (!active) return;
       const durationSteps = Math.max(1, state.saxophoneLengths[rowIndex]?.[step] ?? 1);
+      const stepBpm = getAutomationBpmAtStep(state, step);
       addEvent(step, {
         type: "saxophone",
         row: rowIndex,
-        durationSeconds: getMelodyGateSeconds(durationSteps, state.bpm),
+        durationSeconds: getMelodyGateSeconds(durationSteps, stepBpm),
         velocity: 0.78 * saxophoneVelocityScale,
       });
     });
@@ -448,10 +484,11 @@ function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
     rowArr.forEach((active, step) => {
       if (!active) return;
       const durationSteps = Math.max(1, state.guitarLengths[rowIndex]?.[step] ?? 1);
+      const stepBpm = getAutomationBpmAtStep(state, step);
       addEvent(step, {
         type: "guitar",
         row: rowIndex,
-        durationSeconds: getMelodyGateSeconds(durationSteps, state.bpm),
+        durationSeconds: getMelodyGateSeconds(durationSteps, stepBpm),
         velocity: guitarVelocityScale,
       });
     });
@@ -461,10 +498,11 @@ function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
     rowArr.forEach((active, step) => {
       if (!active) return;
       const durationSteps = Math.max(1, state.bassLengths[rowIndex]?.[step] ?? 1);
+      const stepBpm = getAutomationBpmAtStep(state, step);
       addEvent(step, {
         type: "bass",
         note: getExtraTrackNote("bass", rowIndex),
-        durationSeconds: getMelodyGateSeconds(durationSteps, state.bpm),
+        durationSeconds: getMelodyGateSeconds(durationSteps, stepBpm),
         velocity: bassVelocityScale,
       });
     });
@@ -486,7 +524,7 @@ function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
       rowArr.forEach((active, step) => {
         if (!active) return;
         const durationSteps = Math.max(1, track.melodyLengths?.[rowIndex]?.[step] ?? 1);
-        const durationSeconds = getMelodyGateSeconds(durationSteps, state.bpm);
+        const durationSeconds = getMelodyGateSeconds(durationSteps, getAutomationBpmAtStep(state, step));
 
         switch (track.instrument) {
           case "melody":
@@ -679,15 +717,23 @@ export function initTransport() {
   loopId = Tone.Transport.scheduleRepeat((time) => {
     const latestState = useSongStore.getState();
     const playbackPlan = buildPlaybackPlan(latestState);
-    const playbackBpm = latestState.bpm;
     const playbackSteps = latestState.steps;
     const playbackLoopRange = latestState.loopRange;
+    const currentPlaybackStep = Math.min(playbackStep, Math.max(0, playbackSteps - 1));
+    const playbackBpm = getAutomationBpmAtStep(latestState, currentPlaybackStep);
 
     if (lastAppliedTransportBpm !== playbackBpm) {
-      Tone.Transport.bpm.value = playbackBpm;
+      const bpmParam = Tone.Transport.bpm as unknown as {
+        rampTo?: (value: number, rampTime: number) => void;
+        value: number;
+      };
+      if (typeof bpmParam.rampTo === "function") {
+        bpmParam.rampTo(playbackBpm, 0.06);
+      } else {
+        bpmParam.value = playbackBpm;
+      }
       lastAppliedTransportBpm = playbackBpm;
     }
-    const currentPlaybackStep = Math.min(playbackStep, Math.max(0, playbackSteps - 1));
 
     try {
       playbackPlan[currentPlaybackStep]?.forEach((event) => {
@@ -783,6 +829,7 @@ async function renderSongBuffer(): Promise<AudioBuffer> {
   const {
     melody,
     melodyLengths,
+    melodyVelocities,
     violin,
     violinLengths,
     saxophone,
@@ -803,7 +850,7 @@ async function renderSongBuffer(): Promise<AudioBuffer> {
   const durationSeconds = steps * sixteenthSeconds + 1.0;
 
   const rendered = await Tone.Offline(async ({ transport }) => {
-    const melodyBus = new Tone.Reverb({ decay: 2.0, preDelay: 0.01, wet: 0.2 }).toDestination();
+    const melodyBus = new Tone.Reverb({ decay: 1.25, preDelay: 0.008, wet: 0.1 }).toDestination();
     const violinBus = new Tone.Reverb({ decay: 1.65, preDelay: 0.012, wet: 0.16 }).toDestination();
     const saxophoneBus = new Tone.Reverb({ decay: 1.15, preDelay: 0.008, wet: 0.11 }).toDestination();
     const guitarBus = new Tone.Reverb({ decay: 1.8, preDelay: 0.01, wet: 0.18 }).toDestination();
@@ -812,7 +859,7 @@ async function renderSongBuffer(): Promise<AudioBuffer> {
     const supportingPianoBus = new Tone.Reverb({ decay: 1.9, preDelay: 0.01, wet: 0.18 }).toDestination();
     const chicagoStreetBus = new Tone.Reverb({ decay: 1.35, preDelay: 0.01, wet: 0.14 }).toDestination();
     const studioAltoSaxBus = new Tone.Reverb({ decay: 1.1, preDelay: 0.008, wet: 0.12 }).toDestination();
-    const melodySynth = new Tone.Sampler({ urls: pianoBuffers ?? {}, release: 1 }).connect(melodyBus);
+    const melodySynth = new Tone.Sampler({ urls: pianoBuffers ?? {}, release: 0.42 }).connect(melodyBus);
     const violinSynthOffline = new Tone.Sampler({
       urls: VIOLIN_SAMPLE_URLS,
       attack: 0.018,
@@ -899,11 +946,12 @@ async function renderSongBuffer(): Promise<AudioBuffer> {
         if (!melody[row]?.[col]) continue;
         const note = getMelodyPlaybackNote(row);
         const durationSteps = Math.max(1, melodyLengths[row]?.[col] ?? 1);
+        const expressiveVelocity = melodyVelocities?.[row]?.[col] || 0;
         melodySynth.triggerAttackRelease(
           note,
           getMelodyGateSeconds(durationSteps, bpm),
           time,
-          getMelodyVelocity(row, durationSteps) * melodyVelocityScale
+          getMelodyVelocity(row, durationSteps) * melodyVelocityScale * (expressiveVelocity || 0.82)
         );
       }
 

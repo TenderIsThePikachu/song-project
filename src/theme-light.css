@@ -124,10 +124,10 @@ html[data-theme="light"] .site-header {
 
 html[data-theme="light"] :is(
   .site-header-brand,
-  .site-header-brand-note,
   .site-header-nav-link,
   .site-header-nav-link:hover,
   .site-header-nav-link.is-active,
+  .site-header-tool-link,
   .site-header-account .topbar-account-link,
   .site-header-account .topbar-account-link.is-primary,
   .site-header-account .topbar-account-name
@@ -135,13 +135,34 @@ html[data-theme="light"] :is(
   color: #202a3d !important;
 }
 
-html[data-theme="light"] .site-header-brand-note {
+html[data-theme="light"] .site-header-brand-logo {
   border: 0 !important;
   background: transparent !important;
   box-shadow: none !important;
 }
 
+html[data-theme="light"] .site-header-brand-name {
+  color: #172033 !important;
+}
+
+html[data-theme="light"] .site-header-brand-name span {
+  color: var(--light-accent) !important;
+}
+
 html[data-theme="light"] .site-header-nav-link.is-active {
+  background: var(--light-accent-soft) !important;
+  color: var(--light-accent) !important;
+}
+
+html[data-theme="light"] .site-header-tool-link {
+  border-color: rgba(31, 44, 67, 0.14) !important;
+  background: rgba(255, 255, 255, 0.72) !important;
+  color: #202a3d !important;
+}
+
+html[data-theme="light"] .site-header-tool-link:hover,
+html[data-theme="light"] .site-header-tool-link.is-active {
+  border-color: rgba(22, 134, 106, 0.28) !important;
   background: var(--light-accent-soft) !important;
   color: var(--light-accent) !important;
 }
@@ -3151,6 +3172,50 @@ html[data-theme="light"] .transport-ai-actions .transport-button--accent {
   color: #ffffff !important;
 }
 
+html[data-theme="light"] .transport-ai-generating {
+  background:
+    radial-gradient(circle at 50% 30%, rgba(45, 212, 191, 0.26), transparent 30%),
+    radial-gradient(circle at 24% 72%, rgba(99, 102, 241, 0.16), transparent 32%),
+    linear-gradient(145deg, rgba(248, 253, 252, 0.98), rgba(235, 242, 250, 0.98)) !important;
+  color: #112136 !important;
+  box-shadow: inset 0 0 0 1px rgba(34, 197, 151, 0.18) !important;
+}
+
+html[data-theme="light"] .transport-ai-generating strong {
+  color: #102037 !important;
+}
+
+html[data-theme="light"] .transport-ai-generating p {
+  color: #43546b !important;
+}
+
+html[data-theme="light"] .transport-ai-steps span {
+  border-color: rgba(31, 170, 132, 0.24) !important;
+  background: rgba(255, 255, 255, 0.78) !important;
+  color: #146f5c !important;
+}
+
+html[data-theme="light"] .transport-ai-notes {
+  color: rgba(20, 134, 106, 0.76) !important;
+}
+
+html[data-theme="light"] .transport-ai-complete {
+  border-color: rgba(34, 197, 151, 0.34) !important;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(45, 212, 191, 0.2), transparent 34%),
+    linear-gradient(145deg, rgba(255, 255, 255, 0.98), rgba(239, 247, 251, 0.98)) !important;
+  color: #132136 !important;
+  box-shadow: 0 24px 70px rgba(35, 52, 80, 0.22) !important;
+}
+
+html[data-theme="light"] .transport-ai-complete-copy strong {
+  color: #102037 !important;
+}
+
+html[data-theme="light"] .transport-ai-complete-copy span {
+  color: #53637a !important;
+}
+
 /* Save, share and Song DNA dialogs */
 html[data-theme="light"] .transport-dialog-backdrop {
   background: rgba(27, 38, 56, 0.38) !important;
@@ -3355,6 +3420,53 @@ html[data-theme="light"] :is(
   .piano-roll
 ) {
   color-scheme: light;
+}
+
+html[data-theme="light"] .composer-notepad {
+  border-color: #cbd5e1 !important;
+  background: rgba(255, 255, 255, 0.98) !important;
+  color: #172238 !important;
+  box-shadow: 0 22px 52px rgba(35, 52, 80, 0.2) !important;
+}
+
+html[data-theme="light"] .composer-notepad-head {
+  border-color: #dbe2eb !important;
+}
+
+html[data-theme="light"] .composer-notepad-head > span {
+  color: #425168 !important;
+}
+
+html[data-theme="light"] .composer-notepad-toggle,
+html[data-theme="light"] .composer-notepad-tabs button,
+html[data-theme="light"] .composer-notepad-actions button {
+  border-color: #cbd5e1 !important;
+  background: #f5f7fa !important;
+  color: #435168 !important;
+}
+
+html[data-theme="light"] .composer-notepad-tabs button.is-active {
+  border-color: #8ca298 !important;
+  background: #e4eee9 !important;
+  color: #153c31 !important;
+}
+
+html[data-theme="light"] .composer-notepad-title,
+html[data-theme="light"] .composer-notepad-editor {
+  border-color: #c8d1dd !important;
+  background: #ffffff !important;
+  color: #172238 !important;
+}
+
+html[data-theme="light"] .composer-notepad-title::placeholder,
+html[data-theme="light"] .composer-notepad-editor::placeholder {
+  color: #8a96a8 !important;
+}
+
+html[data-theme="light"] .composer-notepad-actions button:first-child {
+  border-color: #9bcdbd !important;
+  background: #dff6ee !important;
+  color: #095440 !important;
 }
 
 /* Light composition workspace: piano rolls and step sequencers */
@@ -4057,14 +4169,14 @@ html[data-theme="light"] .music-share-detail-hero .music-share-detail-meta span 
 }
 
 html[data-theme="light"] .music-share-detail-hero .music-share-detail-waveform {
-  border-color: #b9ddd2 !important;
-  background: rgba(248, 252, 251, 0.94) !important;
-  box-shadow: inset 0 1px 0 #ffffff !important;
+  border-color: rgba(31, 44, 67, 0.14) !important;
+  background: rgba(9, 10, 12, 0.66) !important;
+  box-shadow: 0 14px 32px rgba(4, 9, 16, 0.14) !important;
 }
 
 html[data-theme="light"] .music-share-detail-hero .music-share-detail-waveform span {
-  background: linear-gradient(180deg, #16866a, #40cba3 58%, #6654cf) !important;
-  box-shadow: 0 0 5px rgba(22, 134, 106, 0.15) !important;
+  background: rgba(154, 157, 160, 0.84) !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .shorts-player-frame {

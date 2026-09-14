@@ -5,8 +5,9 @@ import "./index.css";
 import "./theme-light.css";
 
 const savedTheme = localStorage.getItem("song-project-theme");
-document.documentElement.dataset.theme = savedTheme === "light" ? "light" : "dark";
-document.documentElement.style.colorScheme = savedTheme === "light" ? "light" : "dark";
+const initialTheme = savedTheme === "dark" ? "dark" : "light";
+document.documentElement.dataset.theme = initialTheme;
+document.documentElement.style.colorScheme = initialTheme;
 
 ReactDOM.createRoot(
   document.getElementById("root") as HTMLElement

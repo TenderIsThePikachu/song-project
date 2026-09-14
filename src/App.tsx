@@ -1,5 +1,6 @@
 import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
+import { AppErrorBoundary } from './components/AppErrorBoundary';
 import ProtectedRoute from './components/auth/ProtectedRoute';
 
 const MainPage = lazy(() => import('./pages/MainPage'));
@@ -24,8 +25,6 @@ const PostList = lazy(() => import('./pages/community/PostList'));
 const PostWrite = lazy(() => import('./pages/community/PostWrite'));
 const SessionRecruitPage = lazy(() => import('./pages/community/SessionRecruitPage'));
 const SessionRecruitDetailPage = lazy(() => import('./pages/community/SessionRecruitDetailPage'));
-const UsedMarket = lazy(() => import('./pages/community/UsedMarket'));
-const MarketDetail = lazy(() => import('./pages/community/MarketDetail'));
 
 function AppFallback() {
   return <div style={{ minHeight: '100vh', background: '#15161a' }} />;
@@ -34,35 +33,35 @@ function AppFallback() {
 function App() {
   return (
     <BrowserRouter>
-      <Suspense fallback={<AppFallback />}>
-        <Routes>
-          <Route path="/" element={<MainPage />} />
-          <Route path="/login" element={<LoginPage />} />
-          <Route path="/signup" element={<SignupPage />} />
-          <Route path="/forgot-password" element={<ForgotPasswordPage />} />
-          <Route path="/learn" element={<Navigate to="/composer" replace />} />
-          <Route path="/composer" element={<Composer />} />
-          <Route path="/air-guitar" element={<AirGuitar />} />
-          <Route path="/library" element={<ProjectLibraryPage />} />
-          <Route path="/community" element={<PostList />} />
-          <Route path="/community/music" element={<MusicShare />} />
-          <Route path="/community/music/:trackId" element={<MusicShareDetail />} />
-          <Route path="/community/shorts" element={<ShortsPage />} />
-          <Route path="/community/sessions" element={<SessionRecruitPage />} />
-          <Route path="/community/sessions/:postId" element={<SessionRecruitDetailPage />} />
-          <Route path="/community/market" element={<UsedMarket />} />
-          <Route path="/community/market/:itemId" element={<MarketDetail />} />
-          <Route path="/community/write" element={<PostWrite />} />
-          <Route path="/community/:id" element={<PostDetail />} />
-          <Route element={<ProtectedRoute />}>
-            <Route path="/collab" element={<CollabPage />} />
-            <Route path="/collab/:projectId" element={<CollabRoomPage />} />
-            <Route path="/profile" element={<ProfilePage />} />
-            <Route path="/messages" element={<MessagesPage />} />
-            <Route path="/settings" element={<SettingsPage />} />
-          </Route>
-        </Routes>
-      </Suspense>
+      <AppErrorBoundary>
+        <Suspense fallback={<AppFallback />}>
+          <Routes>
+            <Route path="/" element={<MainPage />} />
+            <Route path="/login" element={<LoginPage />} />
+            <Route path="/signup" element={<SignupPage />} />
+            <Route path="/forgot-password" element={<ForgotPasswordPage />} />
+            <Route path="/learn" element={<Navigate to="/composer" replace />} />
+            <Route path="/composer" element={<Composer />} />
+            <Route path="/air-guitar" element={<AirGuitar />} />
+            <Route path="/library" element={<ProjectLibraryPage />} />
+            <Route path="/community" element={<PostList />} />
+            <Route path="/community/music" element={<MusicShare />} />
+            <Route path="/community/music/:trackId" element={<MusicShareDetail />} />
+            <Route path="/community/shorts" element={<ShortsPage />} />
+            <Route path="/community/sessions" element={<SessionRecruitPage />} />
+            <Route path="/community/sessions/:postId" element={<SessionRecruitDetailPage />} />
+            <Route path="/community/write" element={<PostWrite />} />
+            <Route path="/community/:id" element={<PostDetail />} />
+            <Route element={<ProtectedRoute />}>
+              <Route path="/collab" element={<CollabPage />} />
+              <Route path="/collab/:projectId" element={<CollabRoomPage />} />
+              <Route path="/profile" element={<ProfilePage />} />
+              <Route path="/messages" element={<MessagesPage />} />
+              <Route path="/settings" element={<SettingsPage />} />
+            </Route>
+          </Routes>
+        </Suspense>
+      </AppErrorBoundary>
     </BrowserRouter>
   );
 }

@@ -52,13 +52,6 @@
   letter-spacing: 0;
 }
 
-.shorts-toolbar-left span {
-  display: block;
-  margin-top: 5px;
-  color: #8d96a8;
-  font-size: 12px;
-}
-
 .shorts-filter-row {
   grid-area: filter;
   display: grid;

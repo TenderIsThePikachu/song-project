@@ -5,6 +5,7 @@ import TrackWaveform from '../../components/community/TrackWaveform';
 import {
   BASE_SHARED_TRACK_LIBRARY,
   buildSharedTrackCard,
+  getMusicShareTrackImage,
   type MusicShareTrackCard,
 } from '../../dummy/musicShareLibrary';
 import { useAuthStore } from '../../store/authStore';
@@ -90,6 +91,7 @@ export default function MusicShareDetail() {
   );
 
   const track = trackLibrary.find((item) => item.id === trackId) ?? null;
+  const trackImageUrl = track ? getMusicShareTrackImage(track) : '';
   const metrics = track ? trackMetricsById[track.id] ?? { likeCount: 0, viewCount: 0, downloadCount: 0 } : null;
   
   const comments = useMemo(
@@ -272,7 +274,7 @@ const handleDeleteTrack = async () => {
       <SiteHeader activeSection="community" />
 
       <main className="music-share-detail-shell">
-        <section className="music-share-detail-hero" style={{ backgroundImage: track.imageUrl ? `linear-gradient(180deg, rgba(10, 12, 16, 0.08), rgba(10, 12, 16, 0.4)), url(${track.imageUrl})` : track.palette }}>
+        <section className="music-share-detail-hero" style={{ backgroundImage: `linear-gradient(180deg, rgba(10, 12, 16, 0.08), rgba(10, 12, 16, 0.4)), url(${trackImageUrl})` }}>
           <div className="music-share-detail-overlay" />
           <div className="music-share-detail-copy">
             <span className="music-share-detail-kicker">{track.category ? track.category.toUpperCase() : 'ETC'}</span>
@@ -287,7 +289,7 @@ const handleDeleteTrack = async () => {
               className="music-share-detail-waveform"
               project={track.project}
               seed={track.id}
-              bars={58}
+              bars={112}
             />
           </div>
         </section>

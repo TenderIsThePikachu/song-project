@@ -13,7 +13,7 @@ import { useSongStore, buildSongProjectSnapshot } from '../store/songStore.ts';
 import { useAuthStore } from '../store/authStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import { fetchAiMusic } from '../utils/ai';
-import { analyzeSongSketchDna, getRecruitUrlFromSketch, type SongSketchDna } from '../utils/songSketchDna';
+import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
 import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
 import './TransportBar.css';
 
@@ -29,14 +29,84 @@ const BAR_LENGTH = 16;
 const GO_TO_FIRST_BAR_EVENT = 'composer-go-to-first-bar';
 const MIN_AI_GENERATION_MS = 2_800;
 
-const GENRE_OPTIONS = [
-  { value: 'ballad', label: '발라드' },
-  { value: 'pop', label: '팝' },
-  { value: 'jazz', label: '재즈' },
-  { value: 'ost', label: 'OST' },
-  { value: 'citypop', label: '시티팝' },
-  { value: 'electronic', label: '일렉트로닉' },
+const GENRE_GROUPS = [
+  {
+    label: '감성/팝',
+    options: [
+      { value: 'ballad', label: '발라드' },
+      { value: 'pop', label: '팝' },
+      { value: 'indie-pop', label: '인디팝' },
+      { value: 'acoustic-pop', label: '어쿠스틱 팝' },
+      { value: 'childrens-song', label: '동요' },
+      { value: 'new-age', label: '뉴에이지' },
+      { value: 'lofi', label: '로파이' },
+      { value: 'dream-pop', label: '드림팝' },
+      { value: 'citypop', label: '시티팝' },
+    ],
+  },
+  {
+    label: '재즈/R&B',
+    options: [
+      { value: 'jazz', label: '재즈' },
+      { value: 'jazz-pop', label: '재즈팝' },
+      { value: 'smooth-jazz', label: '스무스 재즈' },
+      { value: 'bossa-nova', label: '보사노바' },
+      { value: 'rnb', label: 'R&B' },
+      { value: 'neo-soul', label: '네오소울' },
+    ],
+  },
+  {
+    label: '전자/댄스',
+    options: [
+      { value: 'electronic', label: '일렉트로닉' },
+      { value: 'synth-pop', label: '신스팝' },
+      { value: 'house', label: '하우스' },
+      { value: 'deep-house', label: '딥하우스' },
+      { value: 'tropical-house', label: '트로피컬 하우스' },
+      { value: 'future-bass', label: '퓨처 베이스' },
+      { value: 'synthwave', label: '신스웨이브' },
+      { value: 'disco', label: '디스코' },
+      { value: 'funk', label: '펑크' },
+    ],
+  },
+  {
+    label: '힙합/밴드',
+    options: [
+      { value: 'hiphop', label: '힙합' },
+      { value: 'boombap', label: '붐뱁' },
+      { value: 'trap', label: '트랩' },
+      { value: 'jazz-hiphop', label: '재즈 힙합' },
+      { value: 'rock', label: '록' },
+      { value: 'pop-rock', label: '팝록' },
+      { value: 'indie-rock', label: '인디록' },
+    ],
+  },
+  {
+    label: '영상/시즌',
+    options: [
+      { value: 'ost', label: 'OST' },
+      { value: 'cinematic', label: '시네마틱' },
+      { value: 'orchestra', label: '오케스트라' },
+      { value: 'fantasy', label: '판타지' },
+      { value: 'ambient', label: '앰비언트' },
+      { value: 'chiptune', label: '8비트/칩튠' },
+      { value: 'carol', label: '캐럴' },
+      { value: 'christmas-jazz', label: '크리스마스 재즈' },
+    ],
+  },
 ] as const;
+
+function renderGenreOptions() {
+  return GENRE_GROUPS.map((group) => (
+    <optgroup key={group.label} label={group.label}>
+      {group.options.map((option) => (
+        <option key={option.value} value={option.value}>
+          {option.label}
+        </option>
+      ))}
+    </optgroup>
+  ));
+}
 
 type ComposerDialog = 'save' | 'share' | null;
 type SaveFormat = 'wav' | 'mp3' | 'flac';
@@ -146,7 +216,6 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
   const [isExporting, setIsExporting] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [aiCompletionToast, setAiCompletionToast] = useState<'compose' | null>(null);
-  const [songDna, setSongDna] = useState<SongSketchDna | null>(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
 
@@ -296,11 +365,6 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
   const closeDialog = () => {
     setActiveDialog(null);
-  };
-
-  const handleOpenDna = () => {
-    const project = createProjectSnapshot();
-    setSongDna(analyzeSongSketchDna(project, saveTitle.trim() || shareTitle.trim() || '현재 스케치'));
   };
 
   const handleSelectShareCover = (event: ChangeEvent<HTMLInputElement>) => {
@@ -667,9 +731,6 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           <ResetIcon />
           <span>초기화</span>
         </button>
-        <button type="button" className="transport-button transport-button--dna" onClick={handleOpenDna}>
-          DNA 보기
-        </button>
         <button
           type="button"
           className="transport-button"
@@ -703,63 +764,6 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           작곡 AI
         </button>
       </div>
-
-      {songDna ? (
-        <div className="transport-dialog-backdrop" onClick={() => setSongDna(null)} aria-hidden="true">
-          <section
-            className="transport-dialog transport-dna-dialog"
-            onClick={(event) => event.stopPropagation()}
-            aria-label="곡 스케치 DNA"
-          >
-            <div className="transport-dialog-header">
-              <div className="transport-dialog-title">
-                <span className="transport-dialog-icon">D</span>
-                <strong>곡 스케치 DNA</strong>
-              </div>
-              <button
-                type="button"
-                className="transport-dialog-close"
-                onClick={() => setSongDna(null)}
-                aria-label="닫기"
-              >
-                ×
-              </button>
-            </div>
-
-            <div className="transport-dna-summary">
-              <span>{songDna.title}</span>
-              <strong>{songDna.summary}</strong>
-            </div>
-
-            <div className="transport-dna-grid">
-              <article>
-                <span>Mood</span>
-                <strong>{songDna.mood}</strong>
-              </article>
-              <article>
-                <span>Melody</span>
-                <strong>{songDna.melodyType}</strong>
-              </article>
-              <article>
-                <span>Rhythm</span>
-                <strong>{songDna.rhythmDensity}</strong>
-              </article>
-              <article>
-                <span>Hook</span>
-                <strong>{songDna.hookType}</strong>
-              </article>
-              <article>
-                <span>Use</span>
-                <strong>{songDna.useCase}</strong>
-              </article>
-              <article>
-                <span>Parts</span>
-                <strong>{songDna.activeParts.length ? songDna.activeParts.join(', ') : '아직 없음'}</strong>
-              </article>
-            </div>
-          </section>
-        </div>
-      ) : null}
 
       {activeDialog ? (
         <div className="transport-dialog-backdrop" onClick={closeDialog} aria-hidden="true">
@@ -807,11 +811,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                   <label className="transport-dialog-field">
                     <span>장르</span>
                     <select value={saveGenre} onChange={(event) => setSaveGenre(event.target.value)}>
-                      {GENRE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
+                      {renderGenreOptions()}
                     </select>
                   </label>
                 </div>
@@ -908,11 +908,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                       value={shareGenre}
                       onChange={(event) => setShareGenre(event.target.value)}
                     >
-                      {GENRE_OPTIONS.map((option) => (
-                        <option key={option.value} value={option.value}>
-                          {option.label}
-                        </option>
-                      ))}
+                      {renderGenreOptions()}
                     </select>
                   </label>
                   <label className="transport-dialog-field">

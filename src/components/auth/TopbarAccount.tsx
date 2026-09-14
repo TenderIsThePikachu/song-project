@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useAuthStore } from '../../store/authStore';
 import { logoutOnServer } from '../../utils/authApi';
+import AuthDialog, { type AuthDialogMode } from './AuthDialog';
 
 export default function TopbarAccount() {
   const navigate = useNavigate();
@@ -9,6 +10,7 @@ export default function TopbarAccount() {
   const logout = useAuthStore((state) => state.logout);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const [isMenuOpen, setIsMenuOpen] = useState(false);
+  const [authDialogMode, setAuthDialogMode] = useState<AuthDialogMode | null>(null);
 
   useEffect(() => {
     if (!isMenuOpen) {
@@ -59,16 +61,24 @@ export default function TopbarAccount() {
   if (!user) {
     return (
       <div className="topbar-account">
-        <button type="button" className="topbar-account-link" onClick={() => navigate('/login')}>
+        <button type="button" className="topbar-account-link" onClick={() => setAuthDialogMode('login')}>
           로그인
         </button>
         <button
           type="button"
           className="topbar-account-link is-primary"
-          onClick={() => navigate('/signup')}
+          onClick={() => setAuthDialogMode('signup')}
         >
           회원가입
         </button>
+
+        {authDialogMode ? (
+          <AuthDialog
+            mode={authDialogMode}
+            onClose={() => setAuthDialogMode(null)}
+            onModeChange={setAuthDialogMode}
+          />
+        ) : null}
       </div>
     );
   }

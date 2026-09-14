@@ -13,16 +13,15 @@
 
 .site-header-inner {
   position: relative;
-  display: grid;
-  grid-template-columns: auto 1fr auto;
+  display: flex;
   align-items: center;
-  gap: 24px;
-  max-width: 1320px;
+  gap: 34px;
+  max-width: none;
   width: 100%;
   height: 55px;
   min-height: 55px;
   margin: 0 auto;
-  padding: 0 18px;
+  padding: 0 48px;
 }
 
 .site-header-brand,
@@ -33,14 +32,15 @@
 .site-header-brand {
   display: inline-flex;
   align-items: center;
-  justify-content: center;
-  width: 28px;
-  min-width: 28px;
-  max-width: 28px;
-  height: 28px;
-  min-height: 28px;
-  max-height: 28px;
-  flex: 0 0 28px;
+  justify-content: flex-start;
+  gap: 8px;
+  width: auto;
+  min-width: 118px;
+  max-width: none;
+  height: 38px;
+  min-height: 38px;
+  max-height: 38px;
+  flex: 0 0 auto;
   padding: 0;
   border: 0;
   background: transparent;
@@ -48,28 +48,49 @@
   cursor: pointer;
 }
 
-.site-header-brand-note {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  width: 100%;
-  height: 100%;
-  color: #ffffff;
-  font-size: 26px;
-  font-weight: 700;
+.site-header-brand-mark {
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 15px;
+  background:
+    radial-gradient(circle at 35% 20%, rgba(103, 232, 249, 0.22), transparent 42%),
+    radial-gradient(circle at 76% 76%, rgba(196, 97, 255, 0.2), transparent 46%);
+}
+
+.site-header-brand-logo {
+  display: block;
+  width: 34px;
+  height: 34px;
+  object-fit: contain;
+  filter: drop-shadow(0 5px 12px rgba(95, 152, 255, 0.24));
+}
+
+.site-header-brand-name {
+  color: #f7fbff;
+  font-size: 18px;
+  font-weight: 950;
   line-height: 1;
+  letter-spacing: 0;
+  white-space: nowrap;
+}
+
+.site-header-brand-name span {
+  color: #63e6be;
 }
 
 .site-header-nav {
-  position: absolute;
-  left: 50%;
+  position: static;
+  flex: 1 1 auto;
   display: flex;
   align-items: center;
-  justify-content: center;
-  gap: 16px;
+  justify-content: flex-start;
+  gap: 30px;
+  margin-left: 34px;
   min-width: 0;
   height: 34px;
-  transform: translateX(-50%);
+  transform: none;
 }
 
 .site-header-nav-link {
@@ -103,7 +124,8 @@
 }
 
 .site-header-tools {
-  grid-column: 3;
+  flex: 0 0 auto;
+  margin-left: auto;
   display: flex;
   align-items: center;
   justify-content: flex-end;
@@ -190,11 +212,12 @@
 
 @media (max-width: 1180px) {
   .site-header-inner {
-    gap: 16px;
+    gap: 22px;
+    padding: 0 28px;
   }
 
   .site-header-nav {
-    gap: 8px;
+    gap: 16px;
   }
 
   .site-header-nav-link {
@@ -205,7 +228,6 @@
 
 @media (max-width: 920px) {
   .site-header-nav {
-    position: static;
     overflow-x: auto;
     justify-content: flex-start;
     padding-bottom: 4px;
@@ -219,13 +241,30 @@
 
 @media (max-width: 720px) {
   .site-header-inner {
-    grid-template-columns: auto 1fr auto;
     gap: 12px;
     padding: 0 12px;
   }
 
-  .site-header-brand-note {
-    font-size: 22px;
+  .site-header-brand {
+    min-width: 36px;
+    height: 34px;
+    min-height: 34px;
+    max-height: 34px;
+  }
+
+  .site-header-brand-mark {
+    width: 34px;
+    height: 34px;
+    border-radius: 12px;
+  }
+
+  .site-header-brand-logo {
+    width: 30px;
+    height: 30px;
+  }
+
+  .site-header-brand-name {
+    display: none;
   }
 
   .site-header-account .topbar-account-name {

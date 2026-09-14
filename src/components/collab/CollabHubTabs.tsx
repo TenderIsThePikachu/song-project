@@ -26,7 +26,7 @@ export default function CollabHubTabs({ activeTab }: CollabHubTabsProps) {
         aria-selected={activeTab === 'sessions'}
         onClick={() => navigate('/community/sessions')}
       >
-        합주 / 세션 모집
+        파트 모집
       </button>
     </div>
   );

@@ -1,9 +1,8 @@
-import { useEffect, useState, type CSSProperties } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SiteHeader from '../components/layout/SiteHeader';
 import { LATEST_TRACKS, TRENDING_TRACKS } from '../dummy/mockData';
-import { useCommunityStore } from '../store/communityStore';
-import type { CommunityTrack, Post } from '../types/community';
+import type { CommunityTrack } from '../types/community';
 import './MainPage.css';
 
 const TRACK_DISPLAY: Record<string, { title: string; mood: string }> = {
@@ -21,92 +20,109 @@ const TRACK_DISPLAY: Record<string, { title: string; mood: string }> = {
   'latest-4': { title: '모던 재즈 훅', mood: '리듬 변주형 진행' },
 };
 
-const POST_DISPLAY: Record<string, { title: string; category: string }> = {
-  '1': { title: '코드 진행 질문: 후렴이 자연스럽게 안 이어져요', category: '질문' },
-  '2': { title: '작곡 피드백 받을 사람 같이 들어봐요', category: '피드백' },
-  '3': { title: '멜로디를 먼저 만들까요, 코드를 먼저 만들까요?', category: '작곡' },
-  '4': { title: '음악 이론 정리: 다이아토닉 코드 활용', category: '정보' },
-  '5': { title: '베이스 라인 만들 때 리듬부터 잡는 법', category: '작곡' },
-};
-
-const MAIN_FALLBACK_POSTS: Post[] = [
-  {
-    id: 'main-fallback-1',
-    title: '후렴 멜로디가 밋밋할 때 바로 써먹는 방법',
-    content: '반복되는 음 사이에 한두 박자 쉼표를 넣고 마지막 음만 위로 열어보세요.',
-    authorId: 'main',
-    authorName: 'SongMaker',
-    createdAt: Date.now() - 1000 * 60 * 60 * 3,
-    likeCount: 18,
-    viewCount: 142,
-    category: '작곡팁',
-    isHot: true,
-  },
-  {
-    id: 'main-fallback-2',
-    title: '시티팝 코드 진행에 어울리는 드럼 패턴 추천',
-    content: '킥은 단순하게 두고 하이햇으로 움직임을 만드는 쪽이 깔끔합니다.',
-    authorId: 'main',
-    authorName: 'SongMaker',
-    createdAt: Date.now() - 1000 * 60 * 60 * 8,
-    likeCount: 12,
-    viewCount: 98,
-    category: '피드백',
-  },
-  {
-    id: 'main-fallback-3',
-    title: '공유곡 올릴 때 제목을 잘 짓는 작은 팁',
-    content: '장르, 분위기, 용도를 같이 넣으면 사람들이 훨씬 빨리 눌러봅니다.',
-    authorId: 'main',
-    authorName: 'SongMaker',
-    createdAt: Date.now() - 1000 * 60 * 60 * 16,
-    likeCount: 9,
-    viewCount: 76,
-    category: '커뮤니티',
-  },
-];
-
 const TRACK_IMAGE_MAP: Record<string, string> = {
-  'trend-1': '/seed-images/music/canon.svg',
-  'trend-2': '/seed-images/music/citypop.svg',
-  'trend-3': '/seed-images/music/stand-by-me.svg',
-  'trend-4': '/seed-images/music/pop.svg',
-  'trend-5': '/seed-images/music/screen.svg',
-  'trend-6': '/seed-images/music/film-ost.svg',
-  'trend-7': '/seed-images/music/anime-ending.svg',
-  'trend-8': '/seed-images/music/game-theme.svg',
-  'latest-1': '/seed-images/music/pop.svg',
-  'latest-2': '/seed-images/music/classic.svg',
-  'latest-3': '/seed-images/music/jazz.svg',
-  'latest-4': '/seed-images/music/jazz-standard.svg',
+  'trend-1': '/landing-assets/night-loop.jpg',
+  'trend-2': '/landing-assets/frost-tower-riff.jpg',
+  'trend-3': '/landing-assets/emotional-bridge.jpg',
+  'trend-4': '/landing-assets/midnight-hook.jpg',
+  'trend-5': '/landing-assets/deep-house-line.jpg',
+  'trend-6': '/landing-assets/shared-fallback-film.jpg',
+  'trend-7': '/landing-assets/shared-fallback-dream.jpg',
+  'trend-8': '/landing-assets/shared-fallback-groove.jpg',
+  'latest-1': '/landing-assets/shared-fallback-pink-sketch.jpg',
+  'latest-2': '/landing-assets/shared-fallback-band.jpg',
+  'latest-3': '/landing-assets/shared-fallback-ballad.jpg',
+  'latest-4': '/landing-assets/shared-fallback-jazz.jpg',
 };
 
-const GENRE_CHIPS = ['K-pop', 'Lo-fi', 'Ballad', 'City Pop', 'Jazz', 'OST'];
+const GENRE_CHIPS = ['K-pop', 'Lo-fi', 'Ballad', 'City Pop', 'Jazz', 'OST', 'Rock', '...'];
 
 const GENERATOR_TABS = [
-  { label: '작곡', route: '/composer', active: true },
-  { label: '가사', route: '/composer?tab=lyrics', active: false },
-  { label: '공유곡', route: '/community/music', active: false },
+  {
+    key: 'compose',
+    label: '작곡',
+    route: '/composer',
+    icon: '/landing-icons/compose-pencil.svg',
+    prompt: '어떤 곡을 만들고 싶나요?',
+    example: '예) 밤 산책 느낌의 시티팝 코드 진행에 짧은 후렴 멜로디 만들기',
+    actionLabel: '✦ 바로 작곡하기',
+  },
+  {
+    key: 'lyrics',
+    label: '가사',
+    route: '/composer?tab=lyrics',
+    icon: '/landing-icons/lyrics-document.svg',
+    prompt: '어떤 가사를 만들고 싶나요?',
+    example: '예) 여름밤의 설렘을 담은 시티팝 후렴 가사 만들기',
+    actionLabel: '✦ 가사 작성하기',
+  },
+  {
+    key: 'shared',
+    label: '공유곡',
+    route: '/community/music',
+    icon: '/landing-icons/shared-people.svg',
+    prompt: '다른 사람의 공유곡을 들어볼까요?',
+    example: '인기 공유곡을 듣고 새로운 작곡 아이디어를 찾아보세요',
+    actionLabel: '✦ 공유곡 둘러보기',
+  },
 ] as const;
+
+type GeneratorTabKey = (typeof GENERATOR_TABS)[number]['key'];
 
 const FEATURE_CARDS = [
   {
     label: 'COMPOSER',
-    title: '피아노롤에서 바로 스케치',
-    body: '멜로디, 코드, 드럼, 가사를 한 화면에서 이어 붙입니다.',
+    title: '빠른 작곡',
+    body: '아이디어를 바로 음악으로',
+    icon: '/landing-icons/quick-compose.svg',
     route: '/composer',
   },
   {
     label: 'SHARE',
-    title: '공유곡을 듣고 참고',
-    body: '다른 사람이 만든 진행과 루프를 보며 아이디어를 얻습니다.',
+    title: '함께 만드는 음악',
+    body: '친구와 실시간 협업',
+    icon: '/landing-icons/collab-music.svg',
     route: '/community/music',
   },
   {
     label: 'COLLAB',
-    title: '같이 만들 파트너 찾기',
-    body: '보컬, 악기, 믹싱 파트를 모집하고 프로젝트를 이어갑니다.',
+    title: '다양한 스타일',
+    body: '원하는 분위기로 자유롭게',
+    icon: '/landing-icons/style-bars.svg',
     route: '/collab',
+  },
+] as const;
+
+const COLLAB_SHOWCASE = [
+  {
+    title: 'Midnight Session',
+    role: '보컬 · 기타 모집',
+    image: '/seed-images/music/citypop.svg',
+  },
+  {
+    title: '봄밤 데모',
+    role: '피아노 · 믹스 파트너',
+    image: '/seed-images/music/canon.svg',
+  },
+  {
+    title: 'Neon Drive',
+    role: '베이스 · 드럼',
+    image: '/seed-images/music/game-theme.svg',
+  },
+  {
+    title: '별처럼 남아',
+    role: '작사 · 편곡',
+    image: '/seed-images/music/film-ost.svg',
+  },
+  {
+    title: '우리의 동네',
+    role: '프로듀서 모집',
+    image: '/seed-images/music/stand-by-me.svg',
+  },
+  {
+    title: 'Down Town Loop',
+    role: '신스 · 기타',
+    image: '/seed-images/music/pop.svg',
   },
 ] as const;
 
@@ -190,6 +206,20 @@ const HOT_CHART_DETAILS: Record<
     tags: ['청량한 밴드', '드럼 빠름'],
     downloads: 1139,
   },
+  'latest-3': {
+    artist: 'pianobox',
+    plan: 'Basic',
+    duration: '02:18',
+    tags: ['아련한 발라드', '베이스 느림'],
+    downloads: 1086,
+  },
+  'latest-4': {
+    artist: 'jazzyroom',
+    plan: 'Premium',
+    duration: '02:36',
+    tags: ['모던 재즈', '피아노 보통'],
+    downloads: 1032,
+  },
 };
 
 type HotChartView = 'weekly' | 'genre' | 'monthly';
@@ -206,12 +236,21 @@ const HOT_CHART_DESCRIPTIONS: Record<HotChartView, string> = {
   monthly: '한 달 동안 꾸준히 사랑받은 BGM과 루프를 모았습니다.',
 };
 
-const MONTHLY_BGM_ORDER = ['latest-2', 'trend-6', 'latest-1', 'trend-2', 'trend-8'];
+const MONTHLY_BGM_ORDER = [
+  'latest-2',
+  'trend-6',
+  'latest-1',
+  'trend-2',
+  'trend-8',
+  'trend-1',
+  'trend-7',
+  'latest-3',
+  'trend-5',
+  'latest-4',
+];
+const HOT_CHART_PREVIEW_COUNT = 5;
+const HOT_CHART_EXPANDED_COUNT = 10;
 const CHART_FAVORITES_STORAGE_KEY = 'song-project-chart-favorites';
-
-function formatCount(value: number | undefined) {
-  return (value ?? 0).toLocaleString('ko-KR');
-}
 
 function getTrackDisplay(track: CommunityTrack) {
   return TRACK_DISPLAY[track.id] ?? { title: track.title, mood: track.mood };
@@ -219,10 +258,6 @@ function getTrackDisplay(track: CommunityTrack) {
 
 function getTrackCover(track: CommunityTrack) {
   return TRACK_IMAGE_MAP[track.id] ?? '/seed-images/music/pop.svg';
-}
-
-function getPostDisplay(post: Post) {
-  return POST_DISPLAY[post.id] ?? { title: post.title, category: post.category ?? '자유' };
 }
 
 function getWaveformBars(seed: string, count = 44) {
@@ -238,8 +273,14 @@ function getWaveformBars(seed: string, count = 44) {
 
 export default function MainPage() {
   const navigate = useNavigate();
+  const [activeGeneratorTabKey, setActiveGeneratorTabKey] = useState<GeneratorTabKey>('compose');
+  const [activeGenre, setActiveGenre] = useState('City Pop');
   const [activeCoverIndex, setActiveCoverIndex] = useState(0);
   const [hotChartView, setHotChartView] = useState<HotChartView>('weekly');
+  const [isHotChartExpanded, setIsHotChartExpanded] = useState(false);
+  const [collabSlideIndex, setCollabSlideIndex] = useState(0);
+  const collabCarouselRef = useRef<HTMLDivElement | null>(null);
+  const collabSlideIndexRef = useRef(0);
   const [favoriteTrackIds, setFavoriteTrackIds] = useState<Set<string>>(() => {
     try {
       const stored = JSON.parse(window.localStorage.getItem(CHART_FAVORITES_STORAGE_KEY) ?? '[]');
@@ -248,23 +289,15 @@ export default function MainPage() {
       return new Set();
     }
   });
-  const posts = useCommunityStore((state) => state.posts);
-  const seedCommunity = useCommunityStore((state) => state.seedCommunity);
-
-  useEffect(() => {
-    void seedCommunity().catch((error) => {
-      console.error(error);
-    });
-  }, [seedCommunity]);
-
   const showcaseTracks = TRENDING_TRACKS.slice(0, 5);
+  const activeGeneratorTab =
+    GENERATOR_TABS.find((tab) => tab.key === activeGeneratorTabKey) ?? GENERATOR_TABS[0];
   const featuredTrack = showcaseTracks[activeCoverIndex];
   const featuredTrackDisplay = getTrackDisplay(featuredTrack);
-  const latestTracks = LATEST_TRACKS.slice(0, 4);
   const chartCandidates = [...TRENDING_TRACKS, ...LATEST_TRACKS].filter(
     (track) => HOT_CHART_DETAILS[track.id]
   );
-  const hotChartTracks = (() => {
+  const hotChartTrackPool = (() => {
     if (hotChartView === 'monthly') {
       return MONTHLY_BGM_ORDER.map((id) => chartCandidates.find((track) => track.id === id)).filter(
         (track): track is CommunityTrack => Boolean(track)
@@ -283,19 +316,110 @@ export default function MainPage() {
         selectedGenres.add(genre);
         return true;
       });
-      return [...genreLeaders, ...ranked.filter((track) => !genreLeaders.includes(track))].slice(0, 5);
+      return [...genreLeaders, ...ranked.filter((track) => !genreLeaders.includes(track))];
     }
 
-    return ranked.slice(0, 5);
+    return ranked;
   })();
-  const popularPosts = [...(posts.length ? posts : MAIN_FALLBACK_POSTS)]
-    .sort(
-      (left, right) =>
-        (right.viewCount ?? 0) - (left.viewCount ?? 0) ||
-        (right.likeCount ?? 0) - (left.likeCount ?? 0)
-    )
-    .slice(0, 5);
+  const hotChartLimit = isHotChartExpanded ? HOT_CHART_EXPANDED_COUNT : HOT_CHART_PREVIEW_COUNT;
+  const hotChartTracks = hotChartTrackPool.slice(0, hotChartLimit);
+  const canExpandHotChart = hotChartTrackPool.length > HOT_CHART_PREVIEW_COUNT;
+  const activeCollabDotIndex = collabSlideIndex % COLLAB_SHOWCASE.length;
+  const collabCarouselItems = [
+    ...COLLAB_SHOWCASE,
+    ...COLLAB_SHOWCASE,
+    ...COLLAB_SHOWCASE,
+    ...COLLAB_SHOWCASE,
+    ...COLLAB_SHOWCASE,
+  ];
 
+  useEffect(() => {
+    let animationFrame = 0;
+    let resetFrame = 0;
+
+    const getSlideMetrics = () => {
+      const scroller = collabCarouselRef.current;
+      const card = scroller?.querySelector<HTMLElement>('.main-collab-card');
+      if (!scroller || !card) return null;
+
+      const styles = window.getComputedStyle(scroller);
+      const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 18;
+      const step = card.getBoundingClientRect().width + gap;
+      const middleStart = step * COLLAB_SHOWCASE.length * 2;
+
+      return { scroller, step, middleStart };
+    };
+
+    const easeInOut = (progress: number) =>
+      progress < 0.5 ? 4 * progress * progress * progress : 1 - Math.pow(-2 * progress + 2, 3) / 2;
+
+    const animateScrollTo = (targetLeft: number, duration = 1_250) => {
+      const metrics = getSlideMetrics();
+      if (!metrics) return;
+
+      const { scroller } = metrics;
+      const startLeft = scroller.scrollLeft;
+      const distance = targetLeft - startLeft;
+      const startedAt = performance.now();
+
+      window.cancelAnimationFrame(animationFrame);
+
+      const stepFrame = (now: number) => {
+        const progress = Math.min((now - startedAt) / duration, 1);
+        scroller.scrollLeft = startLeft + distance * easeInOut(progress);
+
+        if (progress < 1) {
+          animationFrame = window.requestAnimationFrame(stepFrame);
+        }
+      };
+
+      animationFrame = window.requestAnimationFrame(stepFrame);
+    };
+
+    const resetToMiddle = () => {
+      const metrics = getSlideMetrics();
+      if (!metrics) return;
+
+      metrics.scroller.scrollLeft = metrics.middleStart;
+    };
+
+    resetFrame = window.requestAnimationFrame(resetToMiddle);
+
+    const timer = window.setInterval(() => {
+      const metrics = getSlideMetrics();
+
+      if (!metrics) {
+        collabSlideIndexRef.current = (collabSlideIndexRef.current + 1) % COLLAB_SHOWCASE.length;
+        setCollabSlideIndex(collabSlideIndexRef.current);
+        return;
+      }
+
+      const nextIndex = (collabSlideIndexRef.current + 1) % COLLAB_SHOWCASE.length;
+      const visualStep = collabSlideIndexRef.current + 1;
+      const targetLeft = metrics.middleStart + visualStep * metrics.step;
+
+      collabSlideIndexRef.current = nextIndex;
+      setCollabSlideIndex(nextIndex);
+
+      animateScrollTo(targetLeft);
+
+      if (visualStep >= COLLAB_SHOWCASE.length) {
+        window.setTimeout(() => {
+          resetToMiddle();
+        }, 1_320);
+      }
+    }, 3_000);
+
+    const handleResize = () => resetToMiddle();
+    window.addEventListener('resize', handleResize);
+
+    return () => {
+      window.clearInterval(timer);
+      window.cancelAnimationFrame(animationFrame);
+      window.cancelAnimationFrame(resetFrame);
+      window.removeEventListener('resize', handleResize);
+    };
+  }, []);
   const toggleChartFavorite = (trackId: string) => {
     setFavoriteTrackIds((current) => {
       const next = new Set(current);
@@ -303,6 +427,43 @@ export default function MainPage() {
       else next.add(trackId);
       window.localStorage.setItem(CHART_FAVORITES_STORAGE_KEY, JSON.stringify([...next]));
       return next;
+    });
+  };
+
+  const moveCollabSlide = (direction: 1 | -1) => {
+    const scroller = collabCarouselRef.current;
+    const card = scroller?.querySelector<HTMLElement>('.main-collab-card');
+
+    if (!scroller || !card) {
+      const nextIndex =
+        (collabSlideIndexRef.current + direction + COLLAB_SHOWCASE.length) % COLLAB_SHOWCASE.length;
+      collabSlideIndexRef.current = nextIndex;
+      setCollabSlideIndex(nextIndex);
+      return;
+    }
+
+    const styles = window.getComputedStyle(scroller);
+    const gap = Number.parseFloat(styles.columnGap || styles.gap || '0') || 18;
+    const step = card.getBoundingClientRect().width + gap;
+    const loopWidth = step * COLLAB_SHOWCASE.length;
+    const middleStart = loopWidth * 2;
+    const nextIndex =
+      (collabSlideIndexRef.current + direction + COLLAB_SHOWCASE.length) % COLLAB_SHOWCASE.length;
+
+    if (direction > 0 && scroller.scrollLeft >= middleStart + loopWidth - step / 2) {
+      scroller.scrollLeft -= loopWidth;
+    }
+
+    if (direction < 0 && scroller.scrollLeft <= middleStart - loopWidth + step / 2) {
+      scroller.scrollLeft += loopWidth;
+    }
+
+    collabSlideIndexRef.current = nextIndex;
+    setCollabSlideIndex(nextIndex);
+
+    scroller.scrollBy({
+      left: step * direction,
+      behavior: 'smooth',
     });
   };
 
@@ -336,107 +497,149 @@ export default function MainPage() {
 
       <main className="main-shell">
         <section className="main-hero">
-          <div className="main-hero-copy">
-            <span className="main-label">작곡밥</span>
-            <h1>아이디어만 있으면 곡 스케치까지 바로.</h1>
+          <div className="main-hero-copy main-reference-copy">
+            <span className="main-label">AI와 함께하는 나만의 음악 메이커</span>
+            <h1>
+              아이디어만 있으면
+              <br />
+              <span>곡 스케치</span>까지 바로.
+            </h1>
             <p>
               멜로디를 찍고, 가사를 얹고, 공유곡을 참고하면서 나만의 곡을 빠르게 만들어보세요.
             </p>
 
-            <div className="main-generator-card">
-              <div className="main-generator-tabs">
+            <div className="main-generator-card main-reference-generator">
+              <div className="main-generator-tabs main-reference-tabs">
                 {GENERATOR_TABS.map((tab) => (
                   <button
                     key={tab.label}
                     type="button"
-                    className={tab.active ? 'is-active' : undefined}
-                    onClick={() => navigate(tab.route)}
+                    className={tab.key === activeGeneratorTabKey ? 'is-active' : undefined}
+                    aria-pressed={tab.key === activeGeneratorTabKey}
+                    onClick={() => setActiveGeneratorTabKey(tab.key)}
                   >
+                    <img src={tab.icon} alt="" aria-hidden="true" />
                     {tab.label}
                   </button>
                 ))}
               </div>
               <button
                 type="button"
-                className="main-generator-prompt"
-                onClick={() => navigate('/composer')}
+                className="main-generator-prompt main-reference-prompt"
+                onClick={() => navigate(activeGeneratorTab.route)}
               >
-                밤 산책 느낌의 시티팝 코드 진행에 짧은 후렴 멜로디 만들기
+                <span className="main-prompt-label">{activeGeneratorTab.prompt}</span>
+                <strong className="main-prompt-example">{activeGeneratorTab.example}</strong>
+                <span className="main-prompt-tool" aria-hidden="true">▧</span>
+                <span className="main-prompt-count" aria-hidden="true">0/500</span>
               </button>
-              <div className="main-chip-row">
+              <div className="main-chip-row main-reference-chips">
                 {GENRE_CHIPS.map((chip) => (
-                  <span key={chip}>{chip}</span>
+                  <button
+                    key={chip}
+                    type="button"
+                    className={chip === activeGenre ? 'is-active' : undefined}
+                    aria-pressed={chip === activeGenre}
+                    onClick={() => setActiveGenre(chip)}
+                  >
+                    {chip}
+                  </button>
                 ))}
               </div>
-              <div className="main-generator-actions">
-                <button type="button" className="main-button is-primary" onClick={() => navigate('/composer')}>
-                  바로 작곡하기
+              <div className="main-generator-actions main-reference-actions">
+                <button
+                  type="button"
+                  className="main-button is-primary"
+                  onClick={() => navigate(activeGeneratorTab.route)}
+                >
+                  {activeGeneratorTab.actionLabel}
                 </button>
                 <button type="button" className="main-button" onClick={() => navigate('/community/music')}>
                   레퍼런스 듣기
                 </button>
               </div>
             </div>
+
+            <section className="main-feature-grid main-reference-features" aria-label="작곡 서비스 특징">
+              {FEATURE_CARDS.map((item) => (
+                <button key={item.label} type="button" onClick={() => navigate(item.route)}>
+                  <img src={item.icon} alt="" aria-hidden="true" />
+                  <span>{item.label}</span>
+                  <strong>{item.title}</strong>
+                  <small>{item.body}</small>
+                </button>
+              ))}
+            </section>
           </div>
 
-          <div className="main-showcase">
-            <div className="main-now-playing">
-              <span>NOW PLAYING</span>
-              <strong>{featuredTrackDisplay.title}</strong>
-              <small>{featuredTrack.progression}</small>
-              <div className="main-eq" aria-hidden="true">
-                {Array.from({ length: 16 }, (_, index) => (
-                  <i key={index} style={{ '--delay': `${index * 0.06}s` } as CSSProperties} />
-                ))}
-              </div>
-            </div>
+          <div className="main-showcase main-reference-showcase">
+            <div className="hero-music-player main-reference-player" aria-label="오늘의 추천곡 플레이어">
+              <div
+                className="hero-music-cover"
+                style={{ backgroundImage: `url(${getTrackCover(featuredTrack)})` }}
+              />
 
-            <div className="main-showcase-stage" aria-label="추천 공유곡 플레이어">
-              <div className="main-featured-track">
-                <span
-                  className="main-featured-cover"
-                  style={{ backgroundImage: `url(${getTrackCover(featuredTrack)})` }}
-                />
-                <div className="main-featured-copy">
-                  <span>오늘의 추천</span>
-                  <strong>{featuredTrackDisplay.title}</strong>
-                  <small>{featuredTrackDisplay.mood}</small>
-                  <em>{featuredTrack.progression}</em>
+              <div className="hero-music-info">
+                <div className="hero-music-meta">
+                  <span>오늘의 추천곡</span>
+                  <button type="button" aria-label="좋아요">
+                    ♡
+                  </button>
+                  <button type="button" aria-label="더보기">
+                    ···
+                  </button>
                 </div>
+                <strong>{featuredTrackDisplay.title}</strong>
+                <small>{featuredTrackDisplay.mood}</small>
+                <em>{featuredTrack.progression}</em>
               </div>
 
-              <div className="main-featured-wave" aria-hidden="true">
+              <div className="hero-music-wave" aria-hidden="true">
                 {getWaveformBars(featuredTrack.id, 56).map((height, index) => (
                   <i key={index} style={{ height: `${height}%` }} />
                 ))}
               </div>
 
-              <div className="main-showcase-actions">
+              <div className="hero-music-time" aria-hidden="true">
+                <span>0:42</span>
+                <b />
+                <span>2:31</span>
+              </div>
+
+              <div className="hero-music-controls">
                 <button
                   type="button"
+                  aria-label="이전 추천곡"
                   onClick={() =>
                     setActiveCoverIndex((current) =>
                       (current - 1 + showcaseTracks.length) % showcaseTracks.length
                     )
                   }
                 >
-                  이전
+                  ‹
                 </button>
-                <button type="button" onClick={() => navigate('/community/music')}>
-                  공유곡 듣기
+                <button type="button" aria-label="추천곡 재생" onClick={() => navigate('/community/music')}>
+                  Ⅱ
                 </button>
                 <button
                   type="button"
+                  aria-label="다음 추천곡"
                   onClick={() =>
                     setActiveCoverIndex((current) => (current + 1) % showcaseTracks.length)
                   }
                 >
-                  다음
+                  ›
                 </button>
               </div>
 
-              <div className="main-featured-queue" role="list" aria-label="추천 공유곡 목록">
-                {showcaseTracks.map((track, index) => {
+              <div className="hero-music-queue" role="list" aria-label="추천곡 리스트">
+                <div className="hero-music-queue-head">
+                  <strong>추천곡 리스트</strong>
+                  <button type="button" onClick={() => navigate('/community/music')}>
+                    전체보기 ›
+                  </button>
+                </div>
+                {showcaseTracks.slice(0, 5).map((track, index) => {
                   const displayTrack = getTrackDisplay(track);
                   const isActive = index === activeCoverIndex;
 
@@ -447,25 +650,19 @@ export default function MainPage() {
                       className={isActive ? 'is-active' : undefined}
                       onClick={() => setActiveCoverIndex(index)}
                     >
+                      <i style={{ backgroundImage: `url(${getTrackCover(track)})` }} aria-hidden="true" />
                       <span>{String(index + 1).padStart(2, '0')}</span>
-                      <strong>{displayTrack.title}</strong>
-                      <small>{track.progression}</small>
+                      <strong>
+                        {displayTrack.title}
+                        <small>{track.progression}</small>
+                      </strong>
+                      <em>{index === 0 ? '2:31' : index === 1 ? '2:08' : index === 2 ? '1:54' : index === 3 ? '2:27' : '2:16'}</em>
                     </button>
                   );
                 })}
               </div>
             </div>
           </div>
-        </section>
-
-        <section className="main-feature-grid">
-          {FEATURE_CARDS.map((item) => (
-            <button key={item.label} type="button" onClick={() => navigate(item.route)}>
-              <span>{item.label}</span>
-              <strong>{item.title}</strong>
-              <small>{item.body}</small>
-            </button>
-          ))}
         </section>
 
         <section className="main-hot-chart" aria-labelledby="main-hot-chart-title">
@@ -478,17 +675,20 @@ export default function MainPage() {
                 <b />
                 <b />
               </i>
-              공유곡 <em>HOT 5</em>
+              공유곡 <em>HOT 10</em>
             </h2>
             <p>{HOT_CHART_DESCRIPTIONS[hotChartView]}</p>
-            <div className="main-hot-chart-filters" aria-label="HOT 5 차트 보기">
+            <div className="main-hot-chart-filters" aria-label="HOT 10 차트 보기">
               {HOT_CHART_TABS.map((tab) => (
                 <button
                   key={tab.key}
                   type="button"
                   className={hotChartView === tab.key ? 'is-active' : undefined}
                   aria-pressed={hotChartView === tab.key}
-                  onClick={() => setHotChartView(tab.key)}
+                  onClick={() => {
+                    setHotChartView(tab.key);
+                    setIsHotChartExpanded(false);
+                  }}
                 >
                   {tab.label}
                 </button>
@@ -537,7 +737,7 @@ export default function MainPage() {
                   </span>
                   <span className="main-hot-play" aria-hidden="true" />
                   <span className="main-hot-wave" aria-hidden="true">
-                    {getWaveformBars(track.id).map((height, barIndex) => (
+                    {getWaveformBars(track.id, 96).map((height, barIndex) => (
                       <i key={barIndex} style={{ height: `${height}%` }} />
                     ))}
                   </span>
@@ -576,68 +776,70 @@ export default function MainPage() {
               );
             })}
           </div>
+          {canExpandHotChart ? (
+            <button
+              type="button"
+              className={`main-hot-chart-more${isHotChartExpanded ? ' is-expanded' : ''}`}
+              aria-expanded={isHotChartExpanded}
+              aria-label={isHotChartExpanded ? '공유곡 차트 5개만 보기' : '공유곡 차트 10개까지 보기'}
+              onClick={() => setIsHotChartExpanded((current) => !current)}
+            >
+              <span aria-hidden="true" />
+            </button>
+          ) : null}
         </section>
 
-        <section className="main-content-grid">
-          <article className="main-panel main-panel--wide">
-            <div className="main-panel-head">
-              <div>
-                <span className="main-label">EXPLORE</span>
-                <h2>요즘 올라온 공유곡</h2>
-              </div>
-              <button type="button" onClick={() => navigate('/community/music')}>
-                전체 보기
-              </button>
+        <section className="main-collab-showcase" aria-labelledby="main-collab-showcase-title">
+          <div className="main-collab-showcase-head">
+            <span className="main-collab-kicker">JAKGOKBAP COLLAB</span>
+            <h2 id="main-collab-showcase-title">
+              <span>협업</span>에서 모집 중인 파트
+            </h2>
+            <i aria-hidden="true" />
+            <div className="main-collab-showcase-dots" aria-hidden="true">
+              {COLLAB_SHOWCASE.map((item, index) => (
+                <span key={item.title} className={index === activeCollabDotIndex ? 'is-active' : undefined} />
+              ))}
             </div>
+          </div>
 
-            <div className="main-track-list">
-              {latestTracks.map((track, index) => {
-                const displayTrack = getTrackDisplay(track);
-
-                return (
-                  <button key={track.id} type="button" onClick={() => navigate('/community/music')}>
-                    <span className="main-track-cover" style={{ backgroundImage: `url(${getTrackCover(track)})` }} />
-                    <span className="main-track-copy">
-                      <strong>{displayTrack.title}</strong>
-                      <small>{track.progression}</small>
-                    </span>
-                    <em>{String(index + 1).padStart(2, '0')}</em>
-                  </button>
-                );
-              })}
+          <div className="main-collab-carousel">
+            <button
+              type="button"
+              className="main-collab-arrow is-left"
+              aria-label="이전 협업 보기"
+              onClick={() => moveCollabSlide(-1)}
+            >
+              <span />
+            </button>
+            <div
+              ref={collabCarouselRef}
+              className="main-collab-card-row"
+            >
+              {collabCarouselItems.map((item, index) => (
+                <button
+                  key={`${index}-${item.title}`}
+                  type="button"
+                  className="main-collab-card"
+                  onClick={() => navigate('/collab')}
+                >
+                  <span className="main-collab-cover" style={{ backgroundImage: `url(${item.image})` }}>
+                    <i aria-hidden="true" />
+                  </span>
+                  <strong>{item.title}</strong>
+                  <small>{item.role}</small>
+                </button>
+              ))}
             </div>
-          </article>
-
-          <article className="main-panel">
-            <div className="main-panel-head">
-              <div>
-                <span className="main-label">COMMUNITY</span>
-                <h2>작곡러들이 보는 글</h2>
-              </div>
-              <button type="button" onClick={() => navigate('/community')}>
-                게시판
-              </button>
-            </div>
-
-            <div className="main-post-list">
-              {popularPosts.map((post) => {
-                const displayPost = getPostDisplay(post);
-                const isFallbackPost = post.id.startsWith('main-fallback-');
-
-                return (
-                  <button
-                    key={post.id}
-                    type="button"
-                    onClick={() => navigate(isFallbackPost ? '/community' : `/community/${post.id}`)}
-                  >
-                    <span>{displayPost.category}</span>
-                    <strong>{displayPost.title}</strong>
-                    <small>조회 {formatCount(post.viewCount)} · 좋아요 {formatCount(post.likeCount)}</small>
-                  </button>
-                );
-              })}
-            </div>
-          </article>
+            <button
+              type="button"
+              className="main-collab-arrow is-right"
+              aria-label="다음 협업 보기"
+              onClick={() => moveCollabSlide(1)}
+            >
+              <span />
+            </button>
+          </div>
         </section>
       </main>
     </div>

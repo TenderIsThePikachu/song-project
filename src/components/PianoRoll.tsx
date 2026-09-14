@@ -141,8 +141,8 @@ function getAccentColor(index: number, isBass: boolean, isGuitar: boolean) {
   return palette[index % palette.length];
 }
 
-function isSharpNote(note: string) {
-  return note.includes('#');
+function isSharpNote(note: unknown) {
+  return typeof note === 'string' && note.includes('#');
 }
 
 function findMelodyNoteInfo(melodyRow: boolean[], melodyLengthRow: number[], col: number) {
@@ -195,6 +195,12 @@ export const PianoRoll = ({
   const [melodyNoteLengthSteps, setMelodyNoteLengthSteps] =
     useState<MelodyNoteLengthSteps>(4);
   const [melodyScrollLeft, setMelodyScrollLeft] = useState(0);
+  const [melodyViewport, setMelodyViewport] = useState({
+    scrollLeft: 0,
+    scrollTop: 0,
+    width: 1600,
+    height: 720,
+  });
 
   const pendingMelodyCommitRef = useRef<{ row: number; col: number; barIndex: number } | null>(
     null
@@ -208,12 +214,24 @@ export const PianoRoll = ({
   const lastMelodyDragLengthRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (melodyScrollerRef.current) {
+      const scroller = melodyScrollerRef.current;
+      setMelodyScrollLeft(scroller.scrollLeft);
+      setMelodyViewport({
+        scrollLeft: scroller.scrollLeft,
+        scrollTop: scroller.scrollTop,
+        width: scroller.clientWidth,
+        height: scroller.clientHeight,
+      });
+    }
+
     const handleGoToFirstBar = () => {
       if (melodyScrollerRef.current) {
         melodyScrollerRef.current.scrollLeft = 0;
       }
 
       setMelodyScrollLeft(0);
+      setMelodyViewport((current) => ({ ...current, scrollLeft: 0 }));
     };
 
     window.addEventListener('composer-go-to-first-bar', handleGoToFirstBar);
@@ -226,8 +244,8 @@ export const PianoRoll = ({
     };
   }, []);
 
-  const syncMelodyScrollLeft = (scrollLeft: number) => {
-    pendingScrollLeftRef.current = scrollLeft;
+  const syncMelodyScrollLeft = (scroller: HTMLDivElement) => {
+    pendingScrollLeftRef.current = scroller.scrollLeft;
 
     if (scrollSyncFrameRef.current !== null) {
       return;
@@ -236,6 +254,12 @@ export const PianoRoll = ({
     scrollSyncFrameRef.current = window.requestAnimationFrame(() => {
       scrollSyncFrameRef.current = null;
       setMelodyScrollLeft(pendingScrollLeftRef.current);
+      setMelodyViewport({
+        scrollLeft: scroller.scrollLeft,
+        scrollTop: scroller.scrollTop,
+        width: scroller.clientWidth,
+        height: scroller.clientHeight,
+      });
     });
   };
 
@@ -272,6 +296,30 @@ export const PianoRoll = ({
   const bodyTopPadding = isBass ? PIANO_BODY_TOP_PADDING : 8;
   const controlBarHeight = isBass ? 0 : MELODY_CONTROL_BAR_HEIGHT;
   const sidebarTopOffset = bodyTopPadding + controlBarHeight + headerHeight + headerMargin;
+  const rowSpan = rowHeight + gridGap;
+  const colSpan = stepWidth + gridGap;
+  const virtualRowPadding = 8;
+  const virtualColPadding = 8;
+  const visibleRowStart = isBass
+    ? 0
+    : Math.max(0, Math.floor(melodyViewport.scrollTop / rowSpan) - virtualRowPadding);
+  const visibleRowEnd = isBass
+    ? rowCount - 1
+    : Math.min(
+        rowCount - 1,
+        Math.ceil((melodyViewport.scrollTop + melodyViewport.height) / rowSpan) +
+          virtualRowPadding
+      );
+  const visibleColStart = isBass
+    ? 0
+    : Math.max(0, Math.floor(melodyViewport.scrollLeft / colSpan) - virtualColPadding);
+  const visibleColEnd = isBass
+    ? steps - 1
+    : Math.min(
+        steps - 1,
+        Math.ceil((melodyViewport.scrollLeft + melodyViewport.width) / colSpan) +
+          virtualColPadding
+      );
 
   const melodyNoteInfoMap = useMemo(() => {
     if (isBass) {
@@ -430,8 +478,18 @@ export const PianoRoll = ({
     );
   }), [collabBarLocks, loopRange, onStepHeaderSelect, steps]);
 
-  const gridCells = useMemo(() => Array.from({ length: rowCount }).flatMap((_, row) =>
-    Array.from({ length: steps }).map((__, col) => {
+  const gridCells = useMemo(() => {
+    const rowsToRender = Array.from(
+      { length: Math.max(0, visibleRowEnd - visibleRowStart + 1) },
+      (_, index) => visibleRowStart + index
+    );
+    const colsToRender = Array.from(
+      { length: Math.max(0, visibleColEnd - visibleColStart + 1) },
+      (_, index) => visibleColStart + index
+    );
+
+    return rowsToRender.flatMap((row) =>
+      colsToRender.map((col) => {
       const melodyNoteInfo = !isBass ? melodyNoteInfoMap[row]?.[col] ?? null : null;
       const isNoteStart = Boolean(melodyNoteInfo && melodyNoteInfo.start === col);
       const isNoteTail = Boolean(melodyNoteInfo && melodyNoteInfo.start !== col);
@@ -445,8 +503,19 @@ export const PianoRoll = ({
       const lyricLabel = !isBass && isNoteStart ? noteLyrics[lyricKey] ?? '' : '';
       const cellStyle = {
         '--cell-accent': getAccentColor(row, isBass, isGuitar),
+        ...(isBass
+          ? {
+              gridColumnStart: col + 1,
+              gridRowStart: row + 1,
+            }
+          : {
+              left: `${col * colSpan}px`,
+              top: `${row * rowSpan}px`,
+              width: `${stepWidth}px`,
+              height: `${rowHeight}px`,
+            }),
         ...(!isBass && melodyNoteInfo ? { '--note-span-steps': `${melodyNoteInfo.length}` } : {}),
-      } as CSSProperties;
+      } as unknown as CSSProperties;
 
       return (
         <div
@@ -629,8 +698,9 @@ export const PianoRoll = ({
           ) : null}
         </div>
       );
-    })
-  ), [
+      })
+    );
+  }, [
     applyChord,
     bass,
     canEditCollab,
@@ -655,6 +725,10 @@ export const PianoRoll = ({
     steps,
     toggleBass,
     toggleMelody,
+    visibleColEnd,
+    visibleColStart,
+    visibleRowEnd,
+    visibleRowStart,
   ]);
 
   if (!isBass) {
@@ -736,11 +810,7 @@ export const PianoRoll = ({
           ref={melodyScrollerRef}
           className="piano-roll-melody-scroller"
           onScroll={(event) => {
-            if (useSongStore.getState().isPlaying) {
-              return;
-            }
-
-            syncMelodyScrollLeft(event.currentTarget.scrollLeft);
+            syncMelodyScrollLeft(event.currentTarget);
           }}
         >
           <div className="piano-roll-sidebar">
@@ -764,10 +834,10 @@ export const PianoRoll = ({
               />
 
               <div
-                className="piano-roll-grid piano-roll-grid--melody"
+                className="piano-roll-grid piano-roll-grid--melody piano-roll-grid--virtualized"
                 style={{
-                  gridTemplateColumns: `repeat(${steps}, ${stepWidth}px)`,
-                  gridTemplateRows: `repeat(${rowCount}, ${rowHeight}px)`,
+                  width: `${steps * colSpan - gridGap}px`,
+                  height: `${rowCount * rowSpan - gridGap}px`,
                 }}
               >
                 {gridCells}

@@ -87,6 +87,26 @@ const melodyNoteLengthOptions = [
   { label: '1 Bar', steps: 16 },
 ] as const;
 type MelodyNoteLengthSteps = (typeof melodyNoteLengthOptions)[number]['steps'];
+type ComposerNotepadMode = 'lyrics' | 'memo';
+
+const COMPOSER_NOTEPAD_STORAGE_KEY = 'song-maker-composer-notepad';
+
+function readComposerNotepadDraft() {
+  if (typeof window === 'undefined') {
+    return { title: '', lyrics: '', memo: '' };
+  }
+
+  try {
+    const parsed = JSON.parse(window.localStorage.getItem(COMPOSER_NOTEPAD_STORAGE_KEY) ?? '{}');
+    return {
+      title: typeof parsed.title === 'string' ? parsed.title : '',
+      lyrics: typeof parsed.lyrics === 'string' ? parsed.lyrics : '',
+      memo: typeof parsed.memo === 'string' ? parsed.memo : '',
+    };
+  } catch {
+    return { title: '', lyrics: '', memo: '' };
+  }
+}
 
 const tabLabels: Record<ComposerTab, string> = {
   melody: '멜로디',
@@ -173,6 +193,12 @@ const tabOrder: ComposerTab[] = [
   'drums',
   'bass',
 ];
+const DEFAULT_OPEN_TABS: ComposerTab[] = ['melody', 'drums', 'bass'];
+
+function includeDefaultComposerTabs(tabs: ComposerTab[]) {
+  return tabOrder.filter((tab) => DEFAULT_OPEN_TABS.includes(tab) || tabs.includes(tab));
+}
+
 const tabPickerGroups: TabPickerGroup[] = [
   {
     title: '기본 파트',
@@ -375,7 +401,7 @@ function isSampledInstrumentTab(tab: ComposerTab): tab is SampledInstrumentKey {
 function readComposerTabDraft() {
   if (typeof window === 'undefined') {
     return {
-      openTabs: [] as ComposerTab[],
+      openTabs: DEFAULT_OPEN_TABS,
       openExtraTrackIds: [] as string[],
       activeTrackId: null as string | null,
     };
@@ -385,10 +411,12 @@ function readComposerTabDraft() {
     const rawValue = window.localStorage.getItem(COMPOSER_TAB_STORAGE_KEY);
     const parsed = rawValue ? JSON.parse(rawValue) : null;
 
+    const openTabs = Array.isArray(parsed?.openTabs)
+      ? parsed.openTabs.filter(isComposerTab)
+      : [];
+
     return {
-      openTabs: Array.isArray(parsed?.openTabs)
-        ? parsed.openTabs.filter(isComposerTab)
-        : [],
+      openTabs: includeDefaultComposerTabs(openTabs),
       openExtraTrackIds: Array.isArray(parsed?.openExtraTrackIds)
         ? parsed.openExtraTrackIds.filter((value: unknown): value is string => typeof value === 'string')
         : [],
@@ -397,7 +425,7 @@ function readComposerTabDraft() {
     };
   } catch {
     return {
-      openTabs: [] as ComposerTab[],
+      openTabs: DEFAULT_OPEN_TABS,
       openExtraTrackIds: [] as string[],
       activeTrackId: null as string | null,
     };
@@ -410,8 +438,8 @@ function getSubdivisionClassName(col: number) {
   }${col % 16 === 0 ? ' is-bar' : ''}`;
 }
 
-function isSharpNote(note: string) {
-  return note.includes('#') || note.includes('_sharp');
+function isSharpNote(note: unknown) {
+  return typeof note === 'string' && (note.includes('#') || note.includes('_sharp'));
 }
 
 export function Composer() {
@@ -424,10 +452,12 @@ export function Composer() {
   const markComposerTutorialCompleted = useAuthStore((state) => state.markComposerTutorialCompleted);
   const {
     bpm,
+    tempoAutomation,
     steps,
     noteLyrics,
     melody,
     melodyLengths,
+    melodyVelocities,
     violin,
     violinLengths,
     saxophone,
@@ -556,8 +586,18 @@ export function Composer() {
   );
   const [visitedTabs, setVisitedTabs] = useState<ComposerTab[]>([]);
   const [openTabsState, setOpenTabsState] = useState<ComposerTab[]>(
-    () => (newProjectRequested ? [] : readComposerTabDraft().openTabs)
+    () => (newProjectRequested ? DEFAULT_OPEN_TABS : readComposerTabDraft().openTabs)
   );
+
+  useEffect(() => {
+    setOpenTabsState((current) => {
+      const next = includeDefaultComposerTabs(current);
+      return next.length === current.length && next.every((tab, index) => tab === current[index])
+        ? current
+        : next;
+    });
+  }, []);
+
   const [openExtraTrackIds, setOpenExtraTrackIds] = useState<string[]>(
     () => (newProjectRequested ? [] : readComposerTabDraft().openExtraTrackIds)
   );
@@ -588,6 +628,9 @@ export function Composer() {
   const [isHelpOverlayEnabled, setIsHelpOverlayEnabled] = useState(false);
   const [activeHelpZone, setActiveHelpZone] = useState<ComposerHelpZone | null>(null);
   const [lyricsViewMode, setLyricsViewMode] = useState<LyricsViewMode>('notes');
+  const [isNotepadOpen, setIsNotepadOpen] = useState(true);
+  const [notepadMode, setNotepadMode] = useState<ComposerNotepadMode>('lyrics');
+  const [notepadDraft, setNotepadDraft] = useState(readComposerNotepadDraft);
   const [helpOverlayPosition, setHelpOverlayPosition] = useState({ x: 18, y: 126 });
   const [playedTutorialOnce, setPlayedTutorialOnce] = useState(false);
   const [tabPickerMenuPosition, setTabPickerMenuPosition] = useState<{
@@ -603,6 +646,7 @@ export function Composer() {
     guitar: 0,
     bass: 0,
   });
+  const [pitchedRollScrollTop, setPitchedRollScrollTop] = useState<Record<string, number>>({});
   const tutorialAdvanceTimeoutRef = useRef<number | null>(null);
   const lastAutoAdvancedStepRef = useRef<number | null>(null);
   const tutorialCameraTimeoutRef = useRef<number | null>(null);
@@ -650,12 +694,12 @@ export function Composer() {
     window.localStorage.setItem(
       COMPOSER_TAB_STORAGE_KEY,
       JSON.stringify({
-        openTabs: [],
+        openTabs: DEFAULT_OPEN_TABS,
         openExtraTrackIds: [],
         activeTrackId: null,
       })
     );
-    setOpenTabsState([]);
+    setOpenTabsState(DEFAULT_OPEN_TABS);
     setOpenExtraTrackIds([]);
     setActiveTrackId(null);
     setVisitedTabs([]);
@@ -695,6 +739,7 @@ export function Composer() {
     () => extraTracks.find((track) => track.id === activeTrackId) ?? null,
     [activeTrackId, extraTracks]
   );
+
   const melodyLyricNotes = useMemo(() => {
     const items: MelodyLyricNote[] = [];
 
@@ -855,6 +900,10 @@ export function Composer() {
     );
   }, [activeTrackId, openExtraTrackIds, openTabsState]);
 
+  useEffect(() => {
+    window.localStorage.setItem(COMPOSER_NOTEPAD_STORAGE_KEY, JSON.stringify(notepadDraft));
+  }, [notepadDraft]);
+
   const updateHelpOverlayPosition = (event: { clientX: number; clientY: number }) => {
     const cardWidth = 460;
     const cardHeight = 410;
@@ -1000,10 +1049,8 @@ export function Composer() {
         return;
       }
 
-      const { step, bpm: liveBpm, startedAt } = livePlayheadRef.current;
-      const stepDurationMs = (60 / Math.max(1, liveBpm) / 4) * 1000;
-      const progress = Math.min(1, Math.max(0, (performance.now() - startedAt) / stepDurationMs));
-      const visualStep = step + progress;
+      const { step } = livePlayheadRef.current;
+      const visualStep = step;
 
       livePianoPlayheadsRef.current.forEach((playhead) => {
         playhead.style.setProperty('--piano-step-index', `${visualStep}`);
@@ -1095,7 +1142,7 @@ export function Composer() {
         cachedLiveElements ??
         [
           ...document.querySelectorAll<HTMLElement>(
-            `.piano-roll-step-number[data-playhead-step="${highlightedStep}"], .composer-drum-step-number[data-playhead-step="${highlightedStep}"]`
+            `.piano-roll-step-number[data-playhead-step="${highlightedStep}"], .piano-roll-cell[data-playhead-step="${highlightedStep}"], .composer-drum-step-number[data-playhead-step="${highlightedStep}"]`
           ),
         ];
 
@@ -1123,11 +1170,13 @@ export function Composer() {
     () =>
       buildSongProjectSnapshot({
         bpm,
+        tempoAutomation,
         steps,
         noteLyrics,
         volumes,
         melody,
         melodyLengths,
+        melodyVelocities,
         violin,
         violinLengths,
         saxophone,
@@ -1143,12 +1192,14 @@ export function Composer() {
       bass,
       bassLengths,
       bpm,
+      tempoAutomation,
       drums,
       extraTracks,
       guitar,
       guitarLengths,
       melody,
       melodyLengths,
+      melodyVelocities,
       saxophone,
       saxophoneLengths,
       steps,
@@ -1624,6 +1675,14 @@ export function Composer() {
     setInstrument(nextInstrument);
   }, [activeTab, setInstrument]);
 
+  useEffect(() => {
+    livePianoPlayheadsRef.current = [];
+    liveSequencerPlayheadsRef.current = [];
+    liveScrollerPairsRef.current = [];
+    liveDrumScrollersRef.current = [];
+    liveStepElementCacheRef.current.clear();
+  }, [activeTab, activeTrackId]);
+
   const syncGuideQuery = useCallback(
     (open: boolean, stepIndex = guideStepIndex) => {
       const nextParams = new URLSearchParams(searchParams);
@@ -1695,6 +1754,37 @@ export function Composer() {
     [markVisitedTab, setActiveTab, setInstrument]
   );
 
+  const handleSendNotepadLyrics = useCallback(() => {
+    const lyricTokens = notepadDraft.lyrics.trim().split(/\s+/).filter(Boolean);
+    if (!melodyLyricNotes.length || !lyricTokens.length) {
+      setOpenTabsState((current) => tabOrder.filter((tab) => tab === 'lyrics' || current.includes(tab)));
+      activateTab('lyrics');
+      return;
+    }
+
+    melodyLyricNotes.forEach((item, index) => {
+      setMelodyLyric(item.row, item.col, lyricTokens[index] ?? '');
+    });
+    setOpenTabsState((current) => tabOrder.filter((tab) => tab === 'lyrics' || current.includes(tab)));
+    setLyricsViewMode('notes');
+    activateTab('lyrics');
+  }, [activateTab, melodyLyricNotes, notepadDraft.lyrics, setMelodyLyric]);
+
+  const handleExportNotepad = useCallback(() => {
+    const activeText = notepadMode === 'lyrics' ? notepadDraft.lyrics : notepadDraft.memo;
+    const heading = notepadDraft.title.trim() || '새 곡';
+    const section = notepadMode === 'lyrics' ? '가사' : '메모';
+    const blob = new Blob([`${heading}\n\n[${section}]\n${activeText}`], {
+      type: 'text/plain;charset=utf-8',
+    });
+    const url = URL.createObjectURL(blob);
+    const anchor = document.createElement('a');
+    anchor.href = url;
+    anchor.download = `${heading.replace(/[\\/:*?"<>|]/g, '_')}-${section}.txt`;
+    anchor.click();
+    URL.revokeObjectURL(url);
+  }, [notepadDraft, notepadMode]);
+
   const syncTabsToLoadedProject = useCallback(() => {
     const state = useSongStore.getState();
     const primaryTabs = tabOrder.filter((tab) => {
@@ -1718,8 +1808,7 @@ export function Composer() {
       }
     });
     const extraTrackIds = state.extraTracks.map((track) => track.id);
-    const nextPrimaryTabs: ComposerTab[] =
-      primaryTabs.length || extraTrackIds.length ? primaryTabs : [];
+    const nextPrimaryTabs = includeDefaultComposerTabs(primaryTabs);
 
     setOpenTabsState(nextPrimaryTabs);
     setOpenExtraTrackIds(extraTrackIds);
@@ -1832,6 +1921,10 @@ export function Composer() {
       }
 
       const tab = item.tab;
+      if (DEFAULT_OPEN_TABS.includes(tab)) {
+        return;
+      }
+
       const remainingTabs = tabOrder.filter(
         (candidate) =>
           candidate !== tab &&
@@ -1913,11 +2006,13 @@ export function Composer() {
     JSON.stringify(
       buildSongProjectSnapshot({
         bpm: useSongStore.getState().bpm,
+        tempoAutomation: useSongStore.getState().tempoAutomation,
         steps: useSongStore.getState().steps,
         noteLyrics: useSongStore.getState().noteLyrics,
         volumes: useSongStore.getState().volumes,
         melody: useSongStore.getState().melody,
         melodyLengths: useSongStore.getState().melodyLengths,
+        melodyVelocities: useSongStore.getState().melodyVelocities,
         violin: useSongStore.getState().violin,
         violinLengths: useSongStore.getState().violinLengths,
         saxophone: useSongStore.getState().saxophone,
@@ -2812,6 +2907,29 @@ export function Composer() {
     const bodyTopPadding = 8;
     const sidebarWidth = 68;
     const scrollLeft = pitchedRollScrollLeft[scrollKey] ?? 0;
+    const scrollTop = pitchedRollScrollTop[scrollKey] ?? 0;
+    const stepSpan = stepWidth + gridGap;
+    const rowSpan = rowHeight + gridGap;
+    const viewportStepCount = Math.ceil(
+      Math.max(1280, typeof window === 'undefined' ? 1920 : window.innerWidth) / stepSpan
+    );
+    const firstVisibleStep = Math.floor(scrollLeft / stepSpan);
+    const visibleStepStart = Math.max(0, firstVisibleStep - 8);
+    const visibleStepEnd = Math.min(steps, firstVisibleStep + viewportStepCount + 8);
+    const visibleSteps = Array.from(
+      { length: Math.max(0, visibleStepEnd - visibleStepStart) },
+      (_, index) => visibleStepStart + index
+    );
+    const viewportRowCount = Math.ceil(
+      Math.max(600, typeof window === 'undefined' ? 900 : window.innerHeight) / rowSpan
+    );
+    const firstVisibleRow = Math.floor(scrollTop / rowSpan);
+    const visibleRowStart = Math.max(0, firstVisibleRow - 5);
+    const visibleRowEnd = Math.min(notes.length, firstVisibleRow + viewportRowCount + 5);
+    const visibleRows = Array.from(
+      { length: Math.max(0, visibleRowEnd - visibleRowStart) },
+      (_, index) => visibleRowStart + index
+    );
     const showTopbar = Boolean(options.showNoteLengthControls || options.showChordControls);
     const noteLengthSteps = options.noteLengthSteps ?? 4;
     const rollStyle = {
@@ -2927,15 +3045,33 @@ export function Composer() {
           <div
             className="piano-roll-melody-scroller"
             onScroll={(event) => {
-              if (isPlayingRef.current) {
-                return;
-              }
-
               const nextScrollLeft = event.currentTarget.scrollLeft;
-              setPitchedRollScrollLeft((current) => ({
-                ...current,
-                [scrollKey]: nextScrollLeft,
-              }));
+              setPitchedRollScrollLeft((current) => {
+                const nextStoredScrollLeft = isPlayingRef.current
+                  ? Math.floor(nextScrollLeft / (stepSpan * 4)) * stepSpan * 4
+                  : nextScrollLeft;
+
+                if ((current[scrollKey] ?? 0) === nextStoredScrollLeft) {
+                  return current;
+                }
+
+                return {
+                  ...current,
+                  [scrollKey]: nextStoredScrollLeft,
+                };
+              });
+              const nextScrollTop = event.currentTarget.scrollTop;
+              setPitchedRollScrollTop((current) => {
+                const nextStoredScrollTop = Math.floor(nextScrollTop / (rowSpan * 3)) * rowSpan * 3;
+                if ((current[scrollKey] ?? 0) === nextStoredScrollTop) {
+                  return current;
+                }
+
+                return {
+                  ...current,
+                  [scrollKey]: nextStoredScrollTop,
+                };
+              });
             }}
           >
             <div className="piano-roll-sidebar">
@@ -2971,14 +3107,16 @@ export function Composer() {
                 />
 
                 <div
-                  className="piano-roll-grid piano-roll-grid--melody"
+                  className="piano-roll-grid piano-roll-grid--melody piano-roll-grid--virtualized"
                   style={{
-                    gridTemplateColumns: `repeat(${steps}, ${stepWidth}px)`,
-                    gridTemplateRows: `repeat(${notes.length}, ${rowHeight}px)`,
+                    width: `${steps * stepSpan - gridGap}px`,
+                    height: `${notes.length * rowSpan - gridGap}px`,
                   }}
                 >
-                  {notes.flatMap((note, row) =>
-                    Array.from({ length: steps }).map((_, col) => {
+                  {visibleRows.flatMap((row) => {
+                    const note = notes[row];
+                    return (
+                    visibleSteps.map((col) => {
                       const noteInfo = options.melodyLengths
                         ? findMelodyNoteForTutorial(
                             grid[row] ?? [],
@@ -2995,6 +3133,10 @@ export function Composer() {
                       const cellStyle = {
                         '--cell-accent': colors[row % colors.length],
                         '--note-span-steps': `${noteInfo?.length ?? 1}`,
+                        left: `${col * stepSpan}px`,
+                        top: `${row * rowSpan}px`,
+                        width: `${stepWidth}px`,
+                        height: `${rowHeight}px`,
                       } as CSSProperties;
 
                       return (
@@ -3031,7 +3173,8 @@ export function Composer() {
                         </button>
                       );
                     })
-                  )}
+                    );
+                  })}
                 </div>
               </div>
             </div>
@@ -3227,7 +3370,7 @@ export function Composer() {
                   >
                     <span className="composer-tab-button-inner">
                       <span className="composer-tab-label">{item.label}</span>
-                      {!tutorialRequested ? (
+                      {!tutorialRequested && !DEFAULT_OPEN_TABS.includes(tab) ? (
                         <span
                           role="button"
                           tabIndex={0}
@@ -3464,6 +3607,91 @@ export function Composer() {
           </div>
         </section>
       ) : null}
+
+      <aside
+        className={`composer-notepad${isNotepadOpen ? ' is-open' : ' is-collapsed'}`}
+        aria-label="가사와 메모"
+      >
+        <div className="composer-notepad-head">
+          {isNotepadOpen ? <strong>가사 · 메모</strong> : <span>가사 · 메모</span>}
+          <button
+            type="button"
+            className="composer-notepad-toggle"
+            onClick={() => setIsNotepadOpen((current) => !current)}
+            aria-label={isNotepadOpen ? '가사 메모 접기' : '가사 메모 펼치기'}
+            title={isNotepadOpen ? '접기' : '펼치기'}
+          >
+            {isNotepadOpen ? '›' : '‹'}
+          </button>
+        </div>
+
+        {isNotepadOpen ? (
+          <div className="composer-notepad-body">
+            <div className="composer-notepad-tabs" role="tablist" aria-label="작성 종류">
+              <button
+                type="button"
+                className={notepadMode === 'lyrics' ? 'is-active' : ''}
+                onClick={() => setNotepadMode('lyrics')}
+                role="tab"
+                aria-selected={notepadMode === 'lyrics'}
+              >
+                가사
+              </button>
+              <button
+                type="button"
+                className={notepadMode === 'memo' ? 'is-active' : ''}
+                onClick={() => setNotepadMode('memo')}
+                role="tab"
+                aria-selected={notepadMode === 'memo'}
+              >
+                메모
+              </button>
+            </div>
+
+            <input
+              className="composer-notepad-title"
+              value={notepadDraft.title}
+              onChange={(event) =>
+                setNotepadDraft((current) => ({ ...current, title: event.target.value }))
+              }
+              placeholder="곡 제목"
+              maxLength={80}
+            />
+
+            <textarea
+              className="composer-notepad-editor"
+              value={notepadMode === 'lyrics' ? notepadDraft.lyrics : notepadDraft.memo}
+              onChange={(event) => {
+                const value = event.target.value;
+                setNotepadDraft((current) => ({
+                  ...current,
+                  [notepadMode]: value,
+                }));
+              }}
+              placeholder={
+                notepadMode === 'lyrics'
+                  ? '떠오르는 가사를 자유롭게 적어두세요.'
+                  : '곡의 분위기, 코드, 편곡 아이디어를 기록하세요.'
+              }
+            />
+
+            <div className="composer-notepad-actions">
+              {notepadMode === 'lyrics' ? (
+                <button type="button" onClick={handleSendNotepadLyrics}>
+                  작사 탭으로 보내기
+                </button>
+              ) : (
+                <button type="button" onClick={() => setNotepadMode('lyrics')}>
+                  가사로 전환
+                </button>
+              )}
+              <button type="button" onClick={handleExportNotepad}>
+                내보내기
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </aside>
 
       <main
         ref={mainViewportRef}

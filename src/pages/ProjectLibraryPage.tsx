@@ -210,10 +210,10 @@ export default function ProjectLibraryPage() {
       <main className="library-shell">
         <section className="library-hero">
           <div>
-            <span>PROJECT LIBRARY</span>
-            <h1>작업, 공유곡, 협업을 한 곳에서 관리하세요.</h1>
+            <span>MY MUSIC</span>
+            <h1>내 음악을 한 곳에서 관리하세요.</h1>
             <p>
-              저장한 작곡 프로젝트를 다시 열고, 공유한 곡과 진행 중인 협업을 빠르게 이어갈 수 있습니다.
+              저장한 작곡 프로젝트와 공유한 곡을 다시 열고 이어서 작업할 수 있습니다.
             </p>
           </div>
           <button type="button" onClick={() => navigate('/composer?new=1')}>

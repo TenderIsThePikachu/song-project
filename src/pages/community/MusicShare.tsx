@@ -8,6 +8,7 @@ import {
   MUSIC_SHARE_CATEGORIES,
   MUSIC_SHARE_TAGS,
   buildSharedTrackCard,
+  getMusicShareTrackImage,
   type MusicShareCategory,
   type MusicShareTrackCard,
 } from '../../dummy/musicShareLibrary';
@@ -48,7 +49,82 @@ function formatCount(value: number) {
     return `${(value / 10000).toFixed(1)}만`;
   }
 
+  if (value >= 1000) {
+    return `${(value / 1000).toFixed(1).replace(/\.0$/, '')}K`;
+  }
+
   return value.toLocaleString('ko-KR');
+}
+
+const MUSIC_SHARE_DURATIONS: Record<string, string> = {
+  'share-base-1': '2:34',
+  'share-base-2': '3:06',
+  'share-base-3': '2:42',
+  'share-base-4': '3:28',
+  'share-base-5': '2:51',
+  'share-base-6': '2:08',
+  'share-base-7': '3:12',
+  'share-base-8': '1:45',
+  'share-base-9': '2:19',
+};
+
+const MUSIC_SHARE_BASE_METRICS: Record<
+  string,
+  { likeCount: number; commentCount: number; viewCount: number; downloadCount: number }
+> = {
+  'share-base-1': { likeCount: 32, commentCount: 5, viewCount: 1200, downloadCount: 48 },
+  'share-base-2': { likeCount: 62, commentCount: 11, viewCount: 2800, downloadCount: 91 },
+  'share-base-3': { likeCount: 41, commentCount: 6, viewCount: 1800, downloadCount: 61 },
+  'share-base-4': { likeCount: 37, commentCount: 7, viewCount: 1300, downloadCount: 45 },
+  'share-base-5': { likeCount: 44, commentCount: 6, viewCount: 1700, downloadCount: 57 },
+  'share-base-6': { likeCount: 28, commentCount: 4, viewCount: 1500, downloadCount: 52 },
+  'share-base-7': { likeCount: 56, commentCount: 8, viewCount: 2100, downloadCount: 73 },
+  'share-base-8': { likeCount: 20, commentCount: 3, viewCount: 856, downloadCount: 24 },
+  'share-base-9': { likeCount: 49, commentCount: 5, viewCount: 1900, downloadCount: 68 },
+};
+
+function getTrackDuration(trackId: string) {
+  if (MUSIC_SHARE_DURATIONS[trackId]) {
+    return MUSIC_SHARE_DURATIONS[trackId];
+  }
+
+  const hash = Array.from(trackId).reduce((sum, character) => sum + character.charCodeAt(0), 0);
+  const seconds = 105 + (hash % 106);
+  return `${Math.floor(seconds / 60)}:${String(seconds % 60).padStart(2, '0')}`;
+}
+
+type MusicShareMetricIconName = 'heart' | 'comment' | 'play' | 'download';
+
+function MusicShareMetricIcon({ name }: { name: MusicShareMetricIconName }) {
+  if (name === 'heart') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M20.8 5.9a5.4 5.4 0 0 0-7.6 0L12 7.1l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6L12 22l8.8-8.5a5.4 5.4 0 0 0 0-7.6Z" />
+      </svg>
+    );
+  }
+
+  if (name === 'comment') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M21 11.5a8.5 8.5 0 0 1-9 8.5 9.3 9.3 0 0 1-3.8-.8L3 21l1.7-4.5A8.5 8.5 0 1 1 21 11.5Z" />
+      </svg>
+    );
+  }
+
+  if (name === 'play') {
+    return (
+      <svg viewBox="0 0 24 24" aria-hidden="true">
+        <path d="m8 5 11 7-11 7V5Z" />
+      </svg>
+    );
+  }
+
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3v12m0 0 4-4m-4 4-4-4M5 19v2h14v-2" />
+    </svg>
+  );
 }
 
 function downloadBlob(blob: Blob, filename: string) {
@@ -307,10 +383,15 @@ export default function MusicShare() {
   return (
     <div className="music-share-page">
       <SiteHeader activeSection="community" />
+      <div className="music-share-background-copy" aria-hidden="true">
+        <span className="is-share">Share<br />your sound</span>
+        <span className="is-together">Music brings<br />us together ♪</span>
+        <span className="is-ideas">Good<br />Ideas<br />Better<br />Music</span>
+        <span className="is-lives">Music<br />Lives<br />Here</span>
+      </div>
 
       <main className="music-share-shell">
         <CommunitySpaceNav active="music" />
-
         <aside className="music-share-sidebar">
           <div className="music-share-sidebar-head">
             <span className="music-share-sidebar-kicker">MUSIC SHARE</span>
@@ -347,6 +428,9 @@ export default function MusicShare() {
             <div>
               <span className="music-share-content-kicker">COMMUNITY MUSIC</span>
               <h1 className="music-share-title">커뮤니티 음악 공유</h1>
+              <p className="music-share-description">
+                다른 유저의 아이디어와 데모를 듣고 새로운 영감을 받아보세요.
+              </p>
             </div>
             <span className="music-share-count">총 {filteredTracks.length}곡</span>
           </div>
@@ -379,6 +463,15 @@ export default function MusicShare() {
                   </option>
                 ))}
               </select>
+
+              <button
+                type="button"
+                className="music-share-create-button"
+                onClick={() => navigate('/composer')}
+              >
+                <span aria-hidden="true">＋ ♪</span>
+                공유곡 만들기
+              </button>
             </div>
 
             <div className="music-share-tag-row" role="tablist" aria-label="음악 필터">
@@ -397,15 +490,24 @@ export default function MusicShare() {
 
           <div className="music-share-grid">
             {visibleTracks.map((track) => {
-              const metrics = trackMetricsById[track.id] ?? {
+              const metricChanges = trackMetricsById[track.id] ?? {
                 likeCount: 0,
                 viewCount: 0,
                 downloadCount: 0,
               };
-              const commentCount = trackComments.filter((comment) => comment.trackId === track.id)
-                .length;
+              const baseMetrics = MUSIC_SHARE_BASE_METRICS[track.id];
+              const metrics = {
+                likeCount: (baseMetrics?.likeCount ?? 0) + metricChanges.likeCount,
+                viewCount: (baseMetrics?.viewCount ?? 0) + metricChanges.viewCount,
+                downloadCount: (baseMetrics?.downloadCount ?? 0) + metricChanges.downloadCount,
+              };
+              const commentCount =
+                (baseMetrics?.commentCount ?? 0) +
+                trackComments.filter((comment) => comment.trackId === track.id).length;
               const isSaved = savedTrackIds.includes(track.id);
               const isLiked = likedTrackIds.includes(track.id);
+              const coverImageUrl = getMusicShareTrackImage(track);
+              const duration = getTrackDuration(track.id);
 
               return (
                 <article
@@ -421,12 +523,12 @@ export default function MusicShare() {
                     <div
                       className="music-share-card-art"
                       style={{
-                        backgroundImage: track.imageUrl
-                          ? `url(${track.imageUrl})`
-                          : track.palette,
+                        backgroundImage: `url(${coverImageUrl})`,
                       }}
                       aria-hidden="true"
-                    />
+                    >
+                      <span className="music-share-card-duration">{duration}</span>
+                    </div>
                     <div className="music-share-card-header">
                       <div className="music-share-card-meta">
                         {track.isSharedProject ? (
@@ -439,13 +541,23 @@ export default function MusicShare() {
                     <div className="music-share-card-footer">
                       <strong className="music-share-card-title">{track.title}</strong>
                       <span className="music-share-card-caption">{track.progression}</span>
-                      <span className="music-share-card-reference">{track.reference}</span>
-                      <TrackWaveform
-                        className="music-share-card-waveform"
-                        project={track.project}
-                        seed={track.id}
-                        bars={34}
-                      />
+                      <span className="music-share-card-tags">
+                        {track.tags.slice(0, 3).map((tag) => (
+                          <span key={`${track.id}-${tag}`}>#{tag}</span>
+                        ))}
+                      </span>
+                      <span className="music-share-card-wave-row">
+                        <span className="music-share-card-play-dot">
+                          <MusicShareMetricIcon name="play" />
+                        </span>
+                        <TrackWaveform
+                          className="music-share-card-waveform"
+                          project={track.project}
+                          seed={track.id}
+                          bars={54}
+                        />
+                        <span className="music-share-card-time">0:00 / {duration}</span>
+                      </span>
                     </div>
                   </button>
 
@@ -464,20 +576,11 @@ export default function MusicShare() {
                   <div className="music-share-card-stats">
                     <button
                       type="button"
-                      className="music-share-card-stat-button"
-                      onClick={() => handleOpenTrack(track)}
-                      aria-label={`${track.title} 열기`}
-                    >
-                      <span className="music-share-card-stat-icon">◔</span>
-                      <span>{formatCount(metrics.viewCount)}</span>
-                    </button>
-                    <button
-                      type="button"
                       className={`music-share-card-stat-button${isLiked ? ' is-active' : ''}`}
                       onClick={() => handleToggleTrackLike(track)}
                       aria-label={`${track.title} 좋아요`}
                     >
-                      <span className="music-share-card-stat-icon">♡</span>
+                      <span className="music-share-card-stat-icon"><MusicShareMetricIcon name="heart" /></span>
                       <span>{formatCount(metrics.likeCount)}</span>
                     </button>
                     <button
@@ -486,8 +589,17 @@ export default function MusicShare() {
                       onClick={() => setCommentTrackId(track.id)}
                       aria-label={`${track.title} 댓글`}
                     >
-                      <span className="music-share-card-stat-icon">⌁</span>
+                      <span className="music-share-card-stat-icon"><MusicShareMetricIcon name="comment" /></span>
                       <span>{formatCount(commentCount)}</span>
+                    </button>
+                    <button
+                      type="button"
+                      className="music-share-card-stat-button"
+                      onClick={() => handleOpenTrack(track)}
+                      aria-label={`${track.title} 재생`}
+                    >
+                      <span className="music-share-card-stat-icon"><MusicShareMetricIcon name="play" /></span>
+                      <span>{formatCount(metrics.viewCount)}</span>
                     </button>
                     <button
                       type="button"
@@ -495,7 +607,7 @@ export default function MusicShare() {
                       onClick={() => handleDownloadTrack(track)}
                       aria-label={`${track.title} 다운로드`}
                     >
-                      <span className="music-share-card-stat-icon">↓</span>
+                      <span className="music-share-card-stat-icon"><MusicShareMetricIcon name="download" /></span>
                       <span>{formatCount(metrics.downloadCount)}</span>
                     </button>
                   </div>
@@ -549,14 +661,6 @@ export default function MusicShare() {
           </div>
         </section>
       </main>
-
-      <button
-        type="button"
-        className="music-share-floating-action"
-        onClick={() => navigate('/composer')}
-      >
-        공유곡 만들기
-      </button>
 
       {selectedTrack ? (
         <div className="music-share-comment-overlay" onClick={() => setCommentTrackId(null)}>

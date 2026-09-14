@@ -718,6 +718,349 @@
   gap: 10px;
 }
 
+.transport-ai-generating {
+  position: absolute;
+  inset: 0;
+  z-index: 4;
+  display: grid;
+  place-items: center;
+  gap: 14px;
+  padding: 28px;
+  overflow: hidden;
+  border-radius: inherit;
+  background:
+    radial-gradient(circle at 50% 32%, rgba(94, 234, 212, 0.22), transparent 28%),
+    radial-gradient(circle at 28% 72%, rgba(129, 140, 248, 0.18), transparent 30%),
+    linear-gradient(145deg, rgba(9, 13, 22, 0.96), rgba(3, 6, 12, 0.98));
+  text-align: center;
+  box-shadow: inset 0 0 0 1px rgba(125, 255, 220, 0.12);
+}
+
+.transport-ai-scan {
+  position: absolute;
+  inset: -40% -20%;
+  background:
+    linear-gradient(
+      115deg,
+      transparent 0 38%,
+      rgba(125, 255, 220, 0.16) 45%,
+      rgba(141, 133, 255, 0.2) 50%,
+      transparent 58% 100%
+    );
+  animation: transportAiScan 2.25s linear infinite;
+  pointer-events: none;
+}
+
+.transport-ai-notes {
+  position: absolute;
+  inset: 20px 24px auto;
+  display: flex;
+  justify-content: space-between;
+  color: rgba(194, 255, 238, 0.7);
+  font-size: 18px;
+  font-weight: 900;
+  pointer-events: none;
+}
+
+.transport-ai-notes span {
+  animation: transportAiFloat 2.4s ease-in-out infinite;
+}
+
+.transport-ai-notes span:nth-child(2) {
+  animation-delay: 0.18s;
+}
+
+.transport-ai-notes span:nth-child(3) {
+  animation-delay: 0.36s;
+}
+
+.transport-ai-notes span:nth-child(4) {
+  animation-delay: 0.54s;
+}
+
+.transport-ai-notes span:nth-child(5) {
+  animation-delay: 0.72s;
+}
+
+.transport-ai-orb {
+  position: relative;
+  display: grid;
+  place-items: center;
+  width: 116px;
+  height: 116px;
+  border-radius: 999px;
+  background:
+    radial-gradient(circle at 38% 30%, #f6fffb 0 8%, transparent 9%),
+    radial-gradient(circle at 50% 50%, rgba(94, 234, 212, 0.95), rgba(42, 188, 151, 0.18) 52%, transparent 68%);
+  box-shadow:
+    0 0 42px rgba(45, 220, 175, 0.42),
+    0 0 88px rgba(129, 140, 248, 0.2);
+  animation: transportAiPulse 1.8s ease-in-out infinite;
+}
+
+.transport-ai-orb span {
+  position: absolute;
+  inset: -8px;
+  border: 1px solid rgba(136, 255, 223, 0.2);
+  border-radius: inherit;
+  animation: transportAiRing 2.2s ease-out infinite;
+}
+
+.transport-ai-orb span:nth-child(2) {
+  animation-delay: 0.55s;
+}
+
+.transport-ai-orb span:nth-child(3) {
+  animation-delay: 1.1s;
+}
+
+.transport-ai-generating strong {
+  position: relative;
+  z-index: 1;
+  color: #f7fffb;
+  font-size: 21px;
+  font-weight: 1000;
+  letter-spacing: -0.02em;
+}
+
+.transport-ai-generating p {
+  position: relative;
+  z-index: 1;
+  max-width: 300px;
+  margin: -6px auto 0;
+  color: #b6c9d4;
+  font-size: 13px;
+  line-height: 1.65;
+}
+
+.transport-ai-wave {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 5px;
+  height: 42px;
+}
+
+.transport-ai-wave span {
+  width: 5px;
+  height: 18px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #7dffdf, #7aa8ff);
+  box-shadow: 0 0 14px rgba(125, 255, 223, 0.32);
+  animation: transportAiWave 0.9s ease-in-out infinite;
+}
+
+.transport-ai-steps {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 8px;
+}
+
+.transport-ai-steps span {
+  padding: 7px 10px;
+  border: 1px solid rgba(125, 255, 220, 0.18);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.05);
+  color: #dffbf3;
+  font-size: 11px;
+  font-weight: 900;
+}
+
+.transport-ai-complete {
+  position: fixed;
+  right: 24px;
+  bottom: 104px;
+  z-index: 90;
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 14px;
+  width: min(360px, calc(100vw - 32px));
+  padding: 16px;
+  overflow: hidden;
+  border: 1px solid rgba(125, 255, 220, 0.28);
+  border-radius: 22px;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(125, 255, 220, 0.2), transparent 34%),
+    linear-gradient(145deg, rgba(15, 23, 42, 0.98), rgba(4, 9, 18, 0.98));
+  color: #f8fffc;
+  box-shadow: 0 24px 70px rgba(3, 7, 18, 0.42);
+  animation: transportAiCompleteIn 0.36s ease-out both;
+}
+
+.transport-ai-complete-orb {
+  position: relative;
+  width: 46px;
+  height: 46px;
+  border-radius: 999px;
+  background: linear-gradient(135deg, #5eead4, #22c55e);
+  box-shadow: 0 0 30px rgba(94, 234, 212, 0.42);
+}
+
+.transport-ai-complete-orb::before {
+  content: "✓";
+  position: absolute;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  color: #042016;
+  font-size: 24px;
+  font-weight: 1000;
+}
+
+.transport-ai-complete-orb span,
+.transport-ai-complete-burst span {
+  position: absolute;
+  pointer-events: none;
+}
+
+.transport-ai-complete-orb span {
+  inset: -6px;
+  border: 1px solid rgba(125, 255, 220, 0.28);
+  border-radius: inherit;
+  animation: transportAiRing 1.6s ease-out infinite;
+}
+
+.transport-ai-complete-orb span:nth-child(2) {
+  animation-delay: 0.45s;
+}
+
+.transport-ai-complete-copy {
+  position: relative;
+  z-index: 1;
+  display: grid;
+  gap: 4px;
+}
+
+.transport-ai-complete-copy strong {
+  color: #ffffff;
+  font-size: 15px;
+  font-weight: 1000;
+}
+
+.transport-ai-complete-copy span {
+  color: #bad0db;
+  font-size: 12px;
+  line-height: 1.55;
+}
+
+.transport-ai-complete-wave {
+  grid-column: 1 / -1;
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  height: 22px;
+}
+
+.transport-ai-complete-wave i {
+  flex: 1;
+  height: 8px;
+  border-radius: 999px;
+  background: linear-gradient(180deg, #7dffdf, #7aa8ff);
+  animation: transportAiWave 0.86s ease-in-out infinite;
+}
+
+.transport-ai-complete-burst {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.transport-ai-complete-burst span {
+  top: 18px;
+  left: 22px;
+  width: 5px;
+  height: 5px;
+  border-radius: 50%;
+  background: #8fffe7;
+  transform: rotate(calc(var(--burst-index, 0) * 45deg)) translateX(42px);
+  animation: transportAiSpark 0.9s ease-out both;
+}
+
+.transport-ai-complete-burst span:nth-child(1) { --burst-index: 0; }
+.transport-ai-complete-burst span:nth-child(2) { --burst-index: 1; }
+.transport-ai-complete-burst span:nth-child(3) { --burst-index: 2; }
+.transport-ai-complete-burst span:nth-child(4) { --burst-index: 3; }
+.transport-ai-complete-burst span:nth-child(5) { --burst-index: 4; }
+.transport-ai-complete-burst span:nth-child(6) { --burst-index: 5; }
+.transport-ai-complete-burst span:nth-child(7) { --burst-index: 6; }
+.transport-ai-complete-burst span:nth-child(8) { --burst-index: 7; }
+
+@keyframes transportAiScan {
+  from {
+    transform: translateX(-36%);
+  }
+  to {
+    transform: translateX(36%);
+  }
+}
+
+@keyframes transportAiFloat {
+  0%, 100% {
+    opacity: 0.45;
+    transform: translateY(0) scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: translateY(-10px) scale(1.08);
+  }
+}
+
+@keyframes transportAiPulse {
+  0%, 100% {
+    transform: scale(0.96);
+  }
+  50% {
+    transform: scale(1.04);
+  }
+}
+
+@keyframes transportAiRing {
+  from {
+    opacity: 0.7;
+    transform: scale(0.82);
+  }
+  to {
+    opacity: 0;
+    transform: scale(1.42);
+  }
+}
+
+@keyframes transportAiWave {
+  0%, 100% {
+    transform: scaleY(0.45);
+  }
+  50% {
+    transform: scaleY(1.35);
+  }
+}
+
+@keyframes transportAiCompleteIn {
+  from {
+    opacity: 0;
+    transform: translateY(18px) scale(0.96);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0) scale(1);
+  }
+}
+
+@keyframes transportAiSpark {
+  from {
+    opacity: 1;
+    transform: rotate(calc(var(--burst-index, 0) * 45deg)) translateX(12px) scale(0.6);
+  }
+  to {
+    opacity: 0;
+    transform: rotate(calc(var(--burst-index, 0) * 45deg)) translateX(58px) scale(1.1);
+  }
+}
+
 .transport-button--dna {
   border-color: rgba(104, 241, 204, 0.36);
   background:

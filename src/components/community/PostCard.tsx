@@ -1,151 +1,65 @@
 import type { Post } from '../../types/community';
 
-type PostCardProps = {
-  post: Post;
-  rank: number;
-  onClick: () => void;
-};
+type PostCardProps = { post: Post; rank: number; onClick: () => void };
 
-function getCategoryTone(category?: string) {
-  if (!category) {
-    return 'slate';
-  }
-
-  if (category.includes('질문')) {
-    return 'indigo';
-  }
-
-  if (category.includes('정보')) {
-    return 'mint';
-  }
-
-  if (category.includes('장비')) {
-    return 'amber';
-  }
-
-  if (category.includes('작곡')) {
-    return 'violet';
-  }
-
-  if (category.includes('피드백')) {
-    return 'rose';
-  }
-
-  return 'slate';
-}
-
-function formatCount(value: number | undefined) {
-  return (value ?? 0).toLocaleString('ko-KR');
-}
+const ROW_IMAGES = [
+  '/landing-assets/emotional-bridge.jpg', '/landing-assets/shared-fallback-pink-sketch.jpg',
+  '/landing-assets/shared-fallback-dream.jpg', '/landing-assets/shared-fallback-film.jpg',
+  '/landing-assets/shared-fallback-groove.jpg', '/landing-assets/shared-fallback-jazz.jpg',
+];
 
 function formatRelativeTime(timestamp: number) {
   const diff = Date.now() - timestamp;
-  const minute = 1000 * 60;
-  const hour = minute * 60;
-  const day = hour * 24;
-
-  if (diff < hour) {
-    return `${Math.max(1, Math.floor(diff / minute))}분 전`;
-  }
-
-  if (diff < day) {
-    return `${Math.max(1, Math.floor(diff / hour))}시간 전`;
-  }
-
-  if (diff < day * 7) {
-    return `${Math.max(1, Math.floor(diff / day))}일 전`;
-  }
-
-  return new Date(timestamp).toLocaleDateString('ko-KR', {
-    month: 'numeric',
-    day: 'numeric',
-  });
+  const hour = 60 * 60 * 1000;
+  const day = 24 * hour;
+  if (diff < hour) return `${Math.max(1, Math.floor(diff / 60000))}분 전`;
+  if (diff < day) return `${Math.max(1, Math.floor(diff / hour))}시간 전`;
+  if (diff < day * 7) return `${Math.max(1, Math.floor(diff / day))}일 전`;
+  return new Date(timestamp).toLocaleDateString('ko-KR', { month: 'numeric', day: 'numeric' });
 }
 
-function EyeIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="community-post-stat-icon">
-      <path
-        d="M1.4 8s2.2-4 6.6-4 6.6 4 6.6 4-2.2 4-6.6 4-6.6-4-6.6-4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-      />
-      <circle cx="8" cy="8" r="2.1" fill="none" stroke="currentColor" strokeWidth="1.2" />
-    </svg>
-  );
-}
-
-function CommentIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="community-post-stat-icon">
-      <path
-        d="M3 3.5h10v6.2H7.6L4.7 12V9.7H3z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
-}
-
-function HeartIcon() {
-  return (
-    <svg viewBox="0 0 16 16" aria-hidden="true" className="community-post-stat-icon">
-      <path
-        d="M8 13.1 2.8 8.4a3.1 3.1 0 0 1 4.4-4.4L8 4.8l.8-.8A3.1 3.1 0 0 1 13.2 8.4Z"
-        fill="none"
-        stroke="currentColor"
-        strokeWidth="1.2"
-        strokeLinejoin="round"
-      />
-    </svg>
-  );
+function StatIcon({ type }: { type: 'heart' | 'comment' | 'view' }) {
+  if (type === 'heart') return <svg viewBox="0 0 20 20"><path d="M10 16.4 3.5 10.5A4 4 0 0 1 9.2 4.9l.8.8.8-.8a4 4 0 0 1 5.7 5.6Z" /></svg>;
+  if (type === 'comment') return <svg viewBox="0 0 20 20"><path d="M4 4.5h12v8H9l-4 3v-3H4Z" /></svg>;
+  return <svg viewBox="0 0 20 20"><path d="M2.5 10s2.5-4.5 7.5-4.5 7.5 4.5 7.5 4.5-2.5 4.5-7.5 4.5S2.5 10 2.5 10Z" /><circle cx="10" cy="10" r="2.2" /></svg>;
 }
 
 export default function PostCard({ post, rank, onClick }: PostCardProps) {
-  const tone = getCategoryTone(post.category);
+  const isMusicPost = post.category?.includes('음악 공유');
 
   return (
-    <button
-      type="button"
-      className="community-post-row"
-      onClick={onClick}
-      aria-label={`${post.category ?? '게시글'} ${post.title}`}
-    >
-      <span className={`community-post-rank${rank <= 3 ? ' is-top' : ''}`}>
-        {String(rank).padStart(2, '0')}
-      </span>
-
+    <button type="button" className="community-post-row" onClick={onClick}>
+      <span className="community-post-thumbnail" style={{ backgroundImage: `url(${ROW_IMAGES[(rank - 1) % ROW_IMAGES.length]})` }} />
       <span className="community-post-main">
         <span className="community-post-main-head">
-          <span className={`community-post-tag community-post-tag--${tone}`}>
-            {post.category ?? '자유'}
-          </span>
+          <span className="community-post-tag">{post.category ?? '자유'}</span>
           <span className="community-post-title">{post.title}</span>
         </span>
-
-        <span className="community-post-meta">
-          <span>{post.authorName}</span>
-          <span>{formatRelativeTime(post.createdAt)}</span>
-        </span>
+        <span className="community-post-excerpt">{post.content}</span>
+        {isMusicPost ? (
+          <span className="community-post-audio" aria-hidden="true">
+            <b>▶</b>
+            <span>{Array.from({ length: 36 }, (_, index) => <i key={index} />)}</span>
+            <small>{rank === 1 ? '3:24' : '2:48'}</small>
+          </span>
+        ) : null}
       </span>
-
+      <span className="community-post-author">
+        <span className="community-post-author-head">
+          <i
+            aria-hidden="true"
+            style={{ backgroundImage: `url(${ROW_IMAGES[rank % ROW_IMAGES.length]})` }}
+          />
+          <b>{post.authorName}<small> · {formatRelativeTime(post.createdAt)}</small></b>
+        </span>
+        <span className="community-post-tags">{post.tags?.slice(0, 3).map((tag) => <i key={tag}>#{tag}</i>)}</span>
+      </span>
       <span className="community-post-stats">
-        <span className="community-post-stat">
-          <EyeIcon />
-          <strong>{formatCount(post.viewCount)}</strong>
-        </span>
-        <span className="community-post-stat">
-          <CommentIcon />
-          <strong>{formatCount(post.commentCount)}</strong>
-        </span>
-        <span className="community-post-stat is-like">
-          <HeartIcon />
-          <strong>{formatCount(post.likeCount)}</strong>
-        </span>
+        <span><StatIcon type="heart" />{(post.likeCount ?? 0).toLocaleString('ko-KR')}</span>
+        <span><StatIcon type="comment" />{(post.commentCount ?? 0).toLocaleString('ko-KR')}</span>
+        <span><StatIcon type="view" />{(post.viewCount ?? 0).toLocaleString('ko-KR')}</span>
       </span>
+      <span className="community-post-more">⋮</span>
     </button>
   );
 }

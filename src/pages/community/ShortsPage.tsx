@@ -933,7 +933,6 @@ export default function ShortsPage() {
           <div className="shorts-player-toolbar">
             <div className="shorts-toolbar-left">
               <strong>숏폼</strong>
-              <span>휠이나 오른쪽 버튼으로 한 편씩 넘겨보세요.</span>
             </div>
 
             <div className="shorts-filter-row" role="tablist" aria-label="숏폼 필터">

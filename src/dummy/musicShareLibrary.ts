@@ -30,6 +30,31 @@ export type MusicShareTrackCard = {
   project?: SongProject;
 };
 
+export const MUSIC_SHARE_FALLBACK_IMAGES = [
+  '/landing-assets/shared-fallback-band.jpg',
+  '/landing-assets/shared-fallback-film.jpg',
+  '/landing-assets/shared-fallback-pink-sketch.jpg',
+  '/landing-assets/shared-fallback-groove.jpg',
+  '/landing-assets/shared-fallback-dream.jpg',
+  '/landing-assets/shared-fallback-ballad.jpg',
+  '/landing-assets/shared-fallback-jazz.jpg',
+  '/landing-assets/shared-fallback-pink-sketch.jpg',
+] as const;
+
+export function getMusicShareTrackImage(track: Pick<MusicShareTrackCard, 'id' | 'imageUrl'>) {
+  const imageUrl = track.imageUrl?.trim();
+  if (imageUrl) {
+    return imageUrl;
+  }
+
+  const hash = Array.from(track.id).reduce(
+    (value, character) => (value * 31 + character.charCodeAt(0)) >>> 0,
+    0
+  );
+
+  return MUSIC_SHARE_FALLBACK_IMAGES[hash % MUSIC_SHARE_FALLBACK_IMAGES.length];
+}
+
 export const MUSIC_SHARE_CATEGORIES: Array<{
   key: MusicShareCategory;
   label: string;
@@ -69,7 +94,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['입문', '감성'],
     palette:
       'linear-gradient(180deg, rgba(95,95,99,0.92) 0%, rgba(55,55,58,0.96) 100%)',
-    imageUrl: '/seed-images/music/canon.svg',
+    imageUrl: '/landing-assets/shared-fallback-film.jpg',
     createdAt: new Date('2026-03-17T10:20:00+09:00').getTime(),
     creatorName: 'loopmaker',
   },
@@ -82,7 +107,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['발라드', '감성'],
     palette:
       'linear-gradient(180deg, rgba(89,89,94,0.92) 0%, rgba(51,51,54,0.96) 100%)',
-    imageUrl: '/seed-images/music/let-it-be.svg',
+    imageUrl: '/landing-assets/shared-fallback-band.jpg',
     createdAt: new Date('2026-03-18T08:10:00+09:00').getTime(),
     creatorName: 'chordnote',
   },
@@ -95,7 +120,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['감성', '입문'],
     palette:
       'linear-gradient(180deg, rgba(94,94,98,0.92) 0%, rgba(53,53,57,0.96) 100%)',
-    imageUrl: '/seed-images/music/stand-by-me.svg',
+    imageUrl: '/landing-assets/emotional-bridge.jpg',
     createdAt: new Date('2026-03-18T19:45:00+09:00').getTime(),
     creatorName: 'groovepark',
   },
@@ -108,7 +133,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['재즈', '입문'],
     palette:
       'linear-gradient(180deg, rgba(91,91,96,0.92) 0%, rgba(50,50,55,0.96) 100%)',
-    imageUrl: '/seed-images/music/jazz-standard.svg',
+    imageUrl: '/landing-assets/shared-fallback-jazz.jpg',
     createdAt: new Date('2026-03-19T11:05:00+09:00').getTime(),
     creatorName: 'bluekeys',
   },
@@ -121,7 +146,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['시티팝', '감성'],
     palette:
       'linear-gradient(180deg, rgba(96,96,101,0.92) 0%, rgba(54,54,58,0.96) 100%)',
-    imageUrl: '/seed-images/music/plastic-love.svg',
+    imageUrl: '/landing-assets/deep-house-line.jpg',
     createdAt: new Date('2026-03-19T20:10:00+09:00').getTime(),
     creatorName: 'nightsynth',
   },
@@ -134,7 +159,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['OST', '감성'],
     palette:
       'linear-gradient(180deg, rgba(95,95,100,0.92) 0%, rgba(52,52,56,0.96) 100%)',
-    imageUrl: '/seed-images/music/film-ost.svg',
+    imageUrl: '/landing-assets/shared-fallback-film.jpg',
     createdAt: new Date('2026-03-20T09:00:00+09:00').getTime(),
     creatorName: 'scenecomposer',
   },
@@ -147,7 +172,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['애니', 'OST'],
     palette:
       'linear-gradient(180deg, rgba(92,92,96,0.92) 0%, rgba(50,50,54,0.96) 100%)',
-    imageUrl: '/seed-images/music/anime-ending.svg',
+    imageUrl: '/landing-assets/shared-fallback-pink-sketch.jpg',
     createdAt: new Date('2026-03-20T16:35:00+09:00').getTime(),
     creatorName: 'animechord',
   },
@@ -160,7 +185,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['게임', 'OST'],
     palette:
       'linear-gradient(180deg, rgba(87,87,90,0.92) 0%, rgba(48,48,52,0.96) 100%)',
-    imageUrl: '/seed-images/music/game-theme.svg',
+    imageUrl: '/landing-assets/shared-fallback-dream.jpg',
     createdAt: new Date('2026-03-20T23:15:00+09:00').getTime(),
     creatorName: 'arcadescore',
   },
@@ -173,7 +198,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['시험', '연습', '공유곡'],
     palette:
       'linear-gradient(180deg, rgba(68,86,102,0.92) 0%, rgba(31,37,45,0.96) 100%)',
-    imageUrl: '/seed-images/music/pop.svg',
+    imageUrl: '/landing-assets/shared-fallback-groove.jpg',
     createdAt: new Date('2026-05-09T09:00:00+09:00').getTime(),
     creatorName: 'songmaker',
   },
@@ -213,14 +238,14 @@ const GENRE_PALETTE_MAP: Record<string, string> = {
 };
 
 const SHARED_TRACK_IMAGE_MAP: Record<string, string> = {
-  'share-base-1': '/seed-images/music/canon.svg',
-  'share-base-2': '/seed-images/music/let-it-be.svg',
-  'share-base-3': '/seed-images/music/stand-by-me.svg',
-  'share-base-4': '/seed-images/music/jazz-standard.svg',
-  'share-base-5': '/seed-images/music/plastic-love.svg',
-  'share-base-6': '/seed-images/music/film-ost.svg',
-  'share-base-7': '/seed-images/music/anime-ending.svg',
-  'share-base-8': '/seed-images/music/game-theme.svg',
+  'share-base-1': '/landing-assets/shared-fallback-film.jpg',
+  'share-base-2': '/landing-assets/shared-fallback-band.jpg',
+  'share-base-3': '/landing-assets/emotional-bridge.jpg',
+  'share-base-4': '/landing-assets/shared-fallback-jazz.jpg',
+  'share-base-5': '/landing-assets/deep-house-line.jpg',
+  'share-base-6': '/landing-assets/shared-fallback-film.jpg',
+  'share-base-7': '/landing-assets/shared-fallback-pink-sketch.jpg',
+  'share-base-8': '/landing-assets/shared-fallback-dream.jpg',
 };
 
 export function getGenreLabel(genre: string) {

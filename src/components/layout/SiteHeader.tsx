@@ -26,7 +26,6 @@ const NAV_ITEMS: Array<{
   route: string;
 }> = [
   { key: 'composer', label: '작곡', route: '/composer' },
-  { key: 'library', label: '라이브러리', route: '/library' },
   { key: 'collab', label: '협업', route: '/collab' },
   { key: 'community', label: '커뮤니티', route: '/community' },
   { key: 'shorts', label: '숏폼', route: '/community/shorts' },
@@ -44,8 +43,11 @@ export default function SiteHeader({ activeSection = null, rightSlot = null }: S
           onClick={() => navigate('/')}
           aria-label="메인 페이지로 이동"
         >
-          <span className="site-header-brand-note" aria-hidden="true">
-            ♪
+          <span className="site-header-brand-mark" aria-hidden="true">
+            <img className="site-header-brand-logo" src="/composer-bap-logo.svg" alt="" />
+          </span>
+          <span className="site-header-brand-name">
+            작곡<span>밥</span>
           </span>
         </button>
 

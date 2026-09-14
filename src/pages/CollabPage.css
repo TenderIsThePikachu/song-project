@@ -59,6 +59,10 @@
   line-height: 1.8;
 }
 
+.collab-hero > div > p {
+  display: none;
+}
+
 .collab-connection-row {
   display: flex;
   flex-wrap: wrap;
@@ -131,7 +135,7 @@
 
 .collab-grid {
   display: grid;
-  grid-template-columns: minmax(280px, 360px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
   gap: 24px;
   margin-top: 24px;
   align-items: start;
@@ -142,8 +146,7 @@
 }
 
 .collab-panel--sticky {
-  position: sticky;
-  top: 92px;
+  display: none;
 }
 
 .collab-panel-head {
@@ -451,6 +454,10 @@
   color: rgba(232, 238, 246, 0.76);
 }
 
+.collab-hero > div > p {
+  display: none;
+}
+
 .collab-hero-stats {
   align-content: stretch;
 }
@@ -466,7 +473,7 @@
 }
 
 .collab-grid {
-  grid-template-columns: minmax(300px, 340px) minmax(0, 1fr);
+  grid-template-columns: minmax(0, 1fr);
 }
 
 .collab-panel-head {
