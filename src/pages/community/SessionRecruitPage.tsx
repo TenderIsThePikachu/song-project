@@ -1,9 +1,10 @@
 import { useEffect, useMemo, useState } from 'react';
-import type { FormEvent } from 'react';
+import type { FormEvent, ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import CollabHubTabs from '../../components/collab/CollabHubTabs';
 import SiteHeader from '../../components/layout/SiteHeader';
+import { DEMO_SESSION_ID, DEMO_SESSION_POST } from '../../utils/demoPreviewData';
 import { useAuthStore } from '../../store/authStore';
 import { useSessionRecruitStore } from '../../store/sessionRecruitStore';
 import type {
@@ -68,6 +69,34 @@ const FORM_REGION_OPTIONS: Array<{ key: SessionRegion; label: string }> = [
 
 const FORM_MEETING_OPTIONS = ['온라인', '오프라인', '온/오프 병행'] as const;
 
+const SESSION_COVERS = [
+  '/landing-assets/shared-fallback-band.jpg',
+  '/landing-assets/shared-fallback-groove.jpg',
+  '/landing-assets/shared-fallback-jazz.jpg',
+  '/landing-assets/shared-fallback-film.jpg',
+];
+
+type SessionIconName = 'arrow' | 'calendar' | 'crown' | 'location' | 'message' | 'music' | 'plus' | 'search' | 'sparkle' | 'stats' | 'users' | 'wifi';
+
+function SessionIcon({ name }: { name: SessionIconName }) {
+  const paths: Record<SessionIconName, ReactNode> = {
+    arrow: <><path d="m9 18 6-6-6-6" /></>,
+    calendar: <><rect x="3" y="5" width="18" height="16" rx="2" /><path d="M8 3v4M16 3v4M3 10h18" /></>,
+    crown: <><path d="m4 8 4 3 4-6 4 6 4-3-2 10H6z" /><path d="M7 21h10" /></>,
+    location: <><path d="M20 10c0 5-8 11-8 11S4 15 4 10a8 8 0 1 1 16 0Z" /><circle cx="12" cy="10" r="2.5" /></>,
+    message: <><path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 3v-3.5A2 2 0 0 1 3 15V7a2 2 0 0 1 2-2Z" /></>,
+    music: <><path d="M9 18V6l10-2v12" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></>,
+    plus: <><path d="M12 5v14M5 12h14" /></>,
+    search: <><circle cx="11" cy="11" r="7" /><path d="m20 20-4-4" /></>,
+    sparkle: <><path d="m12 3 1.5 4.5L18 9l-4.5 1.5L12 15l-1.5-4.5L6 9l4.5-1.5zM19 16l.7 2.3L22 19l-2.3.7L19 22l-.7-2.3L16 19l2.3-.7z" /></>,
+    stats: <><path d="M5 20V10M12 20V4M19 20v-7" /></>,
+    users: <><circle cx="9" cy="8" r="3" /><path d="M3 19c.5-3.2 2.5-5 6-5s5.5 1.8 6 5M16 6.5a3 3 0 0 1 0 5.8M17 14c2.3.4 3.6 2 4 4.5" /></>,
+    wifi: <><path d="M4 9a12 12 0 0 1 16 0M7 12a8 8 0 0 1 10 0M10 15a4 4 0 0 1 4 0" /><circle cx="12" cy="19" r="1" /></>,
+  };
+
+  return <svg className="session-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+}
+
 function matchesKeyword(post: SessionRecruitPost, keyword: string) {
   if (!keyword) {
     return true;
@@ -109,23 +138,6 @@ function getApplicationStatusLabel(status: 'pending' | 'approved' | 'rejected') 
   }
 
   return '대기중';
-}
-
-function formatRelativeTime(timestamp: number) {
-  const diffMs = Date.now() - timestamp;
-  const hour = 60 * 60 * 1000;
-  const day = 24 * hour;
-
-  if (diffMs < hour) {
-    const minutes = Math.max(1, Math.floor(diffMs / (60 * 1000)));
-    return `${minutes}분 전`;
-  }
-
-  if (diffMs < day) {
-    return `${Math.floor(diffMs / hour)}시간 전`;
-  }
-
-  return `${Math.floor(diffMs / day)}일 전`;
 }
 
 export default function SessionRecruitPage() {
@@ -185,6 +197,20 @@ export default function SessionRecruitPage() {
     setWantedRoles(roles.length ? roles : ['producer']);
     setTagInput('#작곡 #협업 #파트모집');
   }, [searchParams]);
+
+  useEffect(() => {
+    if (!posts.length) {
+      useSessionRecruitStore.setState({ posts: [DEMO_SESSION_POST] });
+      return;
+    }
+
+    const savedDemo = posts.find((post) => post.id === DEMO_SESSION_ID);
+    if (savedDemo && savedDemo.title !== DEMO_SESSION_POST.title) {
+      useSessionRecruitStore.setState({
+        posts: posts.map((post) => post.id === DEMO_SESSION_ID ? DEMO_SESSION_POST : post),
+      });
+    }
+  }, [posts]);
 
   const filteredPosts = useMemo(() => {
     const normalizedKeyword = searchKeyword.trim().toLowerCase();
@@ -374,116 +400,44 @@ export default function SessionRecruitPage() {
       <SiteHeader activeSection="collab" />
 
       <main className="session-shell">
-        <CollabHubTabs activeTab="sessions" />
-
-        <section className="session-hero">
-          <div className="session-hero-copy">
-            <span className="session-eyebrow">SESSION BOARD</span>
-            <h1>합주와 세션 모집을 한곳에서 바로 이어보세요</h1>
-
-            <div className="session-hero-actions">
-              <button
-                type="button"
-                className="session-primary-button"
-                onClick={() => handleMoveWithAuth('/messages')}
-              >
-                메시지로 바로 연락하기
-              </button>
-              <button
-                type="button"
-                className="session-secondary-button"
-                onClick={() => handleMoveWithAuth('/collab')}
-              >
-                협업 작업실 보러가기
-              </button>
-            </div>
-          </div>
-
-          <div className="session-hero-panel">
-            <div className="session-hero-panel-card">
-              <span>이번 주 추천</span>
-              <strong>공연 준비 팀, 온라인 세션, 자작곡 밴드</strong>
-              <p>지금 모집중인 팀을 보고 바로 메시지와 협업으로 이어질 수 있어요.</p>
-            </div>
-          </div>
-        </section>
+        <div className="session-tabs-row">
+          <CollabHubTabs activeTab="sessions" />
+        </div>
 
         <div className="session-layout">
-          <aside className="session-sidebar">
-            <section className="session-side-card">
-              <div className="session-side-head">
-                <span className="session-side-kicker">ROLE</span>
-                <strong>모집 파트</strong>
-              </div>
-
+          <aside className="session-left-sidebar">
+            <section className="session-side-card session-role-card">
+              <div className="session-side-head"><SessionIcon name="stats" /><strong>모집 파트</strong></div>
               <div className="session-side-list">
-                {ROLE_OPTIONS.map((option) => (
-                  <button
-                    key={option.key}
-                    type="button"
-                    className={`session-side-button${
-                      roleFilter === option.key ? ' is-active' : ''
-                    }`}
-                    onClick={() => {
-                      setRoleFilter(option.key);
-                      setCurrentPage(1);
-                    }}
-                  >
-                    {option.label}
-                  </button>
-                ))}
+                {ROLE_OPTIONS.map((option) => {
+                  const count = option.key === 'all'
+                    ? posts.length
+                    : posts.filter((post) => post.wantedRoles.includes(option.key as SessionRole)).length;
+                  return (
+                    <button key={option.key} type="button" className={`session-side-button${roleFilter === option.key ? ' is-active' : ''}`} onClick={() => { setRoleFilter(option.key); setCurrentPage(1); }}>
+                      <span>{option.label}</span><b>{count}</b>
+                    </button>
+                  );
+                })}
               </div>
             </section>
 
-            <section className="session-side-card">
-              <div className="session-side-head">
-                <span className="session-side-kicker">COMMUNITY</span>
-                <strong>다른 공간도 보기</strong>
-              </div>
-
-              <div className="session-shortcut-list">
-                <button
-                  type="button"
-                  className="session-shortcut-button"
-                  onClick={() => navigate('/community')}
-                >
-                  커뮤니티 게시판
-                </button>
-                <button
-                  type="button"
-                  className="session-shortcut-button"
-                  onClick={() => navigate('/community/music')}
-                >
-                  음악 공유
-                </button>
-              </div>
-            </section>
-
-            <section className="session-side-card session-side-card--accent">
-              <span className="session-side-kicker">TIP</span>
-              <strong>모집글엔 일정, 목표, 원하는 파트를 같이 적는 게 가장 반응이 빠릅니다.</strong>
-              <p>
-                연습 빈도, 공연 여부, 원격 가능 여부까지 같이 적어두면 팀원을
-                구하는 시간이 훨씬 줄어듭니다.
-              </p>
-            </section>
           </aside>
 
           <section className="session-content">
-            <div className="session-metric-grid">
-              {sessionMetrics.map((metric) => (
-                <article key={metric.label} className="session-metric-card">
-                  <span>{metric.label}</span>
-                  <strong>{metric.value}</strong>
-                  <small>{metric.note}</small>
-                </article>
-              ))}
-            </div>
+            <section className="session-hero">
+              <div className="session-hero-copy">
+                <h1>합주와 세션 모집을 한곳에서<br />바로 이어보세요</h1>
+                <div className="session-hero-actions">
+                  <button type="button" className="session-primary-button" onClick={() => handleMoveWithAuth('/messages')}><SessionIcon name="message" />메시지로 바로 연락하기 <span>→</span></button>
+                  <button type="button" className="session-secondary-button" onClick={() => handleMoveWithAuth('/collab')}>협업 작업실 보러가기</button>
+                </div>
+              </div>
+            </section>
 
             {user && myApplications.length ? (
               <section className="session-my-application-panel">
                 <div className="session-panel-headline">
-                  <span className="session-board-kicker">MY APPLICATIONS</span>
                   <strong>내 지원 현황</strong>
                 </div>
 
@@ -515,36 +469,15 @@ export default function SessionRecruitPage() {
             ) : null}
 
             <section className={`session-board${isWriteOpen ? ' is-writing' : ''}`}>
-              <div className="session-board-head">
-                <div>
-                  <span className="session-board-kicker">BAND / SESSION RECRUIT</span>
-                </div>
-
-                <button
-                  type="button"
-                  className="session-reset-button"
-                  onClick={handleFilterReset}
-                >
-                  필터 초기화
-                </button>
-              </div>
-
-              <div className="session-write-entry">
-                <button
-                  type="button"
-                  className="session-primary-button"
-                  onClick={handleOpenWrite}
-                >
-                  {isWriteOpen ? '작성 닫기' : '모집글 작성'}
-                </button>
+              <div className="session-search-row">
+                <label className="session-search" aria-label="세션 모집 검색"><SessionIcon name="search" /><input type="search" value={searchKeyword} onChange={(event) => { setSearchKeyword(event.target.value); setCurrentPage(1); }} placeholder="제목, 장르, 지역, 태그로 검색하세요" /></label>
+                <button type="button" className="session-primary-button session-write-button" onClick={handleOpenWrite}><SessionIcon name="plus" />{isWriteOpen ? '작성 닫기' : '모집글 작성'}</button>
               </div>
 
               {isWriteOpen ? (
                 <form className="session-write-panel" onSubmit={handleSubmitRecruit}>
                   <div className="session-write-head">
-                    <span>SESSION WRITE</span>
                     <strong>모집글 작성</strong>
-                    <p>현재 작업에 필요한 파트, 일정, 진행 방식을 적어 팀원을 모집하세요.</p>
                   </div>
 
                   <div className="session-write-grid">
@@ -698,20 +631,7 @@ export default function SessionRecruitPage() {
               ) : null}
 
               <div className="session-toolbar">
-                <label className="session-search" aria-label="세션 모집 검색">
-                  <input
-                    type="search"
-                    value={searchKeyword}
-                    onChange={(event) => {
-                      setSearchKeyword(event.target.value);
-                      setCurrentPage(1);
-                    }}
-                    placeholder="제목, 장르, 지역, 태그로 검색하세요"
-                  />
-                </label>
-
-                <div className="session-filter-group">
-                  {REGION_OPTIONS.map((option) => (
+                <div className="session-filter-row"><strong>지역</strong><div className="session-filter-group">{REGION_OPTIONS.map((option) => (
                     <button
                       key={option.key}
                       type="button"
@@ -725,11 +645,9 @@ export default function SessionRecruitPage() {
                     >
                       {option.label}
                     </button>
-                  ))}
-                </div>
+                  ))}</div></div>
 
-                <div className="session-filter-group">
-                  {STATUS_OPTIONS.map((option) => (
+                <div className="session-filter-row"><strong>상태</strong><div className="session-filter-group">{STATUS_OPTIONS.map((option) => (
                     <button
                       key={option.key}
                       type="button"
@@ -743,132 +661,63 @@ export default function SessionRecruitPage() {
                     >
                       {option.label}
                     </button>
-                  ))}
+                  ))}</div>
+                  <div className="session-result-tools"><span>총 <b>{filteredPosts.length}</b>개의 모집글</span><select aria-label="모집글 정렬" defaultValue="latest"><option value="latest">최신순</option></select><button type="button" className="session-reset-button" onClick={handleFilterReset}>초기화</button></div>
                 </div>
               </div>
 
-              <div className="session-board-summary">
-                <strong>{filteredPosts.length}개의 모집글</strong>
-                <span>지역, 파트, 상태 필터를 조합해서 바로 맞는 팀을 찾을 수 있어요.</span>
-              </div>
-
-              {bootstrapStatus === 'loading' ? (
+              {!posts.length && bootstrapStatus === 'loading' ? (
                 <div className="session-empty-state">
                   <strong>세션 모집 데이터를 불러오는 중입니다.</strong>
                   <span>잠시만 기다리면 최신 모집글이 표시됩니다.</span>
                 </div>
               ) : null}
 
-              {bootstrapStatus === 'error' ? (
+              {!posts.length && bootstrapStatus === 'error' ? (
                 <div className="session-empty-state">
                   <strong>세션 모집 데이터를 불러오지 못했습니다.</strong>
                   <span>{bootstrapError ?? '서버 연결 상태를 확인해주세요.'}</span>
                 </div>
               ) : null}
 
-              {bootstrapStatus !== 'loading' && bootstrapStatus !== 'error' ? (
+              {posts.length || (bootstrapStatus !== 'loading' && bootstrapStatus !== 'error') ? (
                 <>
                   <div className="session-card-grid">
-                    {visiblePosts.map((post) => (
-                      <article key={post.id} className="session-card">
-                        <div className="session-card-badges">
-                          <span className={`session-status-chip is-${post.status}`}>
-                            {getStatusLabel(post.status)}
-                          </span>
-                          <span className="session-meta-chip">{post.meetingType}</span>
-                          {post.urgent ? (
-                            <span className="session-meta-chip is-urgent">급구</span>
-                          ) : null}
-                          {post.collabProjectId ? (
-                            <span className="session-meta-chip is-linked">작업실 연결됨</span>
-                          ) : null}
-                          {user && post.hostEmail === user.email ? (
-                            <span className="session-meta-chip is-owner">
-                              지원자 {(post.applicants ?? []).length}명
-                            </span>
-                          ) : null}
-                          {user &&
-                          post.hostEmail !== user.email &&
-                          (post.applicants ?? []).some((applicant) => applicant.email === user.email) ? (
-                            <span className="session-meta-chip is-applied">
-                              {getApplicationStatusLabel(
-                                (post.applicants ?? []).find(
-                                  (applicant) => applicant.email === user.email
-                                )?.status ?? 'pending'
-                              )}
-                            </span>
-                          ) : null}
-                        </div>
-
-                        <div className="session-card-copy">
-                          <strong>{post.title}</strong>
+                    {visiblePosts.map((post, index) => (
+                      <article
+                        key={post.id}
+                        className="session-card"
+                        role="link"
+                        tabIndex={0}
+                        onClick={() => navigate(`/community/sessions/${post.id}`)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' || event.key === ' ') navigate(`/community/sessions/${post.id}`);
+                        }}
+                      >
+                        <img className="session-card-cover" src={SESSION_COVERS[index % SESSION_COVERS.length]} alt="" />
+                        <div className="session-card-body">
+                          <div className="session-card-title"><strong>{post.title}</strong><span className={`session-status-chip is-${post.status}`}>{getStatusLabel(post.status)}</span></div>
                           <p>{post.summary}</p>
+                          <div className="session-card-chips">
+                            <span className="session-meta-chip is-meeting">{post.meetingType}</span><span className="session-meta-chip">{post.location}</span>
+                            {post.wantedRoles.map((role) => <span key={role} className="session-role-chip">{getRoleLabel(role)}</span>)}
+                            <span className="session-tag-chip">{post.genre}</span>
+                            {post.urgent ? <span className="session-meta-chip is-urgent">급구</span> : null}
+                            {post.collabProjectId ? <span className="session-meta-chip is-linked">작업실 연결됨</span> : null}
+                            {user && post.hostEmail === user.email ? <span className="session-meta-chip is-owner">지원자 {(post.applicants ?? []).length}명</span> : null}
+                            {user && post.hostEmail !== user.email && (post.applicants ?? []).some((applicant) => applicant.email === user.email) ? <span className="session-meta-chip is-applied">{getApplicationStatusLabel((post.applicants ?? []).find((applicant) => applicant.email === user.email)?.status ?? 'pending')}</span> : null}
+                          </div>
                         </div>
-
-                        <dl className="session-meta-grid">
-                          <div>
-                            <dt>장르</dt>
-                            <dd>{post.genre}</dd>
-                          </div>
-                          <div>
-                            <dt>지역</dt>
-                            <dd>{post.location}</dd>
-                          </div>
-                          <div>
-                            <dt>일정</dt>
-                            <dd>{post.schedule}</dd>
-                          </div>
-                          <div>
-                            <dt>인원</dt>
-                            <dd>
-                              {post.currentMembers}/{post.maxMembers}
-                            </dd>
-                          </div>
-                        </dl>
-
-                        <div className="session-role-list">
-                          {post.wantedRoles.map((role) => (
-                            <span key={role} className="session-role-chip">
-                              {getRoleLabel(role)}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="session-tag-list">
-                          {post.tags.map((tag) => (
-                            <span key={tag} className="session-tag-chip">
-                              #{tag}
-                            </span>
-                          ))}
-                        </div>
-
-                        <div className="session-card-footer">
-                          <div className="session-card-host">
-                            <strong>{post.hostName}</strong>
-                            <span>{formatRelativeTime(post.createdAt)}</span>
-                          </div>
-
+                        <div className="session-card-side">
+                          <div className="session-applicant-avatars"><i>{post.hostName.slice(0, 1)}</i>{(post.applicants ?? []).slice(0, 2).map((applicant) => <i key={applicant.id}>{applicant.name.slice(0, 1)}</i>)}{(post.applicants ?? []).length > 2 ? <i className="is-more">+{(post.applicants ?? []).length - 2}</i> : null}</div>
+                          <span className="session-card-date"><SessionIcon name="calendar" />{post.schedule}</span>
                           <div className="session-card-actions">
                             <button
                               type="button"
-                              className="session-card-button"
+                              className={`session-card-button${post.status !== 'closed' ? ' is-primary' : ''}`}
                               onClick={() => navigate(`/community/sessions/${post.id}`)}
                             >
-                              상세 보기
-                            </button>
-                            <button
-                              type="button"
-                              className="session-card-button"
-                              onClick={() => handleMoveWithAuth('/messages')}
-                            >
-                              메시지
-                            </button>
-                            <button
-                              type="button"
-                              className="session-card-button is-primary"
-                              onClick={() => handleMoveWithAuth('/collab')}
-                            >
-                              협업 보기
+                              {post.status === 'closed' ? '자세히 보기' : '지원하기'}
                             </button>
                           </div>
                         </div>
@@ -921,6 +770,20 @@ export default function SessionRecruitPage() {
               ) : null}
             </section>
           </section>
+
+          <aside className="session-right-sidebar">
+            <section className="session-side-card session-status-card">
+              <div className="session-side-head"><SessionIcon name="stats" /><strong>협업 현황</strong></div>
+              <div className="session-metric-grid">
+                {sessionMetrics.map((metric, index) => <article key={metric.label} className={`session-metric-card is-${index + 1}`}><span>{metric.label}</span><strong>{metric.value}</strong><SessionIcon name={index === 0 ? 'users' : index === 1 ? 'wifi' : index === 2 ? 'calendar' : 'music'} /></article>)}
+              </div>
+            </section>
+
+            <section className="session-side-card session-popular-card">
+              <header><span><SessionIcon name="location" />인기 지역</span><button type="button" onClick={handleFilterReset}>더보기 ›</button></header>
+              <ol>{REGION_OPTIONS.slice(1).map((option, index) => <li key={option.key}><i>{index + 1}</i><b>{option.label}</b><span>{posts.filter((post) => post.region === option.key).length}</span></li>)}</ol>
+            </section>
+          </aside>
         </div>
       </main>
     </div>

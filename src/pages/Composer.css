@@ -2264,13 +2264,13 @@
 }
 
 .composer-sequencer-playhead {
+  --sequencer-step-index: 0;
   position: absolute;
   top: 18px;
   bottom: 0;
-  left: calc(
-    var(--sequencer-label-width) + var(--sequencer-label-gap) +
-      (var(--sequencer-step-index) * (84px + 10px)) + 42px - 2px
-  );
+  left: calc(var(--sequencer-label-width) + var(--sequencer-label-gap) + 40px);
+  transform: translate3d(calc(var(--sequencer-step-index) * 94px), 0, 0);
+  will-change: transform;
   z-index: 20;
   width: 4px;
   border-radius: 999px;
@@ -2299,7 +2299,7 @@
   position: absolute;
   inset: 28px -40px 0;
   border-radius: 10px;
-  background: rgba(163, 230, 53, 0.07);
+  background: rgba(16, 185, 129, 0.09);
   content: '';
 }
 
@@ -2474,11 +2474,13 @@
 }
 
 .composer-page.is-playing .composer-drum-step-number.is-current:not(.is-current-live) {
-  background: rgba(255, 255, 255, 0.04);
+  border-color: transparent;
+  background: transparent;
   color: transparent;
+  box-shadow: none;
 }
 
-.composer-page.is-playing .composer-drum-cell.is-current:not(.is-current-live) {
+.composer-page.is-playing .composer-drum-cell.is-current {
   border-color: rgba(255, 255, 255, 0.08);
   box-shadow: none;
 }
@@ -3127,6 +3129,1232 @@
 .composer-lyrics-note-row input {
     grid-column: 1 / -1;
   }
+}
+
+/* Keep the detail piano roll in the same visual system as the arrangement. */
+.composer-main {
+  --editor-accent: #39d2aa;
+  --editor-accent-soft: color-mix(in srgb, var(--editor-accent) 16%, transparent);
+  --editor-accent-border: color-mix(in srgb, var(--editor-accent) 56%, transparent);
+}
+
+.composer-main--guitar,
+.composer-main--supportingPiano {
+  --editor-accent: #5c93ff;
+}
+
+.composer-main--glockenspiel,
+.composer-main--piccolo,
+.composer-main--studioAltoSax,
+.composer-main--chicagoStreet {
+  --editor-accent: #9c7ae8;
+}
+
+.composer-main--drums {
+  --editor-accent: #ff7783;
+}
+
+.composer-main--bass {
+  --editor-accent: #f1c65d;
+}
+
+.composer-roll-shell--melody {
+  border-color: #303640;
+  background: #15181e;
+}
+
+.composer-roll-shell .piano-roll--melody,
+.composer-roll-shell .piano-roll-melody-scroller {
+  background: #15181e;
+}
+
+.composer-roll-shell :is(
+  .piano-roll-melody-topbar,
+  .piano-roll-melody-header-row,
+  .piano-roll-step-header-viewport,
+  .piano-roll-step-header--melody
+) {
+  border-color: #303640;
+  background-color: #171a20;
+  box-shadow: none;
+}
+
+.composer-roll-shell :is(
+  .piano-roll-melody-corner,
+  .piano-roll--melody .piano-roll-sidebar,
+  .piano-roll--melody-detached .piano-roll-sidebar,
+  .piano-roll-sidebar-cover
+) {
+  border-color: #303640;
+  background: #171a20;
+}
+
+.composer-roll-shell .piano-roll--melody-detached .piano-roll-sidebar {
+  box-shadow: 8px 0 14px -12px rgba(0, 0, 0, .9);
+}
+
+.composer-roll-shell .piano-roll-grid--melody {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 calc(var(--piano-row-span) - 1px),
+      #292f38 calc(var(--piano-row-span) - 1px) var(--piano-row-span)
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
+      #252b34 calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(var(--piano-step-span) * 16 - 1px),
+      #3a424e calc(var(--piano-step-span) * 16 - 1px) calc(var(--piano-step-span) * 16)
+    ),
+    #181c22;
+}
+
+.composer-roll-shell .piano-roll-step-header--melody {
+  background:
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
+      #2b313a calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+    ),
+    #171a20;
+}
+
+.composer-roll-shell .piano-roll-cell.is-melody {
+  border-radius: 0;
+  background: transparent;
+}
+
+.composer-roll-shell .piano-roll-cell.is-melody.is-sharp:not(.is-active) {
+  background: rgba(255, 255, 255, .018);
+}
+
+.composer-roll-shell .piano-roll-cell.is-melody:hover {
+  background: var(--editor-accent-soft);
+}
+
+.composer-roll-shell .piano-roll-cell.is-melody:is(.is-eighth, .is-quarter, .is-half)::before {
+  background: #2a3039;
+}
+
+.composer-roll-shell .piano-roll-cell.is-melody.is-half::before {
+  background: #333b46;
+}
+
+.composer-roll-shell .piano-roll-cell.is-melody.is-bar {
+  box-shadow: inset 1px 0 0 #46515f;
+}
+
+.composer-roll-shell .piano-roll-note-block {
+  top: 2px;
+  height: calc(100% - 4px);
+  border-color: var(--editor-accent-border);
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--editor-accent) 84%, #ffffff 16%);
+  box-shadow: inset 0 -1px 0 rgba(0, 0, 0, .16);
+}
+
+.composer-roll-shell .piano-roll-cell.is-tool-selected {
+  box-shadow: inset 0 0 0 2px var(--editor-accent);
+}
+
+.composer-roll-shell .piano-roll-cell.is-tool-selected:not(.is-active):not(.is-note-tail) {
+  background-color: var(--editor-accent-soft);
+}
+
+.composer-roll-shell .piano-roll-key.is-melody {
+  box-sizing: border-box;
+  min-width: 0;
+  font-size: 10px;
+  font-weight: 750;
+  letter-spacing: 0;
+  line-height: 1;
+}
+
+.composer-roll-shell .piano-roll-key.is-melody.is-natural {
+  width: 100%;
+  justify-self: stretch;
+  padding-right: 8px;
+  border-bottom: 1px solid #cbd1d9;
+  background: #f0f2f5;
+  color: #3b4657;
+  box-shadow: inset -1px 0 0 #bfc7d1;
+}
+
+.composer-roll-shell .piano-roll-key.is-melody.is-sharp {
+  width: 42px;
+  min-width: 42px;
+  max-width: 42px;
+  justify-self: start;
+  justify-content: flex-end;
+  margin: 0;
+  padding-right: 6px;
+  border-radius: 0 4px 4px 0;
+  background: #252b34;
+  color: #e9eef5;
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, .08),
+    1px 1px 2px rgba(0, 0, 0, .24);
+}
+
+.composer-roll-shell .piano-roll-sidebar-notes {
+  position: relative;
+  background: #171a20;
+}
+
+.composer-roll-shell .piano-roll-sidebar-notes::after {
+  position: absolute;
+  z-index: 3;
+  top: 0;
+  right: 0;
+  bottom: 12px;
+  width: 2px;
+  background: color-mix(in srgb, var(--editor-accent) 68%, transparent);
+  content: '';
+  pointer-events: none;
+}
+
+.composer-roll-shell .piano-roll-step-number.is-current,
+.composer-roll-shell .piano-roll-step-number.is-current-live {
+  background: var(--editor-accent-soft);
+  box-shadow: inset 0 2px 0 var(--editor-accent);
+}
+
+.composer-page.is-playing .composer-roll-shell .piano-roll-step-number:is(
+  .is-current,
+  .is-current-live
+) {
+  background: transparent;
+  color: transparent;
+  box-shadow: none;
+}
+
+.composer-roll-shell .piano-roll-step-number {
+  position: relative;
+  overflow: visible;
+}
+
+.composer-roll-shell .piano-roll-bar-number {
+  position: absolute;
+  z-index: 3;
+  top: 5px;
+  left: 7px;
+  color: #aab4c2;
+  font-size: 10px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+  pointer-events: none;
+}
+
+.composer-roll-shell .piano-roll-playhead,
+.composer-roll-shell .piano-roll--melody .piano-roll-playhead {
+  z-index: 30;
+  width: 2px;
+  background: var(--editor-accent);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--editor-accent) 20%, transparent);
+}
+
+.composer-roll-shell .piano-roll-playhead::before {
+  width: var(--piano-step-width);
+  border-right: 0;
+  border-left: 0;
+  border-radius: 0;
+  background: color-mix(in srgb, var(--editor-accent) 8%, transparent);
+}
+
+.composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller) {
+  scrollbar-color: color-mix(in srgb, var(--editor-accent) 54%, #687383) #11151a;
+}
+
+.composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-track,
+.composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-corner {
+  border: 0;
+  background: #11151a;
+}
+
+.composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-thumb {
+  border: 3px solid #11151a;
+  background: color-mix(in srgb, var(--editor-accent) 54%, #687383);
+  background-clip: padding-box;
+}
+
+.composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-thumb:hover {
+  background: var(--editor-accent);
+  background-clip: padding-box;
+}
+
+/* Multitrack arrangement workspace */
+.composer-page .composer-workbar {
+  flex-direction: row;
+  align-items: center;
+  min-height: 64px;
+  gap: 14px;
+  padding: 8px 18px;
+}
+
+.composer-page .composer-workbar-controls,
+.composer-page .composer-notepad {
+  display: none;
+}
+
+.composer-page .composer-mode-strip {
+  flex: 1 1 auto;
+  min-width: 0;
+  justify-content: flex-start;
+  padding-right: 0;
+  padding-left: 0;
+}
+
+.composer-project-meta {
+  display: flex;
+  flex: 0 0 auto;
+  align-items: center;
+  gap: 8px;
+  margin-right: 0;
+  margin-left: auto;
+}
+
+.composer-project-meta > span {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 16px;
+  border: 1px solid #30343c;
+  border-radius: 8px;
+  background: #17191e;
+}
+
+.composer-page .composer-project-meta .composer-help-toggle-button {
+  position: static;
+  top: auto;
+  right: auto;
+  z-index: auto;
+  height: 40px;
+  padding: 0 16px;
+  border-radius: 8px;
+  box-shadow: none;
+  transform: none;
+}
+
+.composer-page .composer-project-meta .composer-help-toggle-button:hover {
+  transform: none;
+}
+
+.composer-project-meta small {
+  color: #929cad;
+  font-size: 12px;
+  font-weight: 750;
+}
+
+.composer-project-meta strong {
+  color: #f8fafc;
+  font-size: 14px;
+}
+
+.composer-studio-layout {
+  display: grid;
+  grid-template-columns: 304px minmax(0, 1fr);
+  grid-template-rows:
+    minmax(110px, min(var(--arrangement-panel-height, 342px), calc(100% - 214px)))
+    54px
+    minmax(160px, 1fr);
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow: hidden;
+  border-top: 1px solid #292d35;
+  background: #111318;
+}
+
+.composer-studio-layout.is-arrangement-collapsed {
+  grid-template-rows: 0 54px minmax(0, 1fr);
+}
+
+.composer-studio-layout.is-arrangement-collapsed .composer-track-panel,
+.composer-studio-layout.is-arrangement-collapsed .composer-arrangement-overview {
+  display: none;
+}
+
+.composer-track-panel {
+  position: relative;
+  z-index: 8;
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+  overflow: visible;
+  grid-column: 1;
+  grid-row: 1;
+  border-right: 1px solid #30343c;
+  background: #15171c;
+}
+
+.composer-track-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  height: 52px;
+  padding: 0 14px 0 18px;
+  border-bottom: 1px solid #2e323a;
+}
+
+.composer-track-panel-head > strong {
+  color: #eef2f8;
+  font-size: 14px;
+}
+
+.composer-track-add-wrap {
+  position: relative;
+}
+
+.composer-track-add {
+  width: 34px;
+  height: 34px;
+  border: 1px solid #343946;
+  border-radius: 8px;
+  background: #1c2027;
+  color: #dce4f2;
+  font-size: 22px;
+  cursor: pointer;
+}
+
+.composer-track-add:hover,
+.composer-track-add[aria-expanded='true'] {
+  border-color: #36c9a3;
+  color: #72e6c5;
+}
+
+.composer-track-add-menu {
+  position: absolute;
+  z-index: 50;
+  top: 42px;
+  left: 0;
+  width: 220px;
+  max-height: min(430px, 70vh);
+  overflow: auto;
+  padding: 10px;
+  border: 1px solid #363b45;
+  border-radius: 8px;
+  background: #171a20;
+  box-shadow: 0 18px 42px rgba(0, 0, 0, 0.36);
+  scrollbar-color: rgba(94, 113, 137, .62) transparent;
+  scrollbar-width: thin;
+}
+
+.composer-track-add-menu::-webkit-scrollbar {
+  width: 6px;
+}
+
+.composer-track-add-menu::-webkit-scrollbar-track,
+.composer-track-add-menu::-webkit-scrollbar-corner {
+  background: transparent;
+}
+
+.composer-track-add-menu::-webkit-scrollbar-thumb {
+  min-height: 34px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(94, 113, 137, .62);
+  background-clip: padding-box;
+}
+
+.composer-track-add-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(57, 210, 170, .78);
+  background-clip: padding-box;
+}
+
+.composer-track-add-menu::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.composer-track-add-group {
+  display: grid;
+  gap: 4px;
+}
+
+.composer-track-add-group + .composer-track-add-group {
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid #2d323a;
+}
+
+.composer-track-add-group > span {
+  padding: 4px 8px;
+  color: #7f899a;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.composer-track-add-group button {
+  min-height: 34px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #dbe2ec;
+  text-align: left;
+  padding: 0 9px;
+  cursor: pointer;
+}
+
+.composer-track-add-group button:hover {
+  background: #242932;
+  color: #70e0c1;
+}
+
+.composer-track-list {
+  display: grid;
+  grid-auto-rows: 58px;
+  align-content: start;
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  scrollbar-width: none;
+  -ms-overflow-style: none;
+}
+
+.composer-track-list::-webkit-scrollbar {
+  display: none;
+}
+
+.composer-track-list.has-overflow {
+  scrollbar-color: rgba(94, 113, 137, .62) transparent;
+  scrollbar-width: thin;
+}
+
+.composer-track-list.has-overflow::-webkit-scrollbar {
+  display: block;
+  width: 6px;
+}
+
+.composer-track-list.has-overflow::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.composer-track-list.has-overflow::-webkit-scrollbar-thumb {
+  border-radius: 999px;
+  background: rgba(94, 113, 137, .62);
+}
+
+.composer-track-row {
+  position: relative;
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 30px;
+  align-items: center;
+  min-height: 58px;
+  border-bottom: 1px solid #292d35;
+  background: #17191f;
+}
+
+.composer-track-row.is-active {
+  background: #20252c;
+  box-shadow: inset 3px 0 0 var(--track-color);
+}
+
+.composer-track-row.is-mint { --track-color: #39d2aa; }
+.composer-track-row.is-blue { --track-color: #5c93ff; }
+.composer-track-row.is-violet { --track-color: #9c7ae8; }
+.composer-track-row.is-coral { --track-color: #ff7783; }
+.composer-track-row.is-gold { --track-color: #f1c65d; }
+
+.composer-track-select {
+  display: grid;
+  grid-template-columns: 22px 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  height: 100%;
+  padding: 0 8px 14px 14px;
+  border: 0;
+  background: transparent;
+  color: #eef2f7;
+  cursor: pointer;
+  text-align: left;
+}
+
+.composer-track-number {
+  color: #8792a3;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.composer-track-icon {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 36px;
+  height: 36px;
+  border-radius: 8px;
+  background: color-mix(in srgb, var(--track-color) 88%, #ffffff 12%);
+  color: #ffffff;
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.composer-track-icon.is-muted {
+  filter: saturate(.35);
+  opacity: .68;
+}
+
+.composer-track-icon.is-muted::after {
+  position: absolute;
+  z-index: 2;
+  top: 50%;
+  left: 50%;
+  width: 42px;
+  height: 3px;
+  border-radius: 2px;
+  background: #f8fafc;
+  box-shadow: 0 0 0 1px rgba(31, 41, 55, .35);
+  content: '';
+  transform: translate(-50%, -50%) rotate(-42deg);
+  pointer-events: none;
+}
+
+.composer-track-row.is-muted .composer-track-name {
+  color: #8b96a7;
+}
+
+.composer-track-name {
+  overflow: hidden;
+  font-size: 13px;
+  font-weight: 800;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-track-toggles {
+  position: absolute;
+  bottom: 5px;
+  left: 112px;
+  display: flex;
+  gap: 4px;
+}
+
+.composer-track-toggles button {
+  width: 21px;
+  height: 18px;
+  border: 1px solid #343a45;
+  border-radius: 6px;
+  background: #22262e;
+  color: #9ca6b5;
+  font-size: 10px;
+  font-weight: 900;
+  cursor: pointer;
+}
+
+.composer-track-more {
+  width: 28px;
+  height: 32px;
+  border: 0;
+  background: transparent;
+  color: #8e99a9;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.composer-track-more:hover {
+  color: #ffffff;
+}
+
+.composer-track-row:has(.composer-track-context-menu) {
+  z-index: 40;
+}
+
+.composer-track-context-menu {
+  position: absolute;
+  z-index: 80;
+  top: 44px;
+  right: 8px;
+  display: grid;
+  width: 176px;
+  gap: 3px;
+  padding: 7px;
+  border: 1px solid #39404b;
+  border-radius: 8px;
+  background: #1b1f26;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, .38);
+}
+
+.composer-track-row:nth-last-child(-n + 3) .composer-track-context-menu {
+  top: auto;
+  bottom: 8px;
+}
+
+.composer-track-context-menu button {
+  min-height: 32px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: #dce4ef;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 750;
+  text-align: left;
+  cursor: pointer;
+}
+
+.composer-track-context-menu button:hover {
+  background: #292f39;
+  color: #6fe3c3;
+}
+
+.composer-track-context-menu button.is-danger {
+  color: #ff929c;
+}
+
+.composer-track-context-menu button.is-danger:hover {
+  background: rgba(255, 102, 116, .12);
+  color: #ffb2b9;
+}
+
+.composer-track-volume-control {
+  display: grid;
+  gap: 7px;
+  margin-bottom: 5px;
+  padding: 7px 9px 10px;
+  border-bottom: 1px solid #303640;
+}
+
+.composer-track-volume-control span {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  color: #9da8b8;
+  font-size: 11px;
+  font-weight: 750;
+}
+
+.composer-track-volume-control strong {
+  color: #6fe3c3;
+  font-size: 11px;
+}
+
+.composer-track-volume-control input {
+  width: 100%;
+  margin: 0;
+  accent-color: var(--track-color, #39d2aa);
+  cursor: pointer;
+}
+
+.composer-track-toggles button.is-active {
+  border-color: var(--track-color);
+  background: color-mix(in srgb, var(--track-color) 25%, #20242b 75%);
+  color: #ffffff;
+}
+
+.composer-track-toggles button:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+
+.composer-arrangement-stage {
+  display: contents;
+}
+
+.composer-arrangement-overview {
+  grid-column: 2;
+  grid-row: 1;
+  min-width: 0;
+  overflow: hidden;
+  box-sizing: border-box;
+  border-bottom: 1px solid #343842;
+  background: #15181e;
+}
+
+.composer-arrangement-ruler {
+  position: relative;
+  display: grid;
+  grid-template-columns: repeat(var(--arrangement-label-count, 16), minmax(42px, 1fr));
+  height: 52px;
+  min-width: 760px;
+  box-sizing: border-box;
+  border-bottom: 1px solid #30343d;
+  background: #171a20;
+}
+
+.composer-arrangement-tools {
+  position: absolute;
+  z-index: 7;
+  top: 0;
+  right: 0;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  height: 100%;
+  padding: 0 12px;
+  background: linear-gradient(90deg, transparent, #171a20 16%);
+}
+
+.composer-arrangement-tools button,
+.composer-edit-tool-group button,
+.composer-note-zoom button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 1px solid #343a45;
+  border-radius: 8px;
+  background: #20242b;
+  color: #cbd4e1;
+  font: inherit;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.composer-arrangement-tools input {
+  width: 108px;
+  accent-color: #28c79e;
+}
+
+.composer-arrangement-tools button:hover,
+.composer-edit-tool-group button:hover,
+.composer-note-zoom button:hover,
+.composer-edit-tool-group button.is-active {
+  border-color: #36cba4;
+  color: #6fe3c3;
+}
+
+.composer-arrangement-ruler button {
+  border: 0;
+  border-left: 1px solid #262b33;
+  background: transparent;
+  color: #9ba6b7;
+  font-size: 11px;
+  text-align: left;
+  padding: 0 8px;
+  cursor: pointer;
+}
+
+.composer-arrangement-ruler button:hover {
+  color: #55d8b5;
+}
+
+.composer-arrangement-lanes {
+  position: relative;
+  display: grid;
+  grid-template-rows: repeat(var(--arrangement-track-count, 5), 58px);
+  min-width: 760px;
+  height: calc(100% - 52px);
+  overflow-y: auto;
+  scrollbar-color: rgba(94, 113, 137, .55) transparent;
+  scrollbar-width: thin;
+  background-image:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-major-span, 6.25%) - 1px), #252a32 calc(var(--arrangement-major-span, 6.25%) - 1px), #252a32 var(--arrangement-major-span, 6.25%)),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(255,255,255,.025) calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(255,255,255,.025) var(--arrangement-minor-span, 1.5625%));
+}
+
+.composer-arrangement-lanes::-webkit-scrollbar {
+  width: 6px;
+}
+
+.composer-arrangement-lanes::-webkit-scrollbar-track,
+.composer-arrangement-lanes::-webkit-scrollbar-corner {
+  border: 0;
+  background: transparent;
+}
+
+.composer-arrangement-lanes::-webkit-scrollbar-thumb {
+  min-height: 32px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: rgba(94, 113, 137, .55);
+  background-clip: padding-box;
+}
+
+.composer-arrangement-lanes::-webkit-scrollbar-thumb:hover {
+  background: rgba(61, 202, 159, .72);
+  background-clip: padding-box;
+}
+
+.composer-arrangement-lanes::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
+}
+
+.composer-arrangement-lane {
+  position: relative;
+  border-bottom: 1px solid #282d35;
+  --clip-color: #39d2aa;
+}
+
+.composer-arrangement-lane.is-blue { --clip-color: #5c93ff; }
+.composer-arrangement-lane.is-violet { --clip-color: #9c7ae8; }
+.composer-arrangement-lane.is-coral { --clip-color: #ff7783; }
+.composer-arrangement-lane.is-gold { --clip-color: #f1c65d; }
+
+.composer-clip {
+  position: absolute;
+  top: 5px;
+  bottom: 5px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--clip-color) 58%, transparent);
+  border-radius: 6px;
+  background: color-mix(in srgb, var(--clip-color) 8%, #1a1e25 92%);
+  color: color-mix(in srgb, var(--clip-color) 78%, #ffffff 22%);
+  text-align: left;
+  padding: 6px 10px;
+  cursor: grab;
+  user-select: none;
+}
+
+.composer-clip:active { cursor: grabbing; }
+
+.composer-clip.has-audio {
+  border-color: color-mix(in srgb, var(--clip-color) 72%, transparent);
+  background: color-mix(in srgb, var(--clip-color) 23%, #1a1e25 77%);
+}
+
+.composer-clip.is-empty {
+  border-style: dashed;
+  color: color-mix(in srgb, var(--clip-color) 48%, #aab3c0 52%);
+  opacity: .72;
+}
+
+.composer-clip.is-active-track:not(.is-selected) {
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--clip-color) 60%, transparent);
+}
+
+.composer-clip.is-selected {
+  z-index: 4;
+  border-color: var(--clip-color);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--clip-color) 32%, transparent);
+}
+
+.composer-clip.is-dragging {
+  opacity: .5;
+}
+
+.composer-clip--first { left: 1.4%; width: 36%; }
+.composer-clip--second { left: 43%; width: 48%; }
+.composer-arrangement-lane:nth-child(2) .composer-clip--first { left: 5%; width: 37%; }
+.composer-arrangement-lane:nth-child(3) .composer-clip--first { left: 8%; width: 41%; }
+.composer-arrangement-lane:nth-child(4) .composer-clip--first { left: 8%; width: 38%; }
+.composer-arrangement-lane:nth-child(5) .composer-clip--first { left: 8%; width: 38%; }
+.composer-arrangement-lane:nth-child(2) .composer-clip--second { left: 50%; width: 47%; }
+.composer-arrangement-lane:nth-child(3) .composer-clip--second { left: 58%; width: 39%; }
+.composer-arrangement-lane:nth-child(4) .composer-clip--second { left: 50%; width: 42%; }
+.composer-arrangement-lane:nth-child(5) .composer-clip--second { left: 50%; width: 42%; }
+
+.composer-clip strong {
+  position: relative;
+  z-index: 3;
+  font-size: 11px;
+}
+
+.composer-clip-activity {
+  position: absolute;
+  z-index: 1;
+  inset: 0;
+  overflow: hidden;
+  pointer-events: none;
+}
+
+.composer-clip-activity > span {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  border-right: 1px solid color-mix(in srgb, var(--clip-color) 50%, transparent);
+  border-left: 1px solid color-mix(in srgb, var(--clip-color) 50%, transparent);
+  background: color-mix(in srgb, var(--clip-color) 28%, transparent);
+}
+
+.composer-clip-pitch-line {
+  position: absolute;
+  z-index: 2;
+  right: 5%;
+  bottom: 3px;
+  left: 12%;
+  width: 83%;
+  height: 21px;
+  overflow: visible;
+  pointer-events: none;
+}
+
+.composer-clip-pitch-line polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.35;
+  opacity: .88;
+}
+
+.composer-clip-resize {
+  position: absolute;
+  z-index: 5;
+  top: 0;
+  bottom: 0;
+  width: 9px;
+  cursor: ew-resize;
+  touch-action: none;
+}
+
+.composer-clip-resize.is-start { left: 0; }
+.composer-clip-resize.is-end { right: 0; }
+
+.composer-clip.is-selected .composer-clip-resize::after {
+  position: absolute;
+  top: 22%;
+  bottom: 22%;
+  left: 3px;
+  width: 2px;
+  border-radius: 2px;
+  background: var(--clip-color);
+  content: '';
+}
+
+.composer-arrangement-playhead {
+  --arrangement-progress: 0%;
+  position: absolute;
+  z-index: 5;
+  top: -10px;
+  bottom: 0;
+  left: var(--arrangement-progress);
+  width: 2px;
+  background: #22d3a5;
+  box-shadow: 0 0 0 1px rgba(34, 211, 165, .1);
+  pointer-events: none;
+}
+
+.composer-arrangement-playhead::before {
+  position: absolute;
+  top: 0;
+  left: 50%;
+  width: 0;
+  height: 0;
+  border-right: 7px solid transparent;
+  border-left: 7px solid transparent;
+  border-top: 12px solid #22d3a5;
+  content: '';
+  transform: translateX(-50%);
+}
+
+.composer-detail-toolbar {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  padding: 0 14px;
+  grid-column: 1 / -1;
+  grid-row: 2;
+  border-bottom: 1px solid #30343c;
+  background: #171a20;
+}
+
+.composer-split-handle {
+  position: absolute;
+  z-index: 10;
+  top: 0;
+  left: 50%;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 72px;
+  height: 30px;
+  padding: 0;
+  border: 1px solid #353a43;
+  border-radius: 0 0 18px 18px;
+  background: #22262d;
+  color: #cfd7e3;
+  transform: translate(-50%, -1px);
+  cursor: pointer;
+}
+
+.composer-split-handle:hover {
+  color: #6fe3c3;
+}
+
+.composer-split-chevron {
+  display: block;
+  width: 6px;
+  height: 6px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+}
+
+.composer-split-chevron.is-up { transform: translateY(2px) rotate(225deg); }
+.composer-split-chevron.is-down { transform: translateY(-2px) rotate(45deg); }
+
+.composer-tool-feedback {
+  position: absolute;
+  z-index: 30;
+  right: 14px;
+  bottom: calc(100% + 8px);
+  min-height: 34px;
+  max-width: min(320px, calc(100vw - 32px));
+  padding: 8px 12px;
+  border: 1px solid #3d4652;
+  border-radius: 7px;
+  background: #20252d;
+  box-shadow: 0 10px 26px rgba(0, 0, 0, .32);
+  color: #f2f6fb;
+  font-size: 12px;
+  font-weight: 800;
+  white-space: nowrap;
+  pointer-events: none;
+  animation: composer-tool-feedback-in 140ms ease-out;
+}
+
+@keyframes composer-tool-feedback-in {
+  from { opacity: 0; transform: translateY(4px); }
+  to { opacity: 1; transform: translateY(0); }
+}
+
+.composer-detail-tabs {
+  display: flex;
+  gap: 6px;
+}
+
+.composer-detail-tabs button {
+  min-width: 92px;
+  height: 32px;
+  border: 1px solid transparent;
+  border-radius: 7px;
+  background: transparent;
+  color: #8e98a8;
+  font-weight: 800;
+}
+
+.composer-detail-tabs button.is-active {
+  border-color: #2fd0a5;
+  background: rgba(47, 208, 165, .12);
+  color: #72e5c5;
+}
+
+.composer-detail-tools,
+.composer-edit-tool-group,
+.composer-note-zoom {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+
+.composer-detail-tools {
+  margin-left: auto;
+  gap: 18px;
+}
+
+.composer-edit-tool-group button {
+  padding: 0;
+  line-height: 1;
+  text-align: center;
+}
+
+.composer-edit-tool-group button:first-child {
+  position: relative;
+  font-size: 0;
+}
+
+.composer-edit-tool-group button:first-child::before {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 18px;
+  height: 18px;
+  color: currentColor;
+  content: '↖';
+  font-family: "Segoe UI Symbol", sans-serif;
+  font-size: 16px;
+  font-weight: 700;
+  line-height: 1;
+  transform: translate(-50%, -50%);
+}
+
+.composer-edit-tool-group button.is-active {
+  background: #24bf97;
+  color: #ffffff;
+}
+
+.composer-note-zoom .composer-grid-value {
+  width: 76px;
+  height: 34px;
+  padding: 0 10px;
+  border: 1px solid #343a45;
+  border-radius: 8px;
+  background: #20242b;
+  color: #d7deea;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+}
+
+.composer-note-zoom button:disabled {
+  opacity: .38;
+  cursor: not-allowed;
+}
+
+.composer-roll-shell.is-tool-select .piano-roll-cell { cursor: default; }
+.composer-roll-shell.is-tool-pencil .piano-roll-cell { cursor: crosshair; }
+.composer-roll-shell.is-tool-eraser .piano-roll-cell { cursor: cell; }
+.composer-roll-shell.is-tool-marquee .piano-roll-cell { cursor: crosshair; }
+.composer-roll-shell.is-tool-zoom .piano-roll-cell { cursor: zoom-in; }
+
+.piano-roll-cell.is-tool-selected {
+  box-shadow: inset 0 0 0 2px #4de5bd;
+}
+
+.piano-roll-cell.is-tool-selected:not(.is-active):not(.is-note-tail) {
+  background-color: rgba(77, 229, 189, .14);
+}
+
+.composer-arrangement-stage > .composer-main {
+  grid-column: 1 / -1;
+  grid-row: 3;
+  min-height: 0;
+  padding-top: 0;
+}
+
+.composer-footer {
+  flex: 0 0 72px;
+}
+
+@media (max-width: 980px) {
+  .composer-project-meta > span { padding: 0 10px; }
+  .composer-studio-layout { grid-template-columns: 220px minmax(0, 1fr); }
+  .composer-track-select { grid-template-columns: 18px 32px minmax(0, 1fr); padding-left: 9px; }
+  .composer-track-icon { width: 32px; height: 32px; }
+}
+
+@media (max-width: 760px) {
+  .composer-page .composer-workbar { min-height: 58px; padding: 6px 8px; }
+  .composer-mode-strip small,
+  .composer-project-meta > span:nth-child(2) { display: none; }
+  .composer-project-meta > span { min-height: 34px; padding: 0 8px; }
+  .composer-studio-layout {
+    grid-template-columns: 74px minmax(0, 1fr);
+    grid-template-rows: minmax(260px, 45%) 48px minmax(0, 1fr);
+  }
+  .composer-track-panel-head { justify-content: center; padding: 0; }
+  .composer-track-panel-head > strong { display: none; }
+  .composer-track-row { grid-template-columns: 1fr; min-height: 64px; }
+  .composer-track-select { grid-template-columns: 1fr; justify-items: center; padding: 5px; }
+  .composer-track-number,
+  .composer-track-name,
+  .composer-track-toggles,
+  .composer-track-more { display: none; }
+  .composer-track-add-menu { left: 0; width: 200px; }
+  .composer-arrangement-overview { overflow-x: auto; }
+  .composer-arrangement-ruler,
+  .composer-arrangement-lanes { min-width: 720px; }
+  .composer-arrangement-ruler { min-width: 1050px; }
+  .composer-detail-tools { display: none; }
+  .composer-detail-tabs { width: 100%; }
+  .composer-detail-tabs button { flex: 1; min-width: 0; }
 }
 
 /* Floating lyrics and memo workspace */

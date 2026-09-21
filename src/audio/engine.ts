@@ -44,6 +44,7 @@ const PLAYBACK_START_DELAY_SECONDS = 0.08;
 const AUDIO_LOOK_AHEAD_SECONDS = 0.12;
 let cachedVolumeKey = "";
 let cachedExtraTrackVolumeKey = "";
+let cachedActiveInstrumentKey = "";
 let cachedBusVolumes: InstrumentVolumes | null = null;
 let lastAppliedTransportBpm = 0;
 
@@ -90,21 +91,16 @@ const PIANO_SAMPLE_URLS: Record<string, string> = withFlatAliases({
 
 let cachedPianoBuffers: Record<string, AudioBuffer> | null = null;
 let lameLoadPromise: Promise<void> | null = null;
-let toneLoadPromise: Promise<void> | null = null;
 
 function tuneAudioLatency() {
   Tone.getContext().lookAhead = AUDIO_LOOK_AHEAD_SECONDS;
 }
 
-async function ensureToneReady() {
+async function ensureToneReady(activeInstruments?: ReadonlySet<InstrumentKey>) {
   tuneAudioLatency();
+  activeInstruments?.forEach(primeInstrument);
   await Tone.start();
-
-  if (!toneLoadPromise) {
-    toneLoadPromise = Tone.loaded();
-  }
-
-  await toneLoadPromise;
+  await Tone.loaded();
 }
 
 function getMelodyPlaybackNote(row: number) {
@@ -195,7 +191,11 @@ function getVolumeScale(volume: number, busVolume: number) {
   return Math.min(1, volume / busVolume);
 }
 
-function applyLiveVolumes(volumes: InstrumentVolumes, extraTracks: ExtraInstrumentTrack[] = []) {
+function applyLiveVolumes(
+  volumes: InstrumentVolumes,
+  extraTracks: ExtraInstrumentTrack[] = [],
+  activeInstruments?: ReadonlySet<InstrumentKey>
+) {
   const busVolumes = getInstrumentBusVolumes(volumes, extraTracks);
   const melodyDb = volumeToDb(busVolumes.melody);
   const violinDb = volumeToDb(busVolumes.violin);
@@ -209,38 +209,45 @@ function applyLiveVolumes(volumes: InstrumentVolumes, extraTracks: ExtraInstrume
   const chicagoStreetDb = volumeToDb(busVolumes.chicagoStreet);
   const studioAltoSaxDb = volumeToDb(busVolumes.studioAltoSax);
 
-  pianoSynth.volume.value = melodyDb;
-  acousticGuitarSynth.volume.value = guitarDb;
-  violinSynth.volume.value = violinDb;
-  saxophoneSynth.volume.value = saxophoneDb;
-  drumSampler.volume.value = drumsDb;
-  bassSampler.volume.value = bassDb;
-  glockenspielSynth.volume.value = glockenspielDb;
-  piccoloSynth.volume.value = piccoloDb;
-  supportingPianoSynth.volume.value = supportingPianoDb;
-  chicagoStreetSynth.volume.value = chicagoStreetDb;
-  studioAltoSaxSynth.volume.value = studioAltoSaxDb;
+  if (!activeInstruments || activeInstruments.has("melody")) pianoSynth.volume.value = melodyDb;
+  if (!activeInstruments || activeInstruments.has("guitar")) acousticGuitarSynth.volume.value = guitarDb;
+  if (!activeInstruments || activeInstruments.has("violin")) violinSynth.volume.value = violinDb;
+  if (!activeInstruments || activeInstruments.has("saxophone")) saxophoneSynth.volume.value = saxophoneDb;
+  if (!activeInstruments || activeInstruments.has("drums")) drumSampler.volume.value = drumsDb;
+  if (!activeInstruments || activeInstruments.has("bass")) bassSampler.volume.value = bassDb;
+  if (!activeInstruments || activeInstruments.has("glockenspiel")) glockenspielSynth.volume.value = glockenspielDb;
+  if (!activeInstruments || activeInstruments.has("piccolo")) piccoloSynth.volume.value = piccoloDb;
+  if (!activeInstruments || activeInstruments.has("supportingPiano")) supportingPianoSynth.volume.value = supportingPianoDb;
+  if (!activeInstruments || activeInstruments.has("chicagoStreet")) chicagoStreetSynth.volume.value = chicagoStreetDb;
+  if (!activeInstruments || activeInstruments.has("studioAltoSax")) studioAltoSaxSynth.volume.value = studioAltoSaxDb;
 
   return busVolumes;
 }
 
-function getLiveBusVolumes(volumes: InstrumentVolumes, extraTracks: ExtraInstrumentTrack[] = []) {
+function getLiveBusVolumes(
+  volumes: InstrumentVolumes,
+  extraTracks: ExtraInstrumentTrack[] = [],
+  activeInstruments?: ReadonlySet<InstrumentKey>
+) {
   const volumeKey = `${volumes.melody}|${volumes.violin}|${volumes.saxophone}|${volumes.guitar}|${volumes.drums}|${volumes.bass}|${volumes.glockenspiel}|${volumes.piccolo}|${volumes.supportingPiano}|${volumes.chicagoStreet}|${volumes.studioAltoSax}`;
   const extraTrackVolumeKey = extraTracks
     .map((track) => `${track.id}:${track.instrument}:${track.volume}`)
     .join("|");
+  const activeInstrumentKey = activeInstruments ? [...activeInstruments].sort().join("|") : "all";
 
   if (
     cachedBusVolumes &&
     cachedVolumeKey === volumeKey &&
-    cachedExtraTrackVolumeKey === extraTrackVolumeKey
+    cachedExtraTrackVolumeKey === extraTrackVolumeKey &&
+    cachedActiveInstrumentKey === activeInstrumentKey
   ) {
     return cachedBusVolumes;
   }
 
   cachedVolumeKey = volumeKey;
   cachedExtraTrackVolumeKey = extraTrackVolumeKey;
-  cachedBusVolumes = applyLiveVolumes(volumes, extraTracks);
+  cachedActiveInstrumentKey = activeInstrumentKey;
+  cachedBusVolumes = applyLiveVolumes(volumes, extraTracks, activeInstruments);
   return cachedBusVolumes;
 }
 
@@ -422,9 +429,70 @@ type PlaybackEvent =
   | { type: "drums"; row: number; velocity: number }
   | { type: "sampled"; instrument: "glockenspiel" | "piccolo" | "supportingPiano" | "chicagoStreet" | "studioAltoSax"; row: number; durationSeconds: number; velocity: number };
 
+let cachedPlaybackPlan: PlaybackEvent[][] | null = null;
+let cachedPlaybackPlanDependencies: unknown[] = [];
+
+function hasGridNotes(grid: boolean[][]) {
+  return grid.some((row) => row.some(Boolean));
+}
+
+function getActivePlaybackInstruments(state: ReturnType<typeof useSongStore.getState>) {
+  const active = new Set<InstrumentKey>();
+  if (hasGridNotes(state.melody)) active.add("melody");
+  if (hasGridNotes(state.violin)) active.add("violin");
+  if (hasGridNotes(state.saxophone)) active.add("saxophone");
+  if (hasGridNotes(state.guitar)) active.add("guitar");
+  if (hasGridNotes(state.drums)) active.add("drums");
+  if (hasGridNotes(state.bass)) active.add("bass");
+  state.extraTracks.forEach((track) => {
+    if (hasGridNotes(track.grid)) active.add(track.instrument);
+  });
+  return active;
+}
+
+function primeInstrument(instrument: InstrumentKey) {
+  switch (instrument) {
+    case "melody": void pianoSynth.loaded; break;
+    case "violin": void violinSynth.loaded; break;
+    case "saxophone": void saxophoneSynth.loaded; break;
+    case "guitar": void acousticGuitarSynth.loaded; break;
+    case "drums": void drumSampler.loaded; break;
+    case "bass": void bassSampler.loaded; break;
+    case "glockenspiel": void glockenspielSynth.loaded; break;
+    case "piccolo": void piccoloSynth.loaded; break;
+    case "supportingPiano": void supportingPianoSynth.loaded; break;
+    case "chicagoStreet": void chicagoStreetSynth.loaded; break;
+    case "studioAltoSax": void studioAltoSaxSynth.loaded; break;
+    default: break;
+  }
+}
+
+function getPlaybackPlanDependencies(state: ReturnType<typeof useSongStore.getState>) {
+  return [
+    state.steps,
+    state.bpm,
+    state.tempoAutomation,
+    state.volumes,
+    state.melody,
+    state.melodyLengths,
+    state.melodyVelocities,
+    state.violin,
+    state.violinLengths,
+    state.saxophone,
+    state.saxophoneLengths,
+    state.guitar,
+    state.guitarLengths,
+    state.drums,
+    state.bass,
+    state.bassLengths,
+    state.extraTracks,
+  ];
+}
+
 function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
   const plan = Array.from({ length: state.steps }, () => [] as PlaybackEvent[]);
-  const busVolumes = getLiveBusVolumes(state.volumes, state.extraTracks);
+  const activeInstruments = getActivePlaybackInstruments(state);
+  const busVolumes = getLiveBusVolumes(state.volumes, state.extraTracks, activeInstruments);
   const melodyVelocityScale = getVolumeScale(state.volumes.melody, busVolumes.melody);
   const violinVelocityScale = getVolumeScale(state.volumes.violin, busVolumes.violin);
   const saxophoneVelocityScale = getVolumeScale(state.volumes.saxophone, busVolumes.saxophone);
@@ -578,6 +646,21 @@ function buildPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
   return plan;
 }
 
+function getCachedPlaybackPlan(state: ReturnType<typeof useSongStore.getState>) {
+  const dependencies = getPlaybackPlanDependencies(state);
+  if (
+    cachedPlaybackPlan &&
+    dependencies.length === cachedPlaybackPlanDependencies.length &&
+    dependencies.every((dependency, index) => dependency === cachedPlaybackPlanDependencies[index])
+  ) {
+    return cachedPlaybackPlan;
+  }
+
+  cachedPlaybackPlan = buildPlaybackPlan(state);
+  cachedPlaybackPlanDependencies = dependencies;
+  return cachedPlaybackPlan;
+}
+
 function triggerPlaybackEvent(event: PlaybackEvent, time: number) {
   switch (event.type) {
     case "melody":
@@ -615,14 +698,25 @@ function triggerPlaybackEvent(event: PlaybackEvent, time: number) {
   }
 }
 
-export async function preparePlaybackEngine() {
-  await ensureToneReady();
-  initTransport();
+export async function preparePlaybackEngine(initialStep?: number) {
   const state = useSongStore.getState();
+  const activeInstruments = getActivePlaybackInstruments(state);
+  await ensureToneReady(activeInstruments);
+  getCachedPlaybackPlan(state);
+  initTransport(initialStep);
   cachedVolumeKey = "";
   cachedExtraTrackVolumeKey = "";
+  cachedActiveInstrumentKey = "";
   cachedBusVolumes = null;
-  getLiveBusVolumes(state.volumes, state.extraTracks);
+  getLiveBusVolumes(state.volumes, state.extraTracks, activeInstruments);
+}
+
+export async function preloadPlaybackEngine() {
+  const state = useSongStore.getState();
+  const activeInstruments = getActivePlaybackInstruments(state);
+  activeInstruments.forEach(primeInstrument);
+  getCachedPlaybackPlan(state);
+  await Tone.loaded();
 }
 
 export function getPlaybackStartDelaySeconds() {
@@ -704,7 +798,7 @@ async function loadPianoBuffers(): Promise<Record<string, AudioBuffer>> {
   return cachedPianoBuffers;
 }
 
-export function initTransport() {
+export function initTransport(initialStep?: number) {
   if (loopId !== null) {
     Tone.Transport.clear(loopId);
     loopId = null;
@@ -712,11 +806,11 @@ export function initTransport() {
 
   Tone.Transport.cancel();
   const initialState = useSongStore.getState();
-  playbackStep = initialState.loopRange?.start ?? initialState.currentStep;
+  playbackStep = initialStep ?? initialState.loopRange?.start ?? initialState.currentStep;
 
   loopId = Tone.Transport.scheduleRepeat((time) => {
     const latestState = useSongStore.getState();
-    const playbackPlan = buildPlaybackPlan(latestState);
+    const playbackPlan = getCachedPlaybackPlan(latestState);
     const playbackSteps = latestState.steps;
     const playbackLoopRange = latestState.loopRange;
     const currentPlaybackStep = Math.min(playbackStep, Math.max(0, playbackSteps - 1));

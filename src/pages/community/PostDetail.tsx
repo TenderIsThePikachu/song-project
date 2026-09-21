@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams, useSearchParams } from 'react-router-dom';
 import SiteHeader from '../../components/layout/SiteHeader';
+import { DUMMY_POSTS } from '../../dummy/mockData';
 import { useAuthStore } from '../../store/authStore';
 import { useCommunityStore } from '../../store/communityStore';
 import { useNotificationStore } from '../../store/notificationStore';
@@ -57,6 +58,45 @@ function HeartIcon() {
     </svg>
   );
 }
+
+function BookmarkIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M6 3.5h12v17l-6-4-6 4v-17Z" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ShareIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 16V3m0 0L7.5 7.5M12 3l4.5 4.5M5 12v8h14v-8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function ReportIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <path d="M12 3 2.8 20h18.4L12 3Zm0 6v5m0 3h.01" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  );
+}
+
+function AuthorIcon() {
+  return (
+    <svg viewBox="0 0 24 24" aria-hidden="true">
+      <circle cx="9" cy="8" r="3" fill="none" stroke="currentColor" strokeWidth="1.8" />
+      <path d="M3.8 18c.5-3.2 2.2-4.8 5.2-4.8s4.7 1.6 5.2 4.8M16 8.5c2.2.2 3.5 1.5 3.9 3.9M16.3 14.2c2.1.5 3.4 1.8 3.9 3.8" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" />
+    </svg>
+  );
+}
+
+const DETAIL_POPULAR_IMAGES = [
+  '/landing-assets/shared-fallback-film.jpg',
+  '/landing-assets/shared-fallback-groove.jpg',
+  '/landing-assets/shared-fallback-dream.jpg',
+];
 
 const categoryToneMap: Record<string, string> = {
   질문: 'indigo',
@@ -140,11 +180,13 @@ function formatRelativeTime(timestamp: number) {
   return new Date(timestamp).toLocaleDateString('ko-KR');
 }
 
-function formatFullDate(timestamp: number) {
-  return new Date(timestamp).toLocaleDateString('ko-KR', {
+function formatPostDate(timestamp: number) {
+  return new Date(timestamp).toLocaleString('ko-KR', {
     year: 'numeric',
-    month: 'long',
+    month: 'numeric',
     day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 
@@ -168,9 +210,16 @@ function getParagraphs(content: string) {
     .filter(Boolean);
 }
 
+function isChordProgressionBlock(paragraph: string) {
+  const lines = paragraph.split('\n').map((line) => line.trim()).filter(Boolean);
+  return lines.length > 1 && lines.filter((line) => /[A-G](?:#|b)?(?:m|maj|dim|aug)?/.test(line)).length >= 2;
+}
+
 export default function PostDetail() {
   const { id } = useParams<{ id: string }>();
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isPreviewMode = searchParams.get('preview') === '1';
   const user = useAuthStore((state) => state.user);
   const posts = useCommunityStore((state) => state.posts);
   const commentsStore = useCommunityStore((state) => state.comments);
@@ -200,7 +249,8 @@ export default function PostDetail() {
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const [replySubmittingId, setReplySubmittingId] = useState<string | null>(null);
 
-  const post: Post | null = posts.find((item) => item.id === id) ?? null;
+  const post: Post | null =
+    posts.find((item) => item.id === id) ?? (isPreviewMode ? DUMMY_POSTS[0] : null);
   const comments: Comment[] = useMemo(
     () => commentsStore.filter((item) => item.postId === id),
     [commentsStore, id]
@@ -214,14 +264,14 @@ export default function PostDetail() {
   }, [seedCommunity]);
 
   useEffect(() => {
-    if (!id || bootstrapStatus !== 'ready') {
+    if (!id || isPreviewMode || bootstrapStatus !== 'ready') {
       return;
     }
 
     void recordView(id).catch((error) => {
       console.error(error);
     });
-  }, [bootstrapStatus, id, recordView]);
+  }, [bootstrapStatus, id, isPreviewMode, recordView]);
 
   useEffect(() => {
     if (!commentToastMessage) {
@@ -283,6 +333,26 @@ export default function PostDetail() {
   const tone = categoryToneMap[post.category ?? '질문'] ?? 'slate';
   const paragraphs = getParagraphs(post.content);
   const summary = getSummary(post.content);
+  const communityPosts = posts.length ? posts : DUMMY_POSTS;
+  const popularPosts = [...communityPosts]
+    .filter((item) => item.id !== post.id)
+    .sort((left, right) => (right.viewCount ?? 0) - (left.viewCount ?? 0))
+    .slice(0, 3);
+  const popularTags = Array.from(
+    communityPosts.reduce((counts, item) => {
+      item.tags?.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1));
+      return counts;
+    }, new Map<string, number>())
+  )
+    .sort((left, right) => right[1] - left[1])
+    .slice(0, 8)
+    .map(([tag]) => tag);
+  const authorPostCount = communityPosts.filter(
+    (item) => item.authorId === post.authorId || item.authorName === post.authorName
+  ).length;
+  const authorStats = isPreviewMode
+    ? { posts: 12, followers: 248, following: 17 }
+    : { posts: authorPostCount, followers: 0, following: 0 };
 
   const handleCommentSubmit = async () => {
     const nextValue = commentInput.trim();
@@ -446,6 +516,37 @@ export default function PostDetail() {
       route: `/community/${post.id}`,
       actorName: user.name,
     });
+  };
+
+  const handleShare = async () => {
+    try {
+      if (navigator.share) {
+        await navigator.share({
+          title: post.title,
+          text: summary,
+          url: window.location.href,
+        });
+        return;
+      }
+
+      await navigator.clipboard.writeText(window.location.href);
+      setCommentToastMessage('게시글 링크를 복사했습니다.');
+    } catch (error) {
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        return;
+      }
+
+      console.error(error);
+    }
+  };
+
+  const handleFollowAuthor = () => {
+    if (!user) {
+      navigate('/login');
+      return;
+    }
+
+    setCommentToastMessage('팔로우 기능은 프로필 연동 후 사용할 수 있습니다.');
   };
 
   const handleDelete = async () => {
@@ -617,84 +718,53 @@ export default function PostDetail() {
       <SiteHeader activeSection="community" />
 
       <main className="community-detail-shell">
-        <section className="community-detail-hero-card">
-          <div className="community-detail-hero-copy">
-            <div className="community-detail-badges">
-              <span className={`community-detail-category community-detail-category--${tone}`}>
-                {post.category ?? '질문'}
-              </span>
-              {post.isHot ? <span className="community-detail-hot">HOT</span> : null}
-            </div>
-
-            <h1 className="community-detail-title">{post.title}</h1>
-            <p className="community-detail-summary">{summary}</p>
-
-            <div className="community-detail-meta">
-              <span className="community-detail-meta-avatar" aria-hidden="true">
-                {getAvatarSeed(post.authorName)}
-              </span>
-              <span className="community-detail-meta-author">{post.authorName}</span>
-              <span>{formatRelativeTime(post.createdAt)}</span>
-              <span>{formatFullDate(post.createdAt)}</span>
-            </div>
-
-            <div className="community-detail-hero-actions">
-              <button
-                type="button"
-                className="community-detail-secondary-button"
-                onClick={() => navigate('/community')}
-              >
-                게시판으로
-              </button>
-              <button
-                type="button"
-                className="community-detail-primary-button"
-                onClick={() =>
-                  navigate(isMine ? `/community/write?edit=${post.id}` : '/community/write')
-                }
-              >
-                {isMine ? '글 수정' : '글 쓰기'}
-              </button>
-            </div>
-          </div>
-
-          <div className="community-detail-stat-grid">
-            <article className="community-detail-stat-card">
-              <span className="community-detail-stat-icon">
-                <EyeIcon />
-              </span>
-              <span className="community-detail-stat-label">조회수</span>
-              <strong>{formatCount(post.viewCount)}</strong>
-            </article>
-            <article className="community-detail-stat-card">
-              <span className="community-detail-stat-icon">
-                <CommentIcon />
-              </span>
-              <span className="community-detail-stat-label">댓글</span>
-              <strong>{formatCount(comments.length)}</strong>
-            </article>
-            <article className="community-detail-stat-card">
-              <span className="community-detail-stat-icon">
-                <HeartIcon />
-              </span>
-              <span className="community-detail-stat-label">좋아요</span>
-              <strong>{formatCount(post.likeCount)}</strong>
-            </article>
-          </div>
-        </section>
-
         <div className="community-detail-layout">
           <div className="community-detail-main-column">
             <article className="community-detail-article-card">
-              <div className="community-detail-panel-head">
-                <span className="community-detail-panel-kicker">ARTICLE</span>
-                <strong>본문</strong>
+              <button
+                type="button"
+                className="community-detail-back-button"
+                onClick={() => navigate('/community')}
+              >
+                <span aria-hidden="true">←</span> 게시판으로 돌아가기
+              </button>
+
+              <div className="community-detail-badges">
+                <span className={`community-detail-category community-detail-category--${tone}`}>
+                  {post.category ?? '질문'}
+                </span>
+                {post.isHot ? <span className="community-detail-hot">HOT</span> : null}
+              </div>
+
+              <h1 className="community-detail-title">{post.title}</h1>
+
+              <div className="community-detail-byline-row">
+                <div className="community-detail-meta">
+                  <span className="community-detail-meta-avatar" aria-hidden="true">
+                    {getAvatarSeed(post.authorName)}
+                  </span>
+                  <span className="community-detail-meta-author">{post.authorName}</span>
+                  <span>{formatPostDate(post.createdAt)}</span>
+                </div>
+                <div className="community-detail-inline-stats" aria-label="게시글 통계">
+                  <span><EyeIcon /> {formatCount(post.viewCount)}</span>
+                  <span><CommentIcon /> {formatCount(comments.length)}</span>
+                  <span><HeartIcon /> {formatCount(post.likeCount)}</span>
+                </div>
               </div>
 
               <div className="community-detail-content">
-                {paragraphs.map((paragraph) => (
-                  <p key={paragraph}>{paragraph}</p>
-                ))}
+                {paragraphs.map((paragraph, paragraphIndex) =>
+                  isChordProgressionBlock(paragraph) ? (
+                    <div className="community-detail-chord-block" key={`${paragraphIndex}-${paragraph}`}>
+                      {paragraph.split('\n').map((line, lineIndex) => (
+                        <span key={`${lineIndex}-${line}`}>{line}</span>
+                      ))}
+                    </div>
+                  ) : (
+                    <p key={`${paragraphIndex}-${paragraph}`}>{paragraph}</p>
+                  )
+                )}
               </div>
 
               {post.tags?.length ? (
@@ -706,13 +776,65 @@ export default function PostDetail() {
                   ))}
                 </div>
               ) : null}
+
+              <footer className="community-detail-article-actions">
+                <div className="community-detail-action-group">
+                  <button
+                    type="button"
+                    className={`community-detail-action-button community-detail-post-like-button${liked ? ' is-active' : ''}`}
+                    onClick={handleToggleLike}
+                    aria-pressed={liked}
+                  >
+                    <HeartIcon />
+                    <span>좋아요</span>
+                    <strong>{formatCount(post.likeCount)}</strong>
+                  </button>
+                  <button
+                    type="button"
+                    className={`community-detail-action-button${bookmarked ? ' is-active' : ''}`}
+                    onClick={handleToggleBookmark}
+                  >
+                    <BookmarkIcon /> {bookmarked ? '북마크 해제' : '북마크'}
+                  </button>
+                </div>
+                <div className="community-detail-action-group community-detail-action-group--right">
+                  {isMine ? (
+                    <>
+                      <button type="button" className="community-detail-text-action" onClick={() => navigate(`/community/write?edit=${post.id}`)}>
+                        수정
+                      </button>
+                      <button type="button" className="community-detail-text-action is-danger" onClick={handleDelete}>
+                        삭제
+                      </button>
+                    </>
+                  ) : null}
+                  {isManager ? (
+                    <>
+                      <button type="button" className="community-detail-text-action is-danger" onClick={() => handleModerate('delete-post')}>
+                        관리자 삭제
+                      </button>
+                      <button type="button" className="community-detail-text-action is-danger" onClick={() => handleModerate('block-user')}>
+                        작성자 차단
+                      </button>
+                    </>
+                  ) : null}
+                  <button
+                    type="button"
+                    className="community-detail-text-action"
+                    onClick={handleReport}
+                    disabled={reported}
+                  >
+                    <ReportIcon /> {reported ? '신고 완료' : '신고하기'}
+                  </button>
+                  <button type="button" className="community-detail-icon-button" aria-label="게시글 공유" onClick={handleShare}>
+                    <ShareIcon />
+                  </button>
+                </div>
+              </footer>
             </article>
 
             <section className="community-detail-comments-card">
-              <div className="community-detail-panel-head">
-                <span className="community-detail-panel-kicker">COMMENTS</span>
-                <strong>댓글 {comments.length}</strong>
-              </div>
+              <h2 className="community-detail-comments-title"><CommentIcon /> 댓글 {comments.length}</h2>
 
               <div className="community-detail-comment-entry">
                 <span className="community-detail-comment-avatar" aria-hidden="true">
@@ -723,7 +845,10 @@ export default function PostDetail() {
                   className="community-detail-comment-open-button"
                   onClick={handleOpenCommentPopup}
                 >
-                  댓글 작성
+                  댓글을 작성해보세요.
+                </button>
+                <button type="button" className="community-detail-comment-submit-button" onClick={handleOpenCommentPopup}>
+                  등록
                 </button>
               </div>
 
@@ -732,7 +857,9 @@ export default function PostDetail() {
                   commentTree.map((node) => renderCommentNode(node))
                 ) : (
                   <div className="community-detail-comment-empty">
-                    아직 댓글이 없습니다. 첫 반응을 남겨보세요.
+                    <CommentIcon />
+                    <strong>아직 댓글이 없습니다.</strong>
+                    <span>첫 댓글을 남겨보세요!</span>
                   </div>
                 )}
               </div>
@@ -741,79 +868,60 @@ export default function PostDetail() {
 
           <aside className="community-detail-side-column">
             <section className="community-detail-side-card">
-              <span className="community-detail-panel-kicker">ACTIONS</span>
-              <div className="community-detail-side-actions">
-                <button
-                  type="button"
-                  className={`community-detail-like-button${liked ? ' is-active' : ''}`}
-                  onClick={handleToggleLike}
-                >
-                  {liked ? '좋아요 취소' : '좋아요'} / {formatCount(post.likeCount)}
-                </button>
-                <button
-                  type="button"
-                  className={`community-detail-secondary-button${
-                    bookmarked ? ' is-active' : ''
-                  }`}
-                  onClick={handleToggleBookmark}
-                >
-                  {bookmarked ? '북마크 해제' : '북마크'}
-                </button>
-                <button
-                  type="button"
-                  className="community-detail-secondary-button"
-                  onClick={handleReport}
-                  disabled={reported}
-                >
-                  {reported ? '신고 완료' : '신고하기'}
-                </button>
-                {isMine ? (
-                  <>
-                    <button
-                      type="button"
-                      className="community-detail-secondary-button"
-                      onClick={() => navigate(`/community/write?edit=${post.id}`)}
-                    >
-                      글 수정
-                    </button>
-                    <button
-                      type="button"
-                      className="community-detail-secondary-button is-danger"
-                      onClick={handleDelete}
-                    >
-                      글 삭제
-                    </button>
-                  </>
-                ) : null}
-                {isManager ? (
-                  <>
-                    <button
-                      type="button"
-                      className="community-detail-secondary-button is-danger"
-                      onClick={() => handleModerate('delete-post')}
-                    >
-                      관리자 삭제
-                    </button>
-                    <button
-                      type="button"
-                      className="community-detail-secondary-button is-danger"
-                      onClick={() => handleModerate('block-user')}
-                    >
-                      작성자 차단
-                    </button>
-                  </>
-                ) : null}
-              </div>
-
-              {post.tags?.length ? (
-                <div className="community-detail-side-tags">
-                  {post.tags.map((tag) => (
-                    <span key={tag} className="community-detail-side-tag">
-                      #{tag}
-                    </span>
-                  ))}
+              <h2 className="community-detail-side-title community-detail-author-title"><AuthorIcon /> 작성자 정보</h2>
+              <div className="community-detail-author-profile">
+                <span className="community-detail-author-avatar" aria-hidden="true">
+                  {getAvatarSeed(post.authorName)}
+                </span>
+                <div className="community-detail-author-copy">
+                  <strong>{post.authorName}</strong>
+                  <span>{isPreviewMode ? '음악을 좋아하는 학생이에요!' : '작곡밥 커뮤니티 멤버'}</span>
                 </div>
-              ) : null}
+                <button type="button" className="community-detail-follow-button" onClick={handleFollowAuthor}>
+                  <span aria-hidden="true">＋</span> 팔로우
+                </button>
+              </div>
+              <div className="community-detail-author-stats">
+                <span><strong>{authorStats.posts}</strong><small>작성글</small></span>
+                <span><strong>{authorStats.followers}</strong><small>팔로워</small></span>
+                <span><strong>{authorStats.following}</strong><small>팔로잉</small></span>
+              </div>
+            </section>
+
+            <section className="community-detail-side-card">
+              <div className="community-detail-side-heading-row">
+                <h2 className="community-detail-side-title">인기 글</h2>
+                <button type="button" onClick={() => navigate('/community')}>더보기 <span aria-hidden="true">›</span></button>
+              </div>
+              <div className="community-detail-popular-list">
+                {popularPosts.map((item, index) => (
+                  <button type="button" className="community-detail-popular-post" key={item.id} onClick={() => navigate(`/community/${item.id}`)}>
+                    <img src={DETAIL_POPULAR_IMAGES[index % DETAIL_POPULAR_IMAGES.length]} alt="" />
+                    <span className="community-detail-popular-copy">
+                      <strong>{item.title}</strong>
+                      <small>{item.authorName} · {formatRelativeTime(item.createdAt)}</small>
+                      <span className="community-detail-popular-stats">
+                        <span><EyeIcon /> {formatCount(item.viewCount)}</span>
+                        <span><CommentIcon /> {formatCount(item.commentCount)}</span>
+                      </span>
+                    </span>
+                  </button>
+                ))}
+              </div>
+            </section>
+
+            <section className="community-detail-side-card">
+              <div className="community-detail-side-heading-row">
+                <h2 className="community-detail-side-title">인기 태그</h2>
+                <button type="button" onClick={() => navigate('/community')}>더보기 <span aria-hidden="true">›</span></button>
+              </div>
+              <div className="community-detail-popular-tags">
+                {popularTags.map((tag) => (
+                  <button type="button" key={tag} onClick={() => navigate(`/community?tag=${encodeURIComponent(tag)}`)}>
+                    #{tag}
+                  </button>
+                ))}
+              </div>
             </section>
           </aside>
         </div>

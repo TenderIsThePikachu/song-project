@@ -120,6 +120,7 @@ type BarClipboard = {
 } | null;
 
 type SongHistorySnapshot = {
+  compositionMode: 'standard' | 'soloPiano';
   bpm: number;
   tempoAutomation: TempoAutomationPoint[];
   steps: number;
@@ -142,6 +143,7 @@ type SongHistorySnapshot = {
 };
 
 export type SongState = {
+  compositionMode: 'standard' | 'soloPiano';
   bpm: number;
   tempoAutomation: TempoAutomationPoint[];
   steps: number;
@@ -177,6 +179,7 @@ export type SongState = {
   toggleBass: (row: number, col: number, length?: number) => void;
   clearInstrument: (instrument: InstrumentKey) => void;
   addInstrumentTrack: (instrument: InstrumentKey) => string;
+  duplicateInstrumentTrack: (instrument: InstrumentKey, sourceTrackId?: string) => string;
   removeInstrumentTrack: (trackId: string) => void;
   toggleExtraTrackCell: (trackId: string, row: number, col: number, length?: number) => void;
   applyExtraTrackChord: (trackId: string, chord: string, col: number, length?: number) => void;
@@ -203,6 +206,7 @@ export type SongState = {
 
 export type SongProject = {
   version: 2;
+  compositionMode?: 'standard' | 'soloPiano';
   bpm: number;
   tempoAutomation?: TempoAutomationPoint[];
   steps: number;
@@ -221,6 +225,7 @@ export type SongProject = {
 
 type SongProjectSnapshotInput = Pick<
   SongState,
+  | 'compositionMode'
   | 'bpm'
   | 'tempoAutomation'
   | 'steps'
@@ -678,6 +683,7 @@ function setTimedNote(
 
 function createHistorySnapshot(state: Pick<
   SongState,
+  | 'compositionMode'
   | 'bpm'
   | 'tempoAutomation'
   | 'steps'
@@ -699,6 +705,7 @@ function createHistorySnapshot(state: Pick<
   | 'loopRange'
 >): SongHistorySnapshot {
   return {
+    compositionMode: state.compositionMode,
     bpm: state.bpm,
     tempoAutomation: normalizeTempoAutomation(state.tempoAutomation, state.steps, state.bpm),
     steps: state.steps,
@@ -1003,6 +1010,7 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
 
   return {
     version: 2,
+    compositionMode: state.compositionMode,
     bpm: state.bpm,
     tempoAutomation: normalizeTempoAutomation(state.tempoAutomation, state.steps, state.bpm),
     steps: state.steps,
@@ -1051,6 +1059,7 @@ function restoreHistorySnapshot(
   historyFuture: SongHistorySnapshot[]
 ): Partial<SongState> {
   return {
+    compositionMode: snapshot.compositionMode,
     bpm: snapshot.bpm,
     tempoAutomation: normalizeTempoAutomation(snapshot.tempoAutomation, snapshot.steps, snapshot.bpm),
     steps: snapshot.steps,
@@ -1218,6 +1227,7 @@ function parseV2TracksToGrids(project: SongProject, steps: number) {
 export const useSongStore = create<SongState>()(
   persist(
     (set, get) => ({
+  compositionMode: 'standard',
   bpm: 100,
   tempoAutomation: [],
   steps: DEFAULT_STEPS,
@@ -1401,6 +1411,73 @@ export const useSongStore = create<SongState>()(
   addInstrumentTrack: (instrument) => {
     const state = get();
     const track = createEmptyExtraTrack(instrument, state.steps, state.extraTracks);
+
+    set((current) =>
+      buildHistoryUpdate(current, {
+        extraTracks: [...current.extraTracks, track],
+      })
+    );
+
+    return track.id;
+  },
+
+  duplicateInstrumentTrack: (instrument, sourceTrackId) => {
+    const state = get();
+    const sourceExtraTrack = sourceTrackId
+      ? state.extraTracks.find((track) => track.id === sourceTrackId)
+      : null;
+    const sourceInstrument = sourceExtraTrack?.instrument ?? instrument;
+    let sourceGrid: boolean[][] | undefined;
+    let sourceLengths: number[][] | undefined;
+
+    if (sourceExtraTrack) {
+      sourceGrid = sourceExtraTrack.grid;
+      sourceLengths = sourceExtraTrack.melodyLengths;
+    } else {
+      switch (sourceInstrument) {
+        case 'melody':
+          sourceGrid = state.melody;
+          sourceLengths = state.melodyLengths;
+          break;
+        case 'violin':
+          sourceGrid = state.violin;
+          sourceLengths = state.violinLengths;
+          break;
+        case 'saxophone':
+          sourceGrid = state.saxophone;
+          sourceLengths = state.saxophoneLengths;
+          break;
+        case 'guitar':
+          sourceGrid = state.guitar;
+          sourceLengths = state.guitarLengths;
+          break;
+        case 'drums':
+          sourceGrid = state.drums;
+          break;
+        case 'bass':
+          sourceGrid = state.bass;
+          sourceLengths = state.bassLengths;
+          break;
+        default:
+          break;
+      }
+    }
+
+    const track = createEmptyExtraTrack(
+      sourceInstrument,
+      state.steps,
+      state.extraTracks,
+      undefined,
+      undefined,
+      sourceExtraTrack?.volume ?? state.volumes[sourceInstrument]
+    );
+
+    if (sourceGrid) {
+      track.grid = cloneMatrix(sourceGrid);
+    }
+    if (track.melodyLengths && sourceLengths) {
+      track.melodyLengths = cloneLengthMatrix(sourceLengths);
+    }
 
     set((current) =>
       buildHistoryUpdate(current, {
@@ -2016,6 +2093,7 @@ export const useSongStore = create<SongState>()(
   clear: () =>
     set((state) =>
       buildHistoryUpdate(state, {
+        compositionMode: 'standard',
         currentStep: 0,
         tempoAutomation: [],
         noteLyrics: {},
@@ -2052,6 +2130,7 @@ export const useSongStore = create<SongState>()(
     
     set((state) =>
       buildHistoryUpdate(state, {
+        compositionMode: project.compositionMode ?? 'standard',
         bpm,
         tempoAutomation,
         steps,
@@ -2097,6 +2176,7 @@ export const useSongStore = create<SongState>()(
     const grids = parseV2TracksToGrids(project, steps); // V2 파싱
 
     set((state) => ({
+      compositionMode: project.compositionMode ?? 'standard',
       bpm,
       tempoAutomation,
       steps,
@@ -2140,6 +2220,7 @@ export const useSongStore = create<SongState>()(
     {
       name: 'song-maker-composer-draft',
       partialize: (state) => ({
+        compositionMode: state.compositionMode,
         bpm: state.bpm,
         tempoAutomation: state.tempoAutomation,
         steps: state.steps,

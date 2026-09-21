@@ -250,15 +250,19 @@
 }
 
 .piano-roll-playhead {
+  --piano-step-index: 0;
   position: absolute;
   top: calc(
     var(--piano-control-bar-height) + var(--piano-header-height) + var(--piano-header-margin) + 8px
   );
   bottom: 0;
-  left: calc(
-    (var(--piano-step-index) * (var(--piano-step-width) + var(--piano-grid-gap))) +
-      (var(--piano-step-width) / 2) - 1px
+  left: calc((var(--piano-step-width) / 2) - 1px);
+  transform: translate3d(
+    calc(var(--piano-step-index) * (var(--piano-step-width) + var(--piano-grid-gap))),
+    0,
+    0
   );
+  will-change: transform;
   z-index: 14;
   width: 3px;
   border-radius: 999px;
@@ -542,8 +546,8 @@
   background: transparent;
 }
 
-.composer-page.is-playing .piano-roll-step-number.is-current:not(.is-current-live) {
-  background: rgba(255, 255, 255, 0.04);
+.composer-page.is-playing .piano-roll-step-number:is(.is-current, .is-current-live) {
+  background: transparent;
   color: transparent;
   box-shadow: none;
 }
@@ -817,12 +821,15 @@
 }
 
 .piano-roll--melody-detached .piano-roll-sidebar {
-  position: relative;
+  position: sticky;
+  left: 0;
+  z-index: 12;
   flex: 0 0 var(--piano-sidebar-width);
   min-width: var(--piano-sidebar-width);
   padding: 0;
   background: #111317;
   border-right: 1px solid rgba(255, 255, 255, 0.08);
+  box-shadow: 8px 0 12px -12px rgba(0, 0, 0, .8);
 }
 
 .piano-roll--melody-detached .piano-roll-sidebar-notes {

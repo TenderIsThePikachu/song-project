@@ -73,6 +73,8 @@ const PIANO_HEADER_HEIGHT = 36;
 const PIANO_HEADER_MARGIN = 8;
 const PIANO_BODY_TOP_PADDING = 8;
 const MELODY_CONTROL_BAR_HEIGHT = 28;
+const PIANO_STEPS_PER_BAR = 16;
+const SHOW_LEGACY_EDITOR_ASSIST_CONTROLS = false;
 
 const MELODY_NOTE_LENGTH_OPTIONS = [
   { label: '1/16', steps: 1 },
@@ -85,6 +87,7 @@ const MELODY_NOTE_LENGTH_OPTIONS = [
 const MELODY_CHORD_OPTIONS = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const;
 
 type MelodyNoteLengthSteps = (typeof MELODY_NOTE_LENGTH_OPTIONS)[number]['steps'];
+type PianoEditTool = 'select' | 'pencil' | 'eraser' | 'marquee' | 'zoom';
 
 type CollabBarLockState = {
   mine: boolean;
@@ -92,6 +95,11 @@ type CollabBarLockState = {
 };
 
 type PianoRollProps = {
+  editTool?: PianoEditTool;
+  stepWidth?: number;
+  noteLengthSteps?: MelodyNoteLengthSteps;
+  onNoteLengthChange?: (steps: MelodyNoteLengthSteps) => void;
+  onRequestZoom?: (direction: -1 | 1) => void;
   loopRange?: { start: number; end: number } | null;
   onStepHeaderSelect?: (col: number) => void;
   collabBarLocks?: Record<number, CollabBarLockState>;
@@ -161,6 +169,11 @@ function findMelodyNoteInfo(melodyRow: boolean[], melodyLengthRow: number[], col
 }
 
 export const PianoRoll = ({
+  editTool = 'select',
+  stepWidth: requestedStepWidth,
+  noteLengthSteps: controlledNoteLengthSteps,
+  onNoteLengthChange,
+  onRequestZoom,
   loopRange = null,
   onStepHeaderSelect,
   collabBarLocks = {},
@@ -192,9 +205,20 @@ export const PianoRoll = ({
   const [dragMelodyOrigin, setDragMelodyOrigin] = useState<{ row: number; col: number } | null>(
     null
   );
-  const [melodyNoteLengthSteps, setMelodyNoteLengthSteps] =
+  const [internalNoteLengthSteps, setInternalNoteLengthSteps] =
     useState<MelodyNoteLengthSteps>(4);
-  const [melodyScrollLeft, setMelodyScrollLeft] = useState(0);
+  const melodyNoteLengthSteps = controlledNoteLengthSteps ?? internalNoteLengthSteps;
+  const setMelodyNoteLengthSteps = (stepsValue: MelodyNoteLengthSteps) => {
+    setInternalNoteLengthSteps(stepsValue);
+    onNoteLengthChange?.(stepsValue);
+  };
+  const [selectedRange, setSelectedRange] = useState<{
+    startRow: number;
+    endRow: number;
+    startCol: number;
+    endCol: number;
+  } | null>(null);
+  const [marqueeOrigin, setMarqueeOrigin] = useState<{ row: number; col: number } | null>(null);
   const [melodyViewport, setMelodyViewport] = useState({
     scrollLeft: 0,
     scrollTop: 0,
@@ -207,6 +231,7 @@ export const PianoRoll = ({
   );
   const activeLockRef = useRef<{ instrument: 'melody' | 'bass'; barIndex: number } | null>(null);
   const melodyScrollerRef = useRef<HTMLDivElement | null>(null);
+  const melodyHeaderRef = useRef<HTMLDivElement | null>(null);
   const initialStepRef = useRef(useSongStore.getState().currentStep);
   const scrollSyncFrameRef = useRef<number | null>(null);
   const pendingScrollLeftRef = useRef(0);
@@ -214,9 +239,17 @@ export const PianoRoll = ({
   const lastMelodyDragLengthRef = useRef<number | null>(null);
 
   useEffect(() => {
+    if (editTool === 'select' || editTool === 'marquee') {
+      return;
+    }
+
+    setSelectedRange(null);
+    setMarqueeOrigin(null);
+  }, [editTool]);
+
+  useEffect(() => {
     if (melodyScrollerRef.current) {
       const scroller = melodyScrollerRef.current;
-      setMelodyScrollLeft(scroller.scrollLeft);
       setMelodyViewport({
         scrollLeft: scroller.scrollLeft,
         scrollTop: scroller.scrollTop,
@@ -230,7 +263,9 @@ export const PianoRoll = ({
         melodyScrollerRef.current.scrollLeft = 0;
       }
 
-      setMelodyScrollLeft(0);
+      if (melodyHeaderRef.current) {
+        melodyHeaderRef.current.style.transform = 'translateX(0px)';
+      }
       setMelodyViewport((current) => ({ ...current, scrollLeft: 0 }));
     };
 
@@ -253,12 +288,30 @@ export const PianoRoll = ({
 
     scrollSyncFrameRef.current = window.requestAnimationFrame(() => {
       scrollSyncFrameRef.current = null;
-      setMelodyScrollLeft(pendingScrollLeftRef.current);
-      setMelodyViewport({
-        scrollLeft: scroller.scrollLeft,
-        scrollTop: scroller.scrollTop,
-        width: scroller.clientWidth,
-        height: scroller.clientHeight,
+      const nextScrollLeft = pendingScrollLeftRef.current;
+      if (melodyHeaderRef.current) {
+        melodyHeaderRef.current.style.transform = `translateX(-${nextScrollLeft}px)`;
+      }
+
+      const isPlaybackScrolling = useSongStore.getState().isPlaying;
+      setMelodyViewport((current) => {
+        const horizontalThreshold = isPlaybackScrolling ? colSpan * 4 : 0;
+        const horizontalChanged =
+          Math.abs(nextScrollLeft - current.scrollLeft) >= horizontalThreshold;
+        const verticalChanged = scroller.scrollTop !== current.scrollTop;
+        const sizeChanged =
+          scroller.clientWidth !== current.width || scroller.clientHeight !== current.height;
+
+        if (!horizontalChanged && !verticalChanged && !sizeChanged) {
+          return current;
+        }
+
+        return {
+          scrollLeft: nextScrollLeft,
+          scrollTop: scroller.scrollTop,
+          width: scroller.clientWidth,
+          height: scroller.clientHeight,
+        };
       });
     });
   };
@@ -290,11 +343,11 @@ export const PianoRoll = ({
   const rowCount = currentGrid.length;
   const gridGap = isBass ? PIANO_GRID_GAP : 2;
   const rowHeight = isBass ? PIANO_ROW_HEIGHT : MELODY_PIANO_ROW_HEIGHT;
-  const stepWidth = isBass ? PIANO_STEP_WIDTH : 64;
+  const stepWidth = requestedStepWidth ?? (isBass ? PIANO_STEP_WIDTH : 64);
   const headerHeight = isBass ? PIANO_HEADER_HEIGHT : 24;
   const headerMargin = isBass ? PIANO_HEADER_MARGIN : 8;
   const bodyTopPadding = isBass ? PIANO_BODY_TOP_PADDING : 8;
-  const controlBarHeight = isBass ? 0 : MELODY_CONTROL_BAR_HEIGHT;
+  const controlBarHeight = isBass || !SHOW_LEGACY_EDITOR_ASSIST_CONTROLS ? 0 : MELODY_CONTROL_BAR_HEIGHT;
   const sidebarTopOffset = bodyTopPadding + controlBarHeight + headerHeight + headerMargin;
   const rowSpan = rowHeight + gridGap;
   const colSpan = stepWidth + gridGap;
@@ -473,6 +526,11 @@ export const PianoRoll = ({
         aria-label={`${col + 1}번 위치까지 반복`}
         title={`${col + 1}번 위치까지 반복`}
       >
+        {col % PIANO_STEPS_PER_BAR === 0 ? (
+          <span className="piano-roll-bar-number" aria-hidden="true">
+            {Math.floor(col / PIANO_STEPS_PER_BAR) + 1}
+          </span>
+        ) : null}
         <span className="sr-only">{col + 1}</span>
       </button>
     );
@@ -494,6 +552,13 @@ export const PianoRoll = ({
       const isNoteStart = Boolean(melodyNoteInfo && melodyNoteInfo.start === col);
       const isNoteTail = Boolean(melodyNoteInfo && melodyNoteInfo.start !== col);
       const active = isBass ? bass[row]?.[col] : isNoteStart;
+      const isSelected = Boolean(
+        selectedRange &&
+          row >= Math.min(selectedRange.startRow, selectedRange.endRow) &&
+          row <= Math.max(selectedRange.startRow, selectedRange.endRow) &&
+          col >= Math.min(selectedRange.startCol, selectedRange.endCol) &&
+          col <= Math.max(selectedRange.startCol, selectedRange.endCol)
+      );
       const isCurrent = col === initialStepRef.current;
       const barIndex = Math.floor(col / 16);
       const barLock = collabBarLocks[barIndex];
@@ -529,14 +594,41 @@ export const PianoRoll = ({
             !isBass && isSharpNote(currentLabels[row]) ? ' is-sharp' : ''
           }${!isBass && isNoteStart ? ' is-note-start' : ''}${
             !isBass && isNoteTail ? ' is-note-tail' : ''
-          }${isLocked ? ' is-locked' : ''}${!canEditCollab ? ' is-readonly' : ''}`}
+          }${isLocked ? ' is-locked' : ''}${!canEditCollab ? ' is-readonly' : ''}${
+            isSelected ? ' is-tool-selected' : ''
+          }`}
           style={cellStyle}
-          onMouseDown={async () => {
+          onMouseDown={async (event) => {
+            if (editTool === 'zoom') {
+              onRequestZoom?.(event.shiftKey ? -1 : 1);
+              return;
+            }
+
+            if (editTool === 'select') {
+              setSelectedRange({
+                startRow: row,
+                endRow: row,
+                startCol: melodyNoteInfo?.start ?? col,
+                endCol: melodyNoteInfo
+                  ? melodyNoteInfo.start + melodyNoteInfo.length - 1
+                  : col,
+              });
+              return;
+            }
+
+            if (editTool === 'marquee') {
+              setMarqueeOrigin({ row, col });
+              setSelectedRange({ startRow: row, endRow: row, startCol: col, endCol: col });
+              return;
+            }
+
             if (isLocked || !canEditCollab) {
               return;
             }
 
             if (isBass) {
+              if (editTool === 'pencil' && active) return;
+              if (editTool === 'eraser' && !active) return;
               if (!(await requestCollabBarLock?.('bass', barIndex) ?? true)) {
                 return;
               }
@@ -558,6 +650,8 @@ export const PianoRoll = ({
               liveMelodyLengths[row] ?? [],
               col
             );
+            if (editTool === 'pencil' && existingNote) return;
+            if (editTool === 'eraser' && !existingNote) return;
             const originBarIndex = Math.floor((existingNote?.start ?? col) / 16);
 
             if (!(await requestCollabBarLock?.('melody', originBarIndex) ?? true)) {
@@ -567,6 +661,8 @@ export const PianoRoll = ({
             activeLockRef.current = { instrument: 'melody', barIndex: originBarIndex };
 
             if (existingNote) {
+              setSelectedRange(null);
+              setMarqueeOrigin(null);
               toggleMelody(row, existingNote.start, 0);
               onCommitMelodyOperation?.({
                 row,
@@ -597,7 +693,17 @@ export const PianoRoll = ({
               barIndex: originBarIndex,
             };
           }}
-          onMouseEnter={() => {
+          onMouseMove={() => {
+            if (editTool === 'marquee' && marqueeOrigin) {
+              setSelectedRange({
+                startRow: marqueeOrigin.row,
+                endRow: row,
+                startCol: marqueeOrigin.col,
+                endCol: col,
+              });
+              return;
+            }
+
             if (!isDrawing || drawValue === null) {
               return;
             }
@@ -708,6 +814,7 @@ export const PianoRoll = ({
     currentLabels,
     dragMelodyOrigin,
     drawValue,
+    editTool,
     gridGap,
     isBass,
     isDrawing,
@@ -715,12 +822,15 @@ export const PianoRoll = ({
     melodyNoteInfoMap,
     melodyNoteLengthSteps,
     modeClass,
+    marqueeOrigin,
     noteLyrics,
     onCommitChordOperation,
     onCommitMelodyOperation,
+    onRequestZoom,
     requestCollabBarLock,
     releaseCollabBarLock,
     rowCount,
+    selectedRange,
     setMelodyLyric,
     steps,
     toggleBass,
@@ -738,10 +848,16 @@ export const PianoRoll = ({
           isGuitar ? ' piano-roll--guitar' : ''
         }`}
         style={pianoRollStyle}
-        onMouseUp={finalizeMelodyDraw}
-        onMouseLeave={finalizeMelodyDraw}
+        onMouseUp={() => {
+          setMarqueeOrigin(null);
+          finalizeMelodyDraw();
+        }}
+        onMouseLeave={() => {
+          setMarqueeOrigin(null);
+          finalizeMelodyDraw();
+        }}
       >
-        <div className="piano-roll-melody-topbar">
+        {SHOW_LEGACY_EDITOR_ASSIST_CONTROLS ? <div className="piano-roll-melody-topbar">
           <div className="piano-roll-melody-corner" aria-hidden="true" />
           <div
             className="piano-roll-length-bar"
@@ -789,17 +905,17 @@ export const PianoRoll = ({
               ))}
             </div>
           </div>
-        </div>
+        </div> : null}
 
         <div className="piano-roll-melody-header-row">
           <div className="piano-roll-melody-corner piano-roll-melody-corner--header" aria-hidden="true" />
           <div className="piano-roll-step-header-viewport">
             <div
+              ref={melodyHeaderRef}
               className="piano-roll-step-header piano-roll-step-header--melody"
               style={{
                 gridTemplateColumns: `repeat(${steps}, ${stepWidth}px)`,
-                transform: `translateX(-${melodyScrollLeft}px)`,
-              }}
+              } as CSSProperties}
             >
               {stepHeaderButtons}
             </div>
@@ -853,8 +969,14 @@ export const PianoRoll = ({
     <div
       className="piano-roll piano-roll--bass"
       style={pianoRollStyle}
-      onMouseUp={finalizeMelodyDraw}
-      onMouseLeave={finalizeMelodyDraw}
+      onMouseUp={() => {
+        setMarqueeOrigin(null);
+        finalizeMelodyDraw();
+      }}
+      onMouseLeave={() => {
+        setMarqueeOrigin(null);
+        finalizeMelodyDraw();
+      }}
     >
       <div className="piano-roll-sidebar">
         <div

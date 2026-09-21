@@ -1136,11 +1136,12 @@
 }
 
 html[data-theme="light"] .music-share-page {
-  background: #f6fbff url('/landing-assets/music-share-community-bg-v2.png') center top / cover fixed no-repeat !important;
+  background: #f6fbff !important;
   color: #172238 !important;
 }
 
 .music-share-background-copy {
+  display: none !important;
   position: fixed;
   z-index: 0;
   inset: 56px 0 0;
@@ -1222,6 +1223,12 @@ html[data-theme="light"] .music-share-page::after {
   color: rgba(75, 152, 225, 0.2);
   font-size: 26px;
   transform: rotate(-6deg);
+}
+
+html[data-theme="light"] .music-share-page::before,
+html[data-theme="light"] .music-share-page::after {
+  display: none !important;
+  content: none !important;
 }
 
 .music-share-page > .site-header {

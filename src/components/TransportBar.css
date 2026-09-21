@@ -612,6 +612,1096 @@
   color: #0f120d;
 }
 
+.transport-dialog-backdrop--save {
+  padding: 16px;
+  background: rgba(20, 30, 45, 0.28);
+  backdrop-filter: blur(8px);
+}
+
+.transport-dialog--save {
+  width: min(700px, calc(100vw - 40px));
+  max-height: calc(100vh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid #e3e9f0;
+  border-radius: 24px;
+  background: #ffffff;
+  color: #14213d;
+  box-shadow: 0 24px 70px rgba(20, 33, 61, 0.16);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.transport-dialog--save .transport-save-dialog-header {
+  position: relative;
+  padding: 22px 28px 20px;
+  overflow: hidden;
+  border-bottom: 1px solid #e8edf3;
+}
+
+.transport-save-dialog-heading {
+  position: relative;
+  z-index: 2;
+  display: flex;
+  align-items: center;
+  gap: 15px;
+}
+
+.transport-save-dialog-header-icon,
+.transport-save-dialog-option-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  background: #e9faf5;
+  color: #12ad82;
+}
+
+.transport-save-dialog-header-icon {
+  width: 54px;
+  height: 54px;
+  border-radius: 14px;
+}
+
+.transport-save-dialog-header-icon svg {
+  width: 27px;
+  height: 27px;
+}
+
+.transport-save-dialog-heading strong {
+  display: block;
+  color: #14213d;
+  font-size: 23px;
+  line-height: 1.2;
+}
+
+.transport-save-dialog-heading p {
+  margin: 4px 0 0;
+  color: #7a8799;
+  font-size: 13px;
+  line-height: 1.45;
+}
+
+.transport-save-dialog-decoration {
+  position: absolute;
+  top: 12px;
+  right: 92px;
+  display: grid;
+  width: 86px;
+  height: 86px;
+  place-items: center;
+  border-radius: 24px;
+  background: #edfbf7;
+  color: rgba(32, 201, 151, 0.45);
+  transform: rotate(8deg);
+}
+
+.transport-save-dialog-decoration svg {
+  width: 48px;
+  height: 48px;
+}
+
+.transport-dialog--save .transport-dialog-close {
+  position: relative;
+  z-index: 2;
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 40px;
+  height: 40px;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #14213d;
+  font-size: 24px;
+}
+
+.transport-dialog--save .transport-dialog-close:hover {
+  background: #e6ebf1;
+}
+
+.transport-dialog--save .transport-save-dialog-fields,
+.transport-dialog--save .transport-save-dialog-format-section {
+  gap: 13px;
+  padding: 17px 28px;
+  border-top: 0;
+  border-bottom: 1px solid #e8edf3;
+}
+
+.transport-save-dialog-section-badge {
+  display: inline-flex;
+  align-self: flex-start;
+  align-items: center;
+  gap: 7px;
+  min-height: 28px;
+  padding: 0 11px;
+  border-radius: 8px;
+  background: #e9faf5;
+  color: #0c9671;
+  font-size: 12px;
+  font-weight: 800;
+}
+
+.transport-save-dialog-section-badge svg {
+  width: 15px;
+  height: 15px;
+}
+
+.transport-dialog--save .transport-save-dialog-field {
+  position: relative;
+  gap: 7px;
+}
+
+.transport-dialog--save .transport-save-dialog-label {
+  color: #14213d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.transport-save-dialog-control {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.transport-save-dialog-field-icon {
+  position: absolute;
+  top: 50%;
+  left: 16px;
+  z-index: 1;
+  display: inline-flex;
+  width: 19px;
+  height: 19px;
+  align-items: center;
+  justify-content: center;
+  color: #647995;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.transport-save-dialog-field-icon svg,
+.transport-save-dialog-header-icon svg,
+.transport-save-dialog-option-icon svg,
+.transport-save-dialog-section-badge svg,
+.transport-dialog--save .transport-dialog-button svg {
+  width: 100%;
+  height: 100%;
+}
+
+.transport-dialog--save .transport-save-dialog-control input,
+.transport-dialog--save .transport-save-dialog-control textarea,
+.transport-dialog--save .transport-save-dialog-control select {
+  width: 100%;
+  border: 1px solid #d8e0e9;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #14213d;
+  font: inherit;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: inset 0 1px 1px rgba(20, 33, 61, 0.02);
+}
+
+.transport-dialog--save .transport-save-dialog-control input,
+.transport-dialog--save .transport-save-dialog-control select {
+  height: 48px;
+  padding: 0 15px 0 47px;
+}
+
+.transport-dialog--save .transport-save-dialog-control textarea {
+  min-height: 86px;
+  padding: 12px 15px 12px 47px;
+  resize: vertical;
+}
+
+.transport-save-dialog-control--textarea .transport-save-dialog-field-icon {
+  top: 14px;
+  transform: none;
+}
+
+.transport-dialog--save .transport-save-dialog-control input::placeholder,
+.transport-dialog--save .transport-save-dialog-control textarea::placeholder {
+  color: #8a97aa;
+}
+
+.transport-dialog--save .transport-save-dialog-control input:focus,
+.transport-dialog--save .transport-save-dialog-control textarea:focus,
+.transport-dialog--save .transport-save-dialog-control select:focus {
+  border-color: #20c997;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(32, 201, 151, 0.11);
+}
+
+.transport-dialog--save .transport-save-dialog-counter {
+  align-self: flex-end;
+  margin-top: -4px;
+  color: #8290a5;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.transport-dialog--save .transport-save-dialog-format-section {
+  padding-top: 15px;
+  padding-bottom: 15px;
+}
+
+.transport-dialog--save .transport-save-dialog-format-field {
+  gap: 9px;
+}
+
+.transport-dialog--save .transport-dialog-format-row {
+  gap: 10px;
+}
+
+.transport-dialog--save .transport-dialog-format-button {
+  position: relative;
+  display: flex;
+  height: 70px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border: 1px solid #dce4ed;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #344762;
+  transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.transport-dialog--save .transport-dialog-format-button:hover {
+  border-color: #b9cec8;
+  background: #f8fcfb;
+  transform: translateY(-1px);
+}
+
+.transport-dialog--save .transport-dialog-format-button > svg {
+  width: 21px;
+  height: 21px;
+}
+
+.transport-dialog--save .transport-dialog-format-button strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.transport-dialog--save .transport-dialog-format-button.is-active {
+  border-color: #20c997;
+  background: #effbf7;
+  color: #0b8f6c;
+  box-shadow: inset 0 0 0 1px rgba(32, 201, 151, 0.08);
+}
+
+.transport-save-dialog-check {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  display: grid;
+  width: 18px;
+  height: 18px;
+  place-items: center;
+  border-radius: 50%;
+  background: #20c997;
+  color: #ffffff;
+  font-size: 10px;
+  line-height: 1;
+}
+
+.transport-save-dialog-format-note {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  min-height: 54px;
+  padding: 8px 13px;
+  border-radius: 11px;
+  background: #eafaf5;
+  color: #557066;
+}
+
+.transport-save-dialog-format-note > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: #d7f5eb;
+  color: #10a77d;
+}
+
+.transport-save-dialog-format-note svg {
+  width: 18px;
+  height: 18px;
+}
+
+.transport-save-dialog-format-note p {
+  margin: 0;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
+.transport-save-dialog-format-note strong {
+  display: block;
+  color: #24745f;
+  font-size: 12px;
+}
+
+.transport-dialog--save .transport-save-dialog-backup-section {
+  margin: 0 28px;
+  padding: 13px 0 5px;
+  border-top: 0;
+}
+
+.transport-dialog--save .transport-dialog-toggle-row {
+  display: grid;
+  min-height: 58px;
+  grid-template-columns: 42px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 13px;
+}
+
+.transport-save-dialog-option-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+}
+
+.transport-save-dialog-option-icon svg {
+  width: 21px;
+  height: 21px;
+}
+
+.transport-dialog--save .transport-dialog-toggle-copy span {
+  color: #14213d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.transport-dialog--save .transport-dialog-toggle-copy small {
+  color: #7a8799;
+  font-size: 11px;
+}
+
+.transport-dialog--save .transport-dialog-switch {
+  width: 46px;
+  height: 26px;
+  padding: 2px;
+  background: #cbd5e1;
+}
+
+.transport-dialog--save .transport-dialog-switch span {
+  width: 22px;
+  height: 22px;
+  box-shadow: 0 2px 5px rgba(20, 33, 61, 0.16);
+}
+
+.transport-dialog--save .transport-dialog-switch.is-on {
+  background: #20c997;
+}
+
+.transport-dialog--save .transport-dialog-switch.is-on span {
+  transform: translateX(20px);
+}
+
+.transport-dialog--save .transport-save-dialog-actions {
+  grid-template-columns: minmax(0, 0.9fr) minmax(0, 1.1fr);
+  gap: 11px;
+  padding: 12px 28px 22px;
+}
+
+.transport-dialog--save .transport-dialog-button {
+  height: 50px;
+  border: 1px solid #dfe6ee;
+  border-radius: 12px;
+  background: #f3f6f9;
+  color: #263957;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.transport-dialog--save .transport-dialog-button--confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  border-color: #20c997;
+  background: #20c997;
+  color: #ffffff;
+  box-shadow: 0 9px 22px rgba(32, 201, 151, 0.18);
+}
+
+.transport-dialog--save .transport-dialog-button--confirm svg {
+  width: 18px;
+  height: 18px;
+}
+
+.transport-dialog--save .transport-dialog-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (max-width: 640px) {
+  .transport-dialog--save .transport-save-dialog-header,
+  .transport-dialog--save .transport-save-dialog-fields,
+  .transport-dialog--save .transport-save-dialog-format-section {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .transport-save-dialog-decoration {
+    display: none;
+  }
+
+  .transport-dialog--save .transport-save-dialog-backup-section {
+    margin-right: 20px;
+    margin-left: 20px;
+  }
+
+  .transport-dialog--save .transport-save-dialog-actions {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}
+
+@media (max-width: 440px) {
+  .transport-save-dialog-heading p {
+    display: none;
+  }
+
+  .transport-dialog--save .transport-dialog-format-row,
+  .transport-dialog--save .transport-save-dialog-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
+/* Final compact save dialog layout. */
+.transport-dialog--save {
+  width: min(500px, calc(100vw - 32px));
+  border-radius: 24px;
+}
+
+.transport-dialog--save .transport-save-dialog-header {
+  min-height: 84px;
+  padding: 0 22px;
+  border-bottom: 1px solid #e3e8ef;
+}
+
+.transport-save-dialog-title {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.transport-save-dialog-title-icon {
+  display: inline-grid;
+  width: 48px;
+  height: 48px;
+  flex: 0 0 auto;
+  place-items: center;
+  border-radius: 12px;
+  background: #e9faf5;
+  color: #12ad82;
+}
+
+.transport-save-dialog-title-icon svg {
+  width: 25px;
+  height: 25px;
+}
+
+.transport-save-dialog-title-copy {
+  min-width: 0;
+}
+
+.transport-dialog--save .transport-save-dialog-title-copy > strong {
+  display: block;
+  color: #14213d;
+  font-size: 21px;
+  font-weight: 900;
+  line-height: 1.2;
+}
+
+.transport-save-dialog-title-copy p {
+  margin: 3px 0 0;
+  color: #7a8799;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.transport-dialog--save .transport-dialog-close {
+  width: 38px;
+  height: 38px;
+  border: 1px solid #dce3eb;
+  background: #f7f9fb;
+  font-size: 23px;
+}
+
+.transport-dialog--save .transport-save-dialog-fields {
+  gap: 14px;
+  padding: 18px 22px;
+  border: 0;
+}
+
+.transport-dialog--save .transport-save-dialog-field,
+.transport-dialog--save .transport-save-dialog-format-field {
+  gap: 8px;
+}
+
+.transport-dialog--save .transport-save-dialog-label {
+  color: #14213d;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.transport-dialog--save .transport-save-dialog-field > input,
+.transport-dialog--save .transport-save-dialog-field > textarea,
+.transport-dialog--save .transport-save-dialog-field > select {
+  width: 100%;
+  border: 1px solid #dce3eb;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #14213d;
+  padding: 0 14px;
+  font: inherit;
+  font-size: 13px;
+  box-sizing: border-box;
+}
+
+.transport-dialog--save .transport-save-dialog-field > input,
+.transport-dialog--save .transport-save-dialog-field > select {
+  height: 46px;
+}
+
+.transport-dialog--save .transport-save-dialog-field > textarea {
+  min-height: 82px;
+  padding-top: 11px;
+  padding-bottom: 11px;
+  resize: vertical;
+}
+
+.transport-dialog--save .transport-save-dialog-field > input::placeholder,
+.transport-dialog--save .transport-save-dialog-field > textarea::placeholder {
+  color: #8a97aa;
+}
+
+.transport-dialog--save .transport-save-dialog-field > input:focus,
+.transport-dialog--save .transport-save-dialog-field > textarea:focus,
+.transport-dialog--save .transport-save-dialog-field > select:focus {
+  border-color: #20c997;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(32, 201, 151, 0.1);
+}
+
+.transport-dialog--save .transport-save-dialog-counter {
+  align-self: flex-end;
+  margin-top: -2px;
+  color: #7a8799;
+  font-size: 11px;
+}
+
+.transport-dialog--save .transport-dialog-format-row {
+  gap: 10px;
+}
+
+.transport-dialog--save .transport-dialog-format-button {
+  height: 46px;
+  border: 1px solid #dce3eb;
+  border-radius: 12px;
+  background: #ffffff;
+  color: #43536d;
+  font-size: 13px;
+  font-weight: 900;
+  transform: none;
+}
+
+.transport-dialog--save .transport-dialog-format-button:hover {
+  border-color: #a9dccc;
+  background: #f7fcfa;
+  transform: none;
+}
+
+.transport-dialog--save .transport-dialog-format-button.is-active {
+  border-color: #20c997;
+  background: #eaf9f5;
+  color: #087c5f;
+  box-shadow: none;
+}
+
+.transport-dialog--save .transport-save-dialog-backup-section {
+  margin: 0 22px;
+  padding: 14px 0;
+  border-top: 1px solid #e3e8ef;
+}
+
+.transport-dialog--save .transport-dialog-toggle-row {
+  min-height: 52px;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 18px;
+}
+
+.transport-dialog--save .transport-dialog-toggle-copy {
+  gap: 4px;
+}
+
+.transport-dialog--save .transport-dialog-toggle-copy span {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.transport-dialog--save .transport-dialog-toggle-copy small {
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.transport-dialog--save .transport-save-dialog-actions {
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+  padding: 12px 22px 18px;
+  border-top: 1px solid #e3e8ef;
+}
+
+.transport-dialog--save .transport-dialog-button {
+  height: 46px;
+  border-radius: 12px;
+  background: #ffffff;
+  font-size: 13px;
+}
+
+.transport-dialog--save .transport-dialog-button--confirm {
+  border-color: #20c997;
+  background: #20c997;
+  color: #ffffff;
+}
+
+@media (max-width: 640px) {
+  .transport-dialog--save .transport-save-dialog-header {
+    min-height: 72px;
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .transport-dialog--save .transport-save-dialog-fields {
+    padding: 22px;
+  }
+
+  .transport-dialog--save .transport-save-dialog-backup-section {
+    margin-right: 22px;
+    margin-left: 22px;
+  }
+
+  .transport-dialog--save .transport-save-dialog-actions {
+    grid-template-columns: 1fr 1fr;
+    padding-right: 22px;
+    padding-left: 22px;
+  }
+
+  .transport-dialog--save .transport-dialog-format-row {
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+/* Share dialog uses the light Songbap product surface without changing its data flow. */
+.transport-dialog-backdrop--share {
+  padding: 16px;
+  background: rgba(24, 33, 47, 0.3);
+  backdrop-filter: blur(8px);
+}
+
+.transport-dialog--share {
+  width: min(500px, calc(100vw - 32px));
+  max-height: calc(100vh - 32px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  border: 1px solid #e1e7ef;
+  border-radius: 24px;
+  background: #ffffff;
+  color: #14213d;
+  box-shadow: 0 24px 70px rgba(20, 33, 61, 0.16);
+  scrollbar-width: thin;
+  scrollbar-color: #cbd5e1 transparent;
+}
+
+.transport-dialog--share .transport-share-dialog-header {
+  padding: 18px 22px 16px;
+  border-bottom: 1px solid #e8edf3;
+}
+
+.transport-share-dialog-heading {
+  display: flex;
+  align-items: center;
+  min-width: 0;
+  gap: 12px;
+}
+
+.transport-share-dialog-header-icon,
+.transport-share-dialog-option-icon {
+  display: inline-flex;
+  flex: 0 0 auto;
+  align-items: center;
+  justify-content: center;
+  color: #12ad82;
+  background: #e8faf5;
+}
+
+.transport-share-dialog-header-icon {
+  width: 48px;
+  height: 48px;
+  border-radius: 12px;
+}
+
+.transport-share-dialog-header-icon svg {
+  width: 25px;
+  height: 25px;
+  stroke-width: 2;
+}
+
+.transport-share-dialog-heading strong {
+  display: block;
+  color: #14213d;
+  font-size: 21px;
+  line-height: 1.2;
+}
+
+.transport-share-dialog-heading p {
+  margin: 3px 0 0;
+  color: #718098;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.transport-dialog--share .transport-dialog-close {
+  display: inline-grid;
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  padding: 0;
+  place-items: center;
+  border-radius: 50%;
+  background: #f1f5f9;
+  color: #14213d;
+  font-size: 23px;
+  font-weight: 300;
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.transport-dialog--share .transport-dialog-close:hover {
+  background: #e8edf3;
+  transform: translateY(-1px);
+}
+
+.transport-dialog--share .transport-share-dialog-fields {
+  gap: 11px;
+  padding: 15px 22px 14px;
+  border-top: 0;
+}
+
+.transport-dialog--share .transport-share-dialog-field {
+  position: relative;
+  gap: 8px;
+}
+
+.transport-dialog--share .transport-share-dialog-label {
+  color: #14213d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.transport-share-dialog-control {
+  position: relative;
+  display: block;
+  width: 100%;
+}
+
+.transport-share-dialog-field-icon {
+  position: absolute;
+  top: 50%;
+  left: 15px;
+  z-index: 1;
+  display: inline-flex;
+  width: 18px;
+  height: 18px;
+  align-items: center;
+  justify-content: center;
+  color: #637896;
+  transform: translateY(-50%);
+  pointer-events: none;
+}
+
+.transport-share-dialog-field-icon svg,
+.transport-share-dialog-option-icon svg,
+.transport-dialog--share .transport-dialog-button--confirm svg {
+  width: 100%;
+  height: 100%;
+}
+
+.transport-dialog--share .transport-share-dialog-control input,
+.transport-dialog--share .transport-share-dialog-control textarea,
+.transport-dialog--share .transport-share-dialog-control select {
+  width: 100%;
+  border: 1px solid #d7e0ea;
+  border-radius: 13px;
+  background: #ffffff;
+  color: #14213d;
+  font-size: 13px;
+  line-height: 1.5;
+  box-shadow: inset 0 1px 1px rgba(20, 33, 61, 0.02);
+}
+
+.transport-dialog--share .transport-share-dialog-control input,
+.transport-dialog--share .transport-share-dialog-control select {
+  height: 46px;
+  padding: 0 14px 0 44px;
+}
+
+.transport-dialog--share .transport-share-dialog-control textarea {
+  min-height: 82px;
+  padding: 11px 14px 11px 44px;
+  resize: vertical;
+}
+
+.transport-share-dialog-control--textarea .transport-share-dialog-field-icon {
+  top: 13px;
+  transform: none;
+}
+
+.transport-dialog--share .transport-share-dialog-control input::placeholder,
+.transport-dialog--share .transport-share-dialog-control textarea::placeholder {
+  color: #8694a9;
+}
+
+.transport-dialog--share .transport-share-dialog-control input:focus,
+.transport-dialog--share .transport-share-dialog-control textarea:focus,
+.transport-dialog--share .transport-share-dialog-control select:focus {
+  border-color: #20c997;
+  outline: none;
+  box-shadow: 0 0 0 3px rgba(32, 201, 151, 0.12);
+}
+
+.transport-dialog--share .transport-share-dialog-counter {
+  align-self: flex-end;
+  margin-top: -4px;
+  color: #718098;
+  font-size: 11px;
+  line-height: 1;
+}
+
+.transport-share-dialog-upload {
+  position: relative;
+  display: grid;
+  min-height: 46px;
+  grid-template-columns: 20px auto 1px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  padding: 0 15px;
+  overflow: hidden;
+  border: 1px solid #d7e0ea;
+  border-radius: 13px;
+  background: #ffffff;
+  cursor: pointer;
+}
+
+.transport-share-dialog-upload .transport-share-dialog-field-icon {
+  position: static;
+  color: #637896;
+  transform: none;
+}
+
+.transport-dialog--share .transport-share-dialog-upload strong {
+  color: #263957;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.transport-share-dialog-upload i {
+  width: 1px;
+  height: 24px;
+  background: #dce3eb;
+}
+
+.transport-dialog--share .transport-share-dialog-upload > span:last-of-type {
+  overflow: hidden;
+  color: #718098;
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 500;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transport-share-dialog-upload input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  opacity: 0;
+  pointer-events: none;
+}
+
+.transport-dialog--share .transport-share-dialog-field > small:not(.transport-share-dialog-counter) {
+  color: #8290a5;
+  font-size: 12px;
+  line-height: 1.4;
+}
+
+.transport-dialog--share .transport-dialog-image-preview {
+  border-color: #dce6ed;
+  background: #f8fbfc;
+}
+
+.transport-dialog--share .transport-dialog-image-preview-copy strong {
+  color: #14213d;
+}
+
+.transport-dialog--share .transport-dialog-image-preview-copy button {
+  background: #e8faf5;
+  color: #0b8f6c;
+}
+
+.transport-dialog--share .transport-share-dialog-options {
+  gap: 10px;
+  margin: 0 22px;
+  padding: 12px 0 3px;
+  border-top: 1px solid #e8edf3;
+}
+
+.transport-dialog--share .transport-dialog-toggle-row {
+  display: grid;
+  min-height: 52px;
+  grid-template-columns: 38px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 11px;
+  border-radius: 14px;
+}
+
+.transport-share-dialog-option-icon {
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+}
+
+.transport-share-dialog-option-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.transport-dialog--share .transport-dialog-toggle-copy {
+  gap: 3px;
+}
+
+.transport-dialog--share .transport-dialog-toggle-copy span {
+  color: #14213d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.transport-dialog--share .transport-dialog-toggle-copy small {
+  color: #718098;
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+.transport-dialog--share .transport-dialog-switch {
+  width: 46px;
+  height: 26px;
+  padding: 2px;
+  background: #cbd5e1;
+}
+
+.transport-dialog--share .transport-dialog-switch span {
+  width: 22px;
+  height: 22px;
+  box-shadow: 0 2px 5px rgba(20, 33, 61, 0.16);
+}
+
+.transport-dialog--share .transport-dialog-switch.is-on {
+  background: #20c997;
+}
+
+.transport-dialog--share .transport-dialog-switch.is-on span {
+  transform: translateX(20px);
+}
+
+.transport-dialog--share .transport-dialog-actions {
+  gap: 10px;
+  padding: 12px 22px 18px;
+}
+
+.transport-dialog--share .transport-dialog-button {
+  height: 46px;
+  border: 0;
+  border-radius: 13px;
+  background: #f0f4f8;
+  color: #263957;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.transport-dialog--share .transport-dialog-button--confirm {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  background: #20c997;
+  color: #ffffff;
+  box-shadow: 0 10px 24px rgba(32, 201, 151, 0.2);
+}
+
+.transport-dialog--share .transport-dialog-button--confirm svg {
+  width: 21px;
+  height: 21px;
+}
+
+.transport-dialog--share .transport-dialog-button:disabled {
+  cursor: wait;
+  opacity: 0.65;
+}
+
+@media (max-width: 640px) {
+  .transport-dialog--share .transport-share-dialog-header,
+  .transport-dialog--share .transport-share-dialog-fields {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+
+  .transport-share-dialog-header-icon {
+    width: 52px;
+    height: 52px;
+  }
+
+  .transport-share-dialog-heading {
+    gap: 12px;
+  }
+
+  .transport-share-dialog-heading strong {
+    font-size: 22px;
+  }
+
+  .transport-share-dialog-heading p {
+    font-size: 13px;
+  }
+
+  .transport-dialog--share .transport-dialog-close {
+    width: 42px;
+    height: 42px;
+  }
+
+  .transport-dialog--share .transport-share-dialog-options {
+    margin-right: 20px;
+    margin-left: 20px;
+  }
+
+  .transport-dialog--share .transport-dialog-actions {
+    padding-right: 20px;
+    padding-left: 20px;
+  }
+}
+
+@media (max-width: 440px) {
+  .transport-share-dialog-heading p {
+    display: none;
+  }
+
+  .transport-dialog--share .transport-dialog-actions {
+    grid-template-columns: 1fr;
+  }
+}
+
 .transport-ai-panel {
   position: absolute;
   right: 20px;

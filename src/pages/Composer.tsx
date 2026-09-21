@@ -1,10 +1,15 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
+import type {
+  DragEvent as ReactDragEvent,
+  PointerEvent as ReactPointerEvent,
+} from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SiteHeader from '../components/layout/SiteHeader';
 import { PianoRoll } from '../components/PianoRoll.tsx';
 import { TransportBar } from '../components/TransportBar.tsx';
 import {
   initTransport,
+  preloadPlaybackEngine,
   playBassPreview,
   playDrumPreview,
   playGuitarPreview,
@@ -88,6 +93,23 @@ const melodyNoteLengthOptions = [
 ] as const;
 type MelodyNoteLengthSteps = (typeof melodyNoteLengthOptions)[number]['steps'];
 type ComposerNotepadMode = 'lyrics' | 'memo';
+type PianoEditTool = 'select' | 'pencil' | 'eraser' | 'marquee' | 'zoom';
+type PianoSelection = {
+  scrollKey: string;
+  startRow: number;
+  endRow: number;
+  startCol: number;
+  endCol: number;
+};
+type ArrangementClipLayout = {
+  start: number;
+  length: number;
+};
+type ArrangementClipPreview = {
+  hasAudio: boolean;
+  activityRanges: Array<{ start: number; width: number }>;
+  pitchSegments: string[];
+};
 
 const COMPOSER_NOTEPAD_STORAGE_KEY = 'song-maker-composer-notepad';
 
@@ -301,16 +323,17 @@ function hasAnyGridNotes(grid: boolean[][]) {
   return grid.some((row) => row.some(Boolean));
 }
 
-const chordMeta = {
-  melody: {
-    label: 'Piano Chords',
-    description: '코드를 드래그해서 피아노 롤 위에 바로 올려보세요.',
-  },
-  bass: {
-    label: 'Bass Roots',
-    description: '루트 음을 베이스 라인처럼 빠르게 찍어볼 수 있습니다.',
-  },
-} as const;
+function hasOnlyMelodyTrackData(state: ReturnType<typeof useSongStore.getState>) {
+  return (
+    hasAnyGridNotes(state.melody) &&
+    !hasAnyGridNotes(state.violin) &&
+    !hasAnyGridNotes(state.saxophone) &&
+    !hasAnyGridNotes(state.guitar) &&
+    !hasAnyGridNotes(state.drums) &&
+    !hasAnyGridNotes(state.bass) &&
+    !state.extraTracks.some((track) => hasAnyGridNotes(track.grid))
+  );
+}
 
 const drumTracks = [
   { name: 'Kick', hint: 'Low-end pulse', tone: 'kick' },
@@ -382,6 +405,122 @@ type MelodySequencerOptions = {
   chordChipClassName?: string;
 };
 
+type ArrangementTrackDefinition = {
+  id: string;
+  key?: string;
+  trackId?: string;
+  label: string;
+  icon: string;
+  tab: InstrumentComposerTab;
+  tone: 'mint' | 'blue' | 'violet' | 'coral' | 'gold';
+};
+
+const arrangementTrackDefinitions: ArrangementTrackDefinition[] = [
+  { id: 'melody', label: '멜로디', icon: '♪', tab: 'melody', tone: 'mint' },
+  { id: 'piano', label: '피아노', icon: '♬', tab: 'supportingPiano', tone: 'blue' },
+  { id: 'support', label: '서포트 캐스트', icon: '≋', tab: 'glockenspiel', tone: 'violet' },
+  { id: 'drums', label: '드럼', icon: '◉', tab: 'drums', tone: 'coral' },
+  { id: 'bass', label: '베이스', icon: '⌁', tab: 'bass', tone: 'gold' },
+];
+
+function getDefaultArrangementClipLayout(
+  trackIndex: number,
+  section: 'first' | 'second'
+): ArrangementClipLayout {
+  const firstStarts = [1.4, 5, 8, 8, 8];
+  const firstLengths = [36, 37, 41, 38, 38];
+  const secondStarts = [43, 50, 58, 50, 50];
+  const secondLengths = [48, 47, 39, 42, 42];
+  const index = trackIndex % firstStarts.length;
+
+  return section === 'first'
+    ? { start: firstStarts[index], length: firstLengths[index] }
+    : { start: secondStarts[index], length: secondLengths[index] };
+}
+
+function buildArrangementClipPreview(
+  grid: boolean[][],
+  lengths: number[][] | undefined,
+  startStep: number,
+  endStep: number
+): ArrangementClipPreview {
+  const safeStart = Math.max(0, Math.floor(startStep));
+  const safeEnd = Math.max(safeStart + 1, Math.ceil(endStep));
+  const span = safeEnd - safeStart;
+  const pitches: Array<number | null> = [];
+
+  for (let col = safeStart; col < safeEnd; col += 1) {
+    const activeRows: number[] = [];
+    grid.forEach((rowValues, row) => {
+      let active = Boolean(rowValues[col]);
+      if (!active && lengths?.[row]) {
+        for (let noteStart = 0; noteStart < col; noteStart += 1) {
+          if (
+            rowValues[noteStart] &&
+            noteStart + Math.max(1, lengths[row]?.[noteStart] ?? 1) > col
+          ) {
+            active = true;
+            break;
+          }
+        }
+      }
+      if (active) activeRows.push(row);
+    });
+
+    pitches.push(
+      activeRows.length
+        ? activeRows.reduce((sum, row) => sum + row, 0) / activeRows.length
+        : null
+    );
+  }
+
+  const activityRanges: Array<{ start: number; width: number }> = [];
+  let rangeStart: number | null = null;
+  pitches.forEach((pitch, index) => {
+    if (pitch !== null && rangeStart === null) rangeStart = index;
+    const isRangeEnd = rangeStart !== null && (pitch === null || index === pitches.length - 1);
+    if (!isRangeEnd || rangeStart === null) return;
+    const exclusiveEnd = pitch === null ? index : index + 1;
+    activityRanges.push({
+      start: (rangeStart / span) * 100,
+      width: Math.max(1.2, ((exclusiveEnd - rangeStart) / span) * 100),
+    });
+    rangeStart = null;
+  });
+
+  const pitchSegments: string[] = [];
+  let segment: string[] = [];
+  pitches.forEach((pitch, index) => {
+    if (pitch === null) {
+      if (segment.length) pitchSegments.push(segment.join(' '));
+      segment = [];
+      return;
+    }
+
+    const x = ((index + 0.5) / span) * 100;
+    const y = grid.length > 1 ? 3 + (pitch / (grid.length - 1)) * 18 : 12;
+    if (!segment.length) {
+      segment.push(`${Math.max(0, x - 0.4).toFixed(2)},${y.toFixed(2)}`);
+    }
+    segment.push(`${x.toFixed(2)},${y.toFixed(2)}`);
+  });
+  if (segment.length) pitchSegments.push(segment.join(' '));
+
+  return {
+    hasAudio: pitches.some((pitch) => pitch !== null),
+    activityRanges,
+    pitchSegments,
+  };
+}
+
+function getArrangementTrackTone(tab: InstrumentComposerTab): ArrangementTrackDefinition['tone'] {
+  if (tab === 'drums') return 'coral';
+  if (tab === 'bass') return 'gold';
+  if (tab === 'supportingPiano' || tab === 'guitar') return 'blue';
+  if (tab === 'glockenspiel' || tab === 'piccolo') return 'violet';
+  return 'mint';
+}
+
 const COMPOSER_TAB_STORAGE_KEY = 'song-maker-composer-tabs';
 
 function isComposerTab(value: unknown): value is ComposerTab {
@@ -396,6 +535,10 @@ function isSampledInstrumentTab(tab: ComposerTab): tab is SampledInstrumentKey {
     tab === 'chicagoStreet' ||
     tab === 'studioAltoSax'
   );
+}
+
+function isPitchedTab(tab: ComposerTab): tab is PitchedTab {
+  return tab !== 'lyrics' && tab !== 'drums';
 }
 
 function readComposerTabDraft() {
@@ -451,6 +594,7 @@ export function Composer() {
   );
   const markComposerTutorialCompleted = useAuthStore((state) => state.markComposerTutorialCompleted);
   const {
+    compositionMode,
     bpm,
     tempoAutomation,
     steps,
@@ -472,6 +616,7 @@ export function Composer() {
     volumes,
     setInstrumentVolume,
     addInstrumentTrack,
+    duplicateInstrumentTrack,
     removeInstrumentTrack,
     clearInstrument,
     toggleExtraTrackCell,
@@ -485,6 +630,7 @@ export function Composer() {
     applyChord,
     currentStep,
     setCurrentStep,
+    setBpm,
     setSteps,
     setMelodyLyric,
     loopRange,
@@ -511,7 +657,6 @@ export function Composer() {
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
   const collabId = searchParams.get('collab');
   const projectId = searchParams.get('project');
-  const sourceMode = searchParams.get('source');
   const newProjectRequested = searchParams.get('new') === '1';
   const tutorialRequested = false;
   const requestedGuideStep = Number(searchParams.get('guideStep') ?? '0');
@@ -523,29 +668,6 @@ export function Composer() {
     () => (projectId ? libraryProjects.find((project) => project.id === projectId) ?? null : null),
     [libraryProjects, projectId]
   );
-  const composerMode = useMemo(() => {
-    if (collabId) {
-      return {
-        label: '협업 작곡',
-        title: collabProject?.title ?? '협업 프로젝트',
-        description: '멤버와 같은 작곡 화면을 실시간으로 편집합니다.',
-      };
-    } 
-
-    if (projectId || sourceMode === 'file') {
-      return {
-        label: '불러온 프로젝트',
-        title: loadedLibraryProject?.title ?? '불러온 작업',
-        description: '저장된 곡을 현재 작곡 화면에 불러와 편집합니다.',
-      };
-    }
-
-    return {
-      label: '개인 작곡',
-      title: '새 작업',
-      description: '혼자 만드는 기본 작곡 화면입니다.',
-    };
-  }, [collabId, collabProject?.title, loadedLibraryProject?.title, projectId, sourceMode]);
   const collabMember = useMemo(
     () =>
       collabProject && user
@@ -565,17 +687,17 @@ export function Composer() {
   const heldBarLocksRef = useRef(new Set<string>());
   const loadedProjectIdRef = useRef<string | null>(null);
   const followScrollFrameRef = useRef<number | null>(null);
-  const livePlayheadRef = useRef({
-    step: 0,
-    bpm: 100,
-    startedAt: 0,
-  });
+  const livePlayheadRef = useRef({ step: 0, bpm: 120, receivedAt: 0 });
+  const liveVisualStepRef = useRef(-1);
   const isPlayingRef = useRef(false);
   const liveStepElementsRef = useRef<HTMLElement[]>([]);
   const liveStepElementCacheRef = useRef(new Map<number, HTMLElement[]>());
   const livePianoPlayheadsRef = useRef<HTMLElement[]>([]);
   const liveSequencerPlayheadsRef = useRef<HTMLElement[]>([]);
-  const liveScrollerPairsRef = useRef<Array<{ scroller: HTMLElement; header: HTMLElement | null }>>([]);
+  const liveArrangementPlayheadsRef = useRef<HTMLElement[]>([]);
+  const liveScrollerPairsRef = useRef<
+    Array<{ scroller: HTMLElement; header: HTMLElement | null; stepSpan: number }>
+  >([]);
   const liveDrumScrollersRef = useRef<HTMLElement[]>([]);
   const [conflictNotice, setConflictNotice] = useState('');
   const [collabSyncTick, setCollabSyncTick] = useState(0);
@@ -590,13 +712,15 @@ export function Composer() {
   );
 
   useEffect(() => {
+    if (compositionMode === 'soloPiano') return;
+
     setOpenTabsState((current) => {
       const next = includeDefaultComposerTabs(current);
       return next.length === current.length && next.every((tab, index) => tab === current[index])
         ? current
         : next;
     });
-  }, []);
+  }, [compositionMode]);
 
   const [openExtraTrackIds, setOpenExtraTrackIds] = useState<string[]>(
     () => (newProjectRequested ? [] : readComposerTabDraft().openExtraTrackIds)
@@ -604,6 +728,32 @@ export function Composer() {
   const [activeTrackId, setActiveTrackId] = useState<string | null>(
     () => (newProjectRequested ? null : readComposerTabDraft().activeTrackId)
   );
+  const [mutedArrangementTracks, setMutedArrangementTracks] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [soloArrangementTrack, setSoloArrangementTrack] = useState<string | null>(null);
+  const [openTrackMenuId, setOpenTrackMenuId] = useState<string | null>(null);
+  const [hiddenArrangementTrackIds, setHiddenArrangementTrackIds] = useState<Set<string>>(
+    () => new Set()
+  );
+  const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(false);
+  const [pianoEditTool, setPianoEditTool] = useState<PianoEditTool>('select');
+  const [pianoZoom, setPianoZoom] = useState(1);
+  const [pianoToolFeedback, setPianoToolFeedback] = useState('');
+  const [arrangementClipLayouts, setArrangementClipLayouts] = useState<
+    Record<string, ArrangementClipLayout>
+  >({});
+  const [selectedArrangementClip, setSelectedArrangementClip] = useState<string | null>(null);
+  const [draggingArrangementClip, setDraggingArrangementClip] = useState<string | null>(null);
+  const [pianoSelection, setPianoSelection] = useState<PianoSelection | null>(null);
+  const [pianoMarqueeOrigin, setPianoMarqueeOrigin] = useState<{
+    scrollKey: string;
+    row: number;
+    col: number;
+  } | null>(null);
+  const mutedVolumeSnapshotRef = useRef<Record<string, number>>({});
+  const soloVolumeSnapshotRef = useRef<Record<string, number> | null>(null);
+  const pianoToolFeedbackTimerRef = useRef<number | null>(null);
   const [extraTrackNoteLengths, setExtraTrackNoteLengths] = useState<Record<string, MelodyNoteLengthSteps>>({});
   const [primaryTrackNoteLengths, setPrimaryTrackNoteLengths] = useState<
     Record<PitchedTab, MelodyNoteLengthSteps>
@@ -619,6 +769,47 @@ export function Composer() {
     studioAltoSax: 4,
     bass: 4,
   });
+
+  useEffect(() => {
+    if (bpm === 92 || bpm === 100) {
+      setBpm(172);
+    }
+  }, [bpm, setBpm]);
+
+  const showPianoToolFeedback = useCallback((message: string) => {
+    setPianoToolFeedback(message);
+    if (pianoToolFeedbackTimerRef.current !== null) {
+      window.clearTimeout(pianoToolFeedbackTimerRef.current);
+    }
+    pianoToolFeedbackTimerRef.current = window.setTimeout(() => {
+      setPianoToolFeedback('');
+      pianoToolFeedbackTimerRef.current = null;
+    }, 1600);
+  }, []);
+
+  useEffect(
+    () => () => {
+      if (pianoToolFeedbackTimerRef.current !== null) {
+        window.clearTimeout(pianoToolFeedbackTimerRef.current);
+      }
+    },
+    []
+  );
+
+  useEffect(() => {
+    if (!openTrackMenuId) return undefined;
+
+    const handleTrackMenuOutsideClick = (event: MouseEvent) => {
+      const target = event.target as HTMLElement;
+      if (target.closest('.composer-track-context-menu') || target.closest('.composer-track-more')) {
+        return;
+      }
+      setOpenTrackMenuId(null);
+    };
+
+    window.addEventListener('mousedown', handleTrackMenuOutsideClick);
+    return () => window.removeEventListener('mousedown', handleTrackMenuOutsideClick);
+  }, [openTrackMenuId]);
   const [isTabPickerOpen, setIsTabPickerOpen] = useState(false);
   const [videoOverlay, setVideoOverlay] = useState<{ url: string; name: string } | null>(null);
   const [videoOverlayVolume, setVideoOverlayVolume] = useState(1);
@@ -646,6 +837,15 @@ export function Composer() {
     guitar: 0,
     bass: 0,
   });
+  const arrangementBarCount = Math.max(1, Math.ceil(steps / COLLAB_BAR_LENGTH));
+  const arrangementTimelineBars = useMemo(
+    () =>
+      Array.from(
+        { length: Math.ceil(arrangementBarCount / 4) },
+        (_, index) => index * 4 + 1
+      ),
+    [arrangementBarCount]
+  );
   const [pitchedRollScrollTop, setPitchedRollScrollTop] = useState<Record<string, number>>({});
   const tutorialAdvanceTimeoutRef = useRef<number | null>(null);
   const lastAutoAdvancedStepRef = useRef<number | null>(null);
@@ -735,9 +935,95 @@ export function Composer() {
       return items;
     });
   }, [extraTracks, getExtraTrackDisplayLabel, openExtraTrackIds, openTabs]);
+  const arrangementVisibleTracks = useMemo<ArrangementTrackDefinition[]>(() => {
+    const representedItemIds = new Set<string>();
+    const baseTracks = arrangementTrackDefinitions.filter(
+      (track) => {
+        if (hiddenArrangementTrackIds.has(track.id)) return false;
+        if (track.id === 'piano' || track.id === 'support') {
+          return openTabItems.some((item) => item.tab === track.tab && Boolean(item.trackId));
+        }
+        return openTabsState.includes(track.tab);
+      }
+    ).map((track) => {
+      const usesExtraTrackAsBase = track.id === 'piano' || track.id === 'support';
+      const matchingItem = usesExtraTrackAsBase
+        ? openTabItems.find(
+            (item) => item.tab === track.tab && Boolean(item.trackId) && !representedItemIds.has(item.id)
+          )
+        : undefined;
+      if (matchingItem) representedItemIds.add(matchingItem.id);
+
+      return {
+        ...track,
+        key: `base-${track.id}`,
+        trackId: matchingItem?.trackId,
+      };
+    });
+
+    const dynamicTracks = openTabItems
+      .filter((item) => {
+        if (item.tab === 'lyrics' || representedItemIds.has(item.id)) return false;
+        return !['primary-melody', 'primary-drums', 'primary-bass'].includes(item.id);
+      })
+      .map((item) => ({
+        id: `added-${item.id}`,
+        key: `added-${item.id}`,
+        trackId: item.trackId,
+        label: item.label,
+        icon: item.tab === 'drums' ? '◉' : item.tab === 'bass' ? '⌁' : '♫',
+        tab: item.tab as InstrumentComposerTab,
+        tone: getArrangementTrackTone(item.tab as InstrumentComposerTab),
+      }));
+
+    return [...baseTracks, ...dynamicTracks];
+  }, [hiddenArrangementTrackIds, openTabItems, openTabsState]);
   const activeExtraTrack = useMemo(
     () => extraTracks.find((track) => track.id === activeTrackId) ?? null,
     [activeTrackId, extraTracks]
+  );
+  const getArrangementTrackData = useCallback(
+    (track: ArrangementTrackDefinition) => {
+      const extraTrack = track.trackId
+        ? extraTracks.find((item) => item.id === track.trackId)
+        : isSampledInstrumentTab(track.tab)
+          ? extraTracks.find((item) => item.instrument === track.tab)
+          : null;
+      if (extraTrack) {
+        return { grid: extraTrack.grid, lengths: extraTrack.melodyLengths };
+      }
+
+      switch (track.tab) {
+        case 'melody':
+          return { grid: melody, lengths: melodyLengths };
+        case 'violin':
+          return { grid: violin, lengths: violinLengths };
+        case 'saxophone':
+          return { grid: saxophone, lengths: saxophoneLengths };
+        case 'guitar':
+          return { grid: guitar, lengths: guitarLengths };
+        case 'drums':
+          return { grid: drums, lengths: undefined };
+        case 'bass':
+          return { grid: bass, lengths: bassLengths };
+        default:
+          return { grid: [] as boolean[][], lengths: undefined };
+      }
+    },
+    [
+      bass,
+      bassLengths,
+      drums,
+      extraTracks,
+      guitar,
+      guitarLengths,
+      melody,
+      melodyLengths,
+      saxophone,
+      saxophoneLengths,
+      violin,
+      violinLengths,
+    ]
   );
 
   const melodyLyricNotes = useMemo(() => {
@@ -1002,8 +1288,10 @@ export function Composer() {
     }
 
     if (!isPlaying) {
+      liveVisualStepRef.current = -1;
       livePianoPlayheadsRef.current = [];
       liveSequencerPlayheadsRef.current = [];
+      liveArrangementPlayheadsRef.current = [];
       liveScrollerPairsRef.current = [];
       liveDrumScrollersRef.current = [];
       liveStepElementsRef.current.forEach((element) => {
@@ -1011,78 +1299,98 @@ export function Composer() {
       });
       liveStepElementsRef.current = [];
       liveStepElementCacheRef.current.clear();
+
+      const exactScrollPositions: Record<string, number> = {};
+      document
+        .querySelectorAll<HTMLElement>('.piano-roll[data-scroll-key]')
+        .forEach((roll) => {
+          const scrollKey = roll.dataset.scrollKey;
+          const scroller = roll.querySelector<HTMLElement>('.piano-roll-melody-scroller');
+          if (scrollKey && scroller) exactScrollPositions[scrollKey] = scroller.scrollLeft;
+        });
+      if (Object.keys(exactScrollPositions).length) {
+        setPitchedRollScrollLeft((current) => ({ ...current, ...exactScrollPositions }));
+      }
     }
   }, [isPlaying]);
 
   useEffect(() => {
-    if (!isPlaying || currentStep % 4 !== 0) {
-      return;
-    }
-
-    document.querySelectorAll<HTMLElement>('.piano-roll-melody-scroller').forEach((scroller) => {
-      const stepLeft = currentStep * 66;
-      const visibleStart = scroller.scrollLeft;
-      const visibleEnd = visibleStart + scroller.clientWidth;
-      const margin = 128;
-
-      if (stepLeft < visibleStart + margin || stepLeft > visibleEnd - margin) {
-        scroller.scrollLeft = Math.max(0, stepLeft - scroller.clientWidth / 2 + 32);
-      }
-    });
-
-    document.querySelectorAll<HTMLElement>('.composer-drums-wrap').forEach((scroller) => {
-      const stepLeft = currentStep * (DRUM_STEP_WIDTH + 10);
-      const visibleStart = scroller.scrollLeft;
-      const visibleEnd = visibleStart + scroller.clientWidth;
-      const margin = DRUM_STEP_WIDTH * 4;
-
-      if (stepLeft < visibleStart + margin || stepLeft > visibleEnd - margin) {
-        scroller.scrollLeft = Math.max(0, stepLeft - scroller.clientWidth / 2 + DRUM_STEP_WIDTH / 2);
-      }
-    });
-  }, [currentStep, isPlaying]);
-
-  useEffect(() => {
     const renderLivePlayhead = () => {
+      followScrollFrameRef.current = null;
+
       if (!isPlayingRef.current) {
-        followScrollFrameRef.current = null;
         return;
       }
 
-      const { step } = livePlayheadRef.current;
-      const visualStep = step;
+      const liveStepCount = useSongStore.getState().steps;
+      const playheadAnchor = livePlayheadRef.current;
+      const stepDurationMs = 60_000 / Math.max(1, playheadAnchor.bpm) / 4;
+      const stepProgress = Math.min(
+        0.999,
+        Math.max(0, (window.performance.now() - playheadAnchor.receivedAt) / stepDurationMs)
+      );
+      const smoothStep = Math.min(
+        Math.max(0, liveStepCount - 1),
+        Math.max(0, playheadAnchor.step + stepProgress)
+      );
+      const visualStep = Math.min(
+        Math.max(0, liveStepCount - 1),
+        Math.max(0, Math.floor(smoothStep))
+      );
+      const didVisualStepChange = liveVisualStepRef.current !== visualStep;
+
+      if (didVisualStepChange) {
+        liveStepElementsRef.current.forEach((element) => {
+          element.classList.remove('is-current-live');
+        });
+        const cachedLiveElements = liveStepElementCacheRef.current.get(visualStep);
+        const nextLiveElements =
+          cachedLiveElements ??
+          [
+            ...document.querySelectorAll<HTMLElement>(
+              `.piano-roll-step-number[data-playhead-step="${visualStep}"], .composer-drum-step-number[data-playhead-step="${visualStep}"]`
+            ),
+          ];
+
+        if (!cachedLiveElements) {
+          liveStepElementCacheRef.current.set(visualStep, nextLiveElements);
+        }
+        nextLiveElements.forEach((element) => {
+          element.classList.add('is-current-live');
+        });
+        liveStepElementsRef.current = nextLiveElements;
+        liveVisualStepRef.current = visualStep;
+      }
 
       livePianoPlayheadsRef.current.forEach((playhead) => {
-        playhead.style.setProperty('--piano-step-index', `${visualStep}`);
+        playhead.style.setProperty('--piano-step-index', `${smoothStep}`);
       });
 
       liveSequencerPlayheadsRef.current.forEach((playhead) => {
-        playhead.style.setProperty('--sequencer-step-index', `${visualStep}`);
+        playhead.style.setProperty('--sequencer-step-index', `${smoothStep}`);
       });
 
-      liveScrollerPairsRef.current.forEach(({ scroller, header }) => {
-        const targetLeft = Math.max(0, visualStep * 66 - scroller.clientWidth * 0.36);
-        const distance = targetLeft - scroller.scrollLeft;
+      const arrangementProgress =
+        (Math.min(Math.max(smoothStep, 0), Math.max(0, liveStepCount - 1)) /
+          Math.max(1, liveStepCount - 1)) * 100;
+      liveArrangementPlayheadsRef.current.forEach((playhead) => {
+        playhead.style.setProperty('--arrangement-progress', `${arrangementProgress}%`);
+      });
 
-        if (Math.abs(distance) > 0.4) {
-          scroller.scrollLeft += distance * 0.18;
-        }
+      liveScrollerPairsRef.current.forEach(({ scroller, header, stepSpan }) => {
+        const playheadLeft = smoothStep * stepSpan + stepSpan / 2;
+        const targetLeft = Math.max(0, playheadLeft - scroller.clientWidth * 0.42);
+        scroller.scrollLeft = targetLeft;
 
         if (header) {
-          header.style.transform = `translateX(-${scroller.scrollLeft}px)`;
+          header.style.transform = `translateX(-${targetLeft}px)`;
         }
       });
 
       liveDrumScrollersRef.current.forEach((scroller) => {
-        const targetLeft = Math.max(
-          0,
-          visualStep * (DRUM_STEP_WIDTH + 10) - scroller.clientWidth * 0.36
-        );
-        const distance = targetLeft - scroller.scrollLeft;
-
-        if (Math.abs(distance) > 0.4) {
-          scroller.scrollLeft += distance * 0.18;
-        }
+        const stepSpan = DRUM_STEP_WIDTH + 10;
+        const playheadLeft = smoothStep * stepSpan + stepSpan / 2;
+        scroller.scrollLeft = Math.max(0, playheadLeft - scroller.clientWidth * 0.42);
       });
 
       followScrollFrameRef.current = window.requestAnimationFrame(renderLivePlayhead);
@@ -1100,20 +1408,46 @@ export function Composer() {
         return;
       }
 
-      if (!livePianoPlayheadsRef.current.length && !liveScrollerPairsRef.current.length) {
+      const playbackDomChanged =
+        livePianoPlayheadsRef.current.some((element) => !element.isConnected) ||
+        liveSequencerPlayheadsRef.current.some((element) => !element.isConnected) ||
+        liveArrangementPlayheadsRef.current.some((element) => !element.isConnected) ||
+        liveScrollerPairsRef.current.some(({ scroller }) => !scroller.isConnected) ||
+        liveDrumScrollersRef.current.some((element) => !element.isConnected);
+      const hasDrumEditor = Boolean(document.querySelector('.composer-sequencer-playhead'));
+
+      if (
+        playbackDomChanged ||
+        (hasDrumEditor && !liveSequencerPlayheadsRef.current.length) ||
+        (hasDrumEditor && !liveDrumScrollersRef.current.length) ||
+        (!livePianoPlayheadsRef.current.length &&
+          !liveScrollerPairsRef.current.length &&
+          !liveArrangementPlayheadsRef.current.length)
+      ) {
         livePianoPlayheadsRef.current = [
           ...document.querySelectorAll<HTMLElement>('.piano-roll-playhead'),
         ];
         liveSequencerPlayheadsRef.current = [
           ...document.querySelectorAll<HTMLElement>('.composer-sequencer-playhead'),
         ];
+        liveArrangementPlayheadsRef.current = [
+          ...document.querySelectorAll<HTMLElement>('.composer-arrangement-playhead'),
+        ];
         liveScrollerPairsRef.current = [
           ...document.querySelectorAll<HTMLElement>('.piano-roll-melody-scroller'),
         ].map((scroller) => {
           const roll = scroller.closest<HTMLElement>('.piano-roll');
+          const rollStyle = roll ? window.getComputedStyle(roll) : null;
+          const stepWidth = Number.parseFloat(
+            rollStyle?.getPropertyValue('--piano-step-width') ?? ''
+          ) || 64;
+          const gridGap = Number.parseFloat(
+            rollStyle?.getPropertyValue('--piano-grid-gap') ?? ''
+          ) || 2;
           return {
             scroller,
             header: roll?.querySelector<HTMLElement>('.piano-roll-step-header--melody') ?? null,
+            stepSpan: stepWidth + gridGap,
           };
         });
         liveDrumScrollersRef.current = [
@@ -1121,39 +1455,34 @@ export function Composer() {
         ];
       }
 
+      const previousLiveStep = livePlayheadRef.current.step;
       livePlayheadRef.current = {
         step,
-        bpm: typeof detail?.bpm === 'number' ? detail.bpm : livePlayheadRef.current.bpm,
-        startedAt: performance.now(),
+        bpm: typeof detail.bpm === 'number' ? detail.bpm : useSongStore.getState().bpm,
+        receivedAt: window.performance.now(),
       };
+
+      if (step < previousLiveStep) {
+        liveScrollerPairsRef.current.forEach(({ scroller, header, stepSpan }) => {
+          const targetLeft = Math.max(
+            0,
+            step * stepSpan + stepSpan / 2 - scroller.clientWidth * 0.42
+          );
+          scroller.scrollLeft = targetLeft;
+          if (header) header.style.transform = `translateX(-${targetLeft}px)`;
+        });
+        liveDrumScrollersRef.current.forEach((scroller) => {
+          const stepSpan = DRUM_STEP_WIDTH + 10;
+          scroller.scrollLeft = Math.max(
+            0,
+            step * stepSpan + stepSpan / 2 - scroller.clientWidth * 0.42
+          );
+        });
+      }
 
       if (followScrollFrameRef.current === null) {
         followScrollFrameRef.current = window.requestAnimationFrame(renderLivePlayhead);
       }
-
-      liveStepElementsRef.current.forEach((element) => {
-        element.classList.remove('is-current-live');
-      });
-      liveStepElementsRef.current = [];
-
-      const highlightedStep = Math.min(steps - 1, Math.max(0, Math.round(step)));
-      const cachedLiveElements = liveStepElementCacheRef.current.get(highlightedStep);
-      const nextLiveElements =
-        cachedLiveElements ??
-        [
-          ...document.querySelectorAll<HTMLElement>(
-            `.piano-roll-step-number[data-playhead-step="${highlightedStep}"], .piano-roll-cell[data-playhead-step="${highlightedStep}"], .composer-drum-step-number[data-playhead-step="${highlightedStep}"]`
-          ),
-        ];
-
-      if (!cachedLiveElements) {
-        liveStepElementCacheRef.current.set(highlightedStep, nextLiveElements);
-      }
-
-      nextLiveElements.forEach((element) => {
-        element.classList.add('is-current-live');
-      });
-      liveStepElementsRef.current = nextLiveElements;
     };
 
     window.addEventListener('composer-playhead-step', handlePlayheadStep);
@@ -1169,6 +1498,7 @@ export function Composer() {
   const projectSnapshot = useMemo(
     () =>
       buildSongProjectSnapshot({
+        compositionMode,
         bpm,
         tempoAutomation,
         steps,
@@ -1192,6 +1522,7 @@ export function Composer() {
       bass,
       bassLengths,
       bpm,
+      compositionMode,
       tempoAutomation,
       drums,
       extraTracks,
@@ -1678,6 +2009,7 @@ export function Composer() {
   useEffect(() => {
     livePianoPlayheadsRef.current = [];
     liveSequencerPlayheadsRef.current = [];
+    liveArrangementPlayheadsRef.current = [];
     liveScrollerPairsRef.current = [];
     liveDrumScrollersRef.current = [];
     liveStepElementCacheRef.current.clear();
@@ -1787,6 +2119,7 @@ export function Composer() {
 
   const syncTabsToLoadedProject = useCallback(() => {
     const state = useSongStore.getState();
+    const hasMelodyOnlyResult = hasOnlyMelodyTrackData(state);
     const primaryTabs = tabOrder.filter((tab) => {
       switch (tab) {
         case 'lyrics':
@@ -1808,7 +2141,9 @@ export function Composer() {
       }
     });
     const extraTrackIds = state.extraTracks.map((track) => track.id);
-    const nextPrimaryTabs = includeDefaultComposerTabs(primaryTabs);
+    const nextPrimaryTabs: ComposerTab[] = hasMelodyOnlyResult
+      ? (primaryTabs.includes('melody') ? ['melody'] : [])
+      : primaryTabs;
 
     setOpenTabsState(nextPrimaryTabs);
     setOpenExtraTrackIds(extraTrackIds);
@@ -1836,6 +2171,12 @@ export function Composer() {
     const handleGoToFirstBar = () => {
       document.querySelectorAll<HTMLElement>('.piano-roll-melody-scroller').forEach((scroller) => {
         scroller.scrollLeft = 0;
+      });
+      document.querySelectorAll<HTMLElement>('.composer-drums-wrap').forEach((scroller) => {
+        scroller.scrollLeft = 0;
+      });
+      document.querySelectorAll<HTMLElement>('.composer-sequencer-playhead').forEach((playhead) => {
+        playhead.style.setProperty('--sequencer-step-index', '0');
       });
 
       setPitchedRollScrollLeft({});
@@ -1889,6 +2230,381 @@ export function Composer() {
       setIsTabPickerOpen(false);
     },
     [activateTab, addInstrumentTrack, navigate, openTabsState]
+  );
+
+  const handleTrackPickerOpen = useCallback(
+    (tab: TabPickerOption) => {
+      const baseTrackId =
+        tab === 'melody' || tab === 'drums' || tab === 'bass'
+          ? tab
+          : tab === 'supportingPiano'
+            ? 'piano'
+            : tab === 'glockenspiel'
+              ? 'support'
+              : null;
+      const isRestoringBaseTrack = Boolean(baseTrackId && hiddenArrangementTrackIds.has(baseTrackId));
+
+      if (baseTrackId) {
+        setHiddenArrangementTrackIds((current) => {
+          if (!current.has(baseTrackId)) return current;
+          const next = new Set(current);
+          next.delete(baseTrackId);
+          return next;
+        });
+      }
+
+      handleOpenTab(tab, !isRestoringBaseTrack);
+    },
+    [handleOpenTab, hiddenArrangementTrackIds]
+  );
+
+  const handleDuplicateArrangementTrack = useCallback(
+    (track: ArrangementTrackDefinition) => {
+      const trackId = duplicateInstrumentTrack(track.tab, track.trackId);
+      setOpenExtraTrackIds((current) => [...current, trackId]);
+
+      const sourceLength = track.trackId
+        ? extraTrackNoteLengths[track.trackId]
+        : isPitchedTab(track.tab)
+          ? primaryTrackNoteLengths[track.tab]
+          : undefined;
+      if (sourceLength) {
+        setExtraTrackNoteLengths((current) => ({ ...current, [trackId]: sourceLength }));
+      }
+
+      activateTab(track.tab, trackId);
+      setOpenTrackMenuId(null);
+    },
+    [
+      activateTab,
+      duplicateInstrumentTrack,
+      extraTrackNoteLengths,
+      primaryTrackNoteLengths,
+    ]
+  );
+
+  const handleArrangementTrackSelect = useCallback(
+    (track: ArrangementTrackDefinition) => {
+      if (track.trackId) {
+        setOpenExtraTrackIds((current) =>
+          current.includes(track.trackId as string) ? current : [...current, track.trackId as string]
+        );
+        activateTab(track.tab, track.trackId);
+        return;
+      }
+
+      if (isSampledInstrumentTab(track.tab)) {
+        const existingTrack = extraTracks.find((item) => item.instrument === track.tab);
+        if (existingTrack) {
+          setOpenExtraTrackIds((current) =>
+            current.includes(existingTrack.id) ? current : [...current, existingTrack.id]
+          );
+          activateTab(track.tab, existingTrack.id);
+          return;
+        }
+      }
+
+      handleOpenTab(track.tab, false);
+    },
+    [activateTab, extraTracks, handleOpenTab]
+  );
+
+  const handleArrangementTrackDelete = useCallback(
+    (track: ArrangementTrackDefinition) => {
+      const isAddedTrack = track.id.startsWith('added-');
+
+      if (isAddedTrack) {
+        if (track.trackId) {
+          removeInstrumentTrack(track.trackId);
+          setOpenExtraTrackIds((current) => current.filter((id) => id !== track.trackId));
+        } else {
+          setOpenTabsState((current) => current.filter((tab) => tab !== track.tab));
+        }
+      } else {
+        if (track.trackId) {
+          removeInstrumentTrack(track.trackId);
+          setOpenExtraTrackIds((current) => current.filter((id) => id !== track.trackId));
+        } else {
+          clearInstrument(track.tab);
+        }
+        setHiddenArrangementTrackIds((current) => new Set(current).add(track.id));
+      }
+
+      releaseInstrumentSounds(track.tab);
+      if (activeTab === track.tab && (!activeTrackId || activeTrackId === track.trackId)) {
+        const fallbackTrack = arrangementVisibleTracks.find(
+          (item) => (item.key ?? item.id) !== (track.key ?? track.id)
+        );
+        if (fallbackTrack) activateTab(fallbackTrack.tab, fallbackTrack.trackId ?? null);
+      }
+      setOpenTrackMenuId(null);
+    },
+    [
+      activeTab,
+      activeTrackId,
+      activateTab,
+      arrangementVisibleTracks,
+      clearInstrument,
+      removeInstrumentTrack,
+    ]
+  );
+
+  const handleArrangementProgressSelect = useCallback(
+    (progressPercent: number) => {
+      const safeProgress = Math.min(100, Math.max(0, progressPercent));
+      const timelineStep = Math.round((safeProgress / 100) * Math.max(0, steps - 1));
+      setCurrentStep(timelineStep);
+
+      const focusLowerEditor = (attempt = 0) => {
+        const main = document.querySelector<HTMLElement>('.composer-main');
+        if (!main) return;
+
+        const pitchedScroller = main.querySelector<HTMLElement>('.piano-roll-melody-scroller');
+        if (pitchedScroller) {
+          const roll = pitchedScroller.closest<HTMLElement>('.piano-roll');
+          const rollStyle = roll ? window.getComputedStyle(roll) : null;
+          const stepWidth = Number.parseFloat(
+            rollStyle?.getPropertyValue('--piano-step-width') ?? ''
+          ) || Math.round(64 * pianoZoom);
+          const gridGap = Number.parseFloat(
+            rollStyle?.getPropertyValue('--piano-grid-gap') ?? ''
+          ) || 2;
+          const sidebarWidth = Number.parseFloat(
+            rollStyle?.getPropertyValue('--piano-sidebar-width') ?? ''
+          ) || 68;
+          const targetLeft =
+            timelineStep * (stepWidth + gridGap) -
+            Math.max(0, pitchedScroller.clientWidth - sidebarWidth) / 2 +
+            stepWidth / 2;
+          pitchedScroller.scrollLeft = Math.max(0, targetLeft);
+          pitchedScroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+          return;
+        }
+
+        const drumScroller = main.querySelector<HTMLElement>('.composer-drums-wrap');
+        if (drumScroller) {
+          const targetLeft =
+            timelineStep * (DRUM_STEP_WIDTH + 10) - drumScroller.clientWidth / 2;
+          drumScroller.scrollLeft = Math.max(0, targetLeft);
+          drumScroller.dispatchEvent(new Event('scroll', { bubbles: true }));
+          return;
+        }
+
+        if (attempt < 4) {
+          window.setTimeout(() => focusLowerEditor(attempt + 1), 40);
+        }
+      };
+
+      window.requestAnimationFrame(() => {
+        window.requestAnimationFrame(() => focusLowerEditor());
+      });
+      return {
+        step: timelineStep,
+        bar: Math.min(64, Math.max(1, Math.round((safeProgress / 100) * 63) + 1)),
+      };
+    },
+    [pianoZoom, setCurrentStep, steps]
+  );
+
+  const handleArrangementPointerSelect = useCallback(
+    (clientX: number, timelineElement: HTMLElement) => {
+      const bounds = timelineElement.getBoundingClientRect();
+      const progress = ((clientX - bounds.left) / Math.max(1, bounds.width)) * 100;
+      return handleArrangementProgressSelect(progress);
+    },
+    [handleArrangementProgressSelect]
+  );
+
+  const updateArrangementClipLayout = useCallback(
+    (clipKey: string, nextLayout: ArrangementClipLayout) => {
+      const length = Math.min(100, Math.max(4, nextLayout.length));
+      const start = Math.min(100 - length, Math.max(0, nextLayout.start));
+      setArrangementClipLayouts((current) => ({
+        ...current,
+        [clipKey]: { start, length },
+      }));
+    },
+    []
+  );
+
+  const handleArrangementClipDrop = useCallback(
+    (
+      event: ReactDragEvent<HTMLDivElement>,
+      trackKey: string
+    ) => {
+      event.preventDefault();
+      const rawPayload = event.dataTransfer.getData('application/x-composer-clip');
+      if (!rawPayload) return;
+
+      try {
+        const payload = JSON.parse(rawPayload) as {
+          clipKey: string;
+          trackKey: string;
+          offsetPercent: number;
+          length: number;
+        };
+        if (payload.trackKey !== trackKey) return;
+
+        const bounds = event.currentTarget.getBoundingClientRect();
+        const pointerPercent = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * 100;
+        const start = pointerPercent - payload.offsetPercent;
+        updateArrangementClipLayout(payload.clipKey, { start, length: payload.length });
+        const { bar } = handleArrangementProgressSelect(start);
+        showPianoToolFeedback(`구간 이동 · ${bar}마디`);
+      } catch {
+        return;
+      } finally {
+        setDraggingArrangementClip(null);
+      }
+    },
+    [handleArrangementProgressSelect, showPianoToolFeedback, updateArrangementClipLayout]
+  );
+
+  const handleArrangementClipResizeStart = useCallback(
+    (
+      event: ReactPointerEvent<HTMLSpanElement>,
+      clipKey: string,
+      layout: ArrangementClipLayout,
+      edge: 'start' | 'end'
+    ) => {
+      event.preventDefault();
+      event.stopPropagation();
+      const lane = event.currentTarget.closest<HTMLElement>('.composer-arrangement-lane');
+      if (!lane) return;
+
+      const laneWidth = Math.max(1, lane.getBoundingClientRect().width);
+      const pointerStart = event.clientX;
+      setSelectedArrangementClip(clipKey);
+
+      const handlePointerMove = (moveEvent: PointerEvent) => {
+        const delta = ((moveEvent.clientX - pointerStart) / laneWidth) * 100;
+        if (edge === 'start') {
+          const nextStart = Math.min(layout.start + layout.length - 4, layout.start + delta);
+          updateArrangementClipLayout(clipKey, {
+            start: nextStart,
+            length: layout.length - (nextStart - layout.start),
+          });
+          return;
+        }
+
+        updateArrangementClipLayout(clipKey, {
+          start: layout.start,
+          length: layout.length + delta,
+        });
+      };
+
+      const handlePointerUp = () => {
+        window.removeEventListener('pointermove', handlePointerMove);
+        window.removeEventListener('pointerup', handlePointerUp);
+        showPianoToolFeedback('구간 길이 조절 완료');
+      };
+
+      window.addEventListener('pointermove', handlePointerMove);
+      window.addEventListener('pointerup', handlePointerUp);
+    },
+    [showPianoToolFeedback, updateArrangementClipLayout]
+  );
+
+  const handleArrangementMute = useCallback(
+    (track: ArrangementTrackDefinition) => {
+      if (soloArrangementTrack) return;
+
+      const instrument = track.tab as InstrumentKey;
+      const isMuted = mutedArrangementTracks.has(track.id);
+      const extraTrack = track.trackId
+        ? extraTracks.find((item) => item.id === track.trackId)
+        : null;
+      const currentVolume = extraTrack?.volume ?? volumes[instrument] ?? 80;
+      if (isMuted) {
+        const restoredVolume = mutedVolumeSnapshotRef.current[track.id] ?? 80;
+        if (track.trackId) setExtraTrackVolume(track.trackId, restoredVolume);
+        else setInstrumentVolume(instrument, restoredVolume);
+      } else {
+        mutedVolumeSnapshotRef.current[track.id] = currentVolume;
+        if (track.trackId) setExtraTrackVolume(track.trackId, 0);
+        else setInstrumentVolume(instrument, 0);
+        releaseInstrumentSounds(track.tab);
+      }
+
+      setMutedArrangementTracks((current) => {
+        const next = new Set(current);
+        if (isMuted) next.delete(track.id);
+        else next.add(track.id);
+        return next;
+      });
+    },
+    [
+      extraTracks,
+      mutedArrangementTracks,
+      setExtraTrackVolume,
+      setInstrumentVolume,
+      soloArrangementTrack,
+      volumes,
+    ]
+  );
+
+  const handleArrangementVolumeChange = useCallback(
+    (track: ArrangementTrackDefinition, nextVolume: number) => {
+      const instrument = track.tab as InstrumentKey;
+      const extraTrack = track.trackId
+        ? extraTracks.find((item) => item.id === track.trackId)
+        : null;
+      const currentVolume = extraTrack?.volume ?? volumes[instrument] ?? 80;
+
+      if (nextVolume === 0 && currentVolume > 0) {
+        mutedVolumeSnapshotRef.current[track.id] = currentVolume;
+        releaseInstrumentSounds(track.tab);
+      } else if (nextVolume > 0) {
+        mutedVolumeSnapshotRef.current[track.id] = nextVolume;
+      }
+
+      if (track.trackId) setExtraTrackVolume(track.trackId, nextVolume);
+      else setInstrumentVolume(instrument, nextVolume);
+
+      setMutedArrangementTracks((current) => {
+        const next = new Set(current);
+        if (nextVolume === 0) next.add(track.id);
+        else next.delete(track.id);
+        return next;
+      });
+    },
+    [extraTracks, setExtraTrackVolume, setInstrumentVolume, volumes]
+  );
+
+  const handleArrangementSolo = useCallback(
+    (track: ArrangementTrackDefinition) => {
+      const shouldDisableSolo = soloArrangementTrack === track.id;
+      if (shouldDisableSolo) {
+        const snapshot = soloVolumeSnapshotRef.current;
+        if (snapshot) {
+          arrangementVisibleTracks.forEach((item) => {
+            setInstrumentVolume(item.tab as InstrumentKey, snapshot[item.id] ?? 80);
+          });
+        }
+        soloVolumeSnapshotRef.current = null;
+        setSoloArrangementTrack(null);
+        return;
+      }
+
+      const snapshot =
+        soloVolumeSnapshotRef.current ??
+        Object.fromEntries(
+          arrangementVisibleTracks.map((item) => [
+            item.id,
+            volumes[item.tab as InstrumentKey] ?? 80,
+          ])
+        );
+      soloVolumeSnapshotRef.current = snapshot;
+
+      arrangementVisibleTracks.forEach((item) => {
+        setInstrumentVolume(
+          item.tab as InstrumentKey,
+          item.id === track.id ? snapshot[item.id] ?? 80 : 0
+        );
+      });
+      setSoloArrangementTrack(track.id);
+    },
+    [arrangementVisibleTracks, setInstrumentVolume, soloArrangementTrack, volumes]
   );
 
   useEffect(() => {
@@ -2005,6 +2721,7 @@ export function Composer() {
   const getProjectSignatureFromStore = () =>
     JSON.stringify(
       buildSongProjectSnapshot({
+        compositionMode: useSongStore.getState().compositionMode,
         bpm: useSongStore.getState().bpm,
         tempoAutomation: useSongStore.getState().tempoAutomation,
         steps: useSongStore.getState().steps,
@@ -2136,6 +2853,16 @@ export function Composer() {
 
   useEffect(() => {
     initTransport();
+    const scheduleIdle = window.requestIdleCallback ?? ((callback: IdleRequestCallback) =>
+      window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 8 }), 250));
+    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout;
+    const idleId = scheduleIdle(() => {
+      void preloadPlaybackEngine().catch((error) => {
+        console.warn('Playback preload skipped:', error);
+      });
+    });
+
+    return () => cancelIdle(idleId);
   }, []);
 
   useEffect(() => {
@@ -2889,6 +3616,46 @@ export function Composer() {
       ? extraTracks.find((track) => track.id === item.trackId)?.volume ?? 80
       : volumes[getVolumeInstrumentForTab(item.tab)] ?? 80;
 
+  const activePianoGridSteps =
+    activeExtraTrack && activeExtraTrack.instrument !== 'drums'
+      ? extraTrackNoteLengths[activeExtraTrack.id] ?? 4
+      : isPitchedTab(activeTab)
+        ? primaryTrackNoteLengths[activeTab]
+        : 4;
+
+  const handlePianoGridChange = (stepsValue: MelodyNoteLengthSteps) => {
+    const selectedOption = melodyNoteLengthOptions.find((option) => option.steps === stepsValue);
+    showPianoToolFeedback(`노트 길이 ${selectedOption?.label ?? '1/4'}`);
+    if (activeExtraTrack && activeExtraTrack.instrument !== 'drums') {
+      setExtraTrackNoteLengths((current) => ({
+        ...current,
+        [activeExtraTrack.id]: stepsValue,
+      }));
+      return;
+    }
+
+    if (isPitchedTab(activeTab)) {
+      setPrimaryTrackNoteLengths((current) => ({ ...current, [activeTab]: stepsValue }));
+    }
+  };
+
+  const changePianoZoom = (direction: -1 | 1) => {
+    setPianoZoom((current) => {
+      const next = Math.min(1.75, Math.max(0.5, current + direction * 0.25));
+      showPianoToolFeedback(`${direction > 0 ? '확대' : '축소'} ${Math.round(next * 100)}%`);
+      return next;
+    });
+  };
+
+  const selectPianoEditTool = (tool: PianoEditTool, label: string) => {
+    setPianoEditTool(tool);
+    if (tool !== 'select' && tool !== 'marquee') {
+      setPianoSelection(null);
+      setPianoMarqueeOrigin(null);
+    }
+    showPianoToolFeedback(label);
+  };
+
   const renderMelodyLikeSequencer = (
     instrument: PitchedTab,
     notes: readonly string[],
@@ -2901,7 +3668,7 @@ export function Composer() {
     const scrollKey = options.scrollKey ?? instrument;
     const gridGap = 2;
     const rowHeight = MELODY_PIANO_ROW_HEIGHT;
-    const stepWidth = 64;
+    const stepWidth = Math.round(64 * pianoZoom);
     const headerHeight = 24;
     const headerMargin = 8;
     const bodyTopPadding = 8;
@@ -2914,8 +3681,8 @@ export function Composer() {
       Math.max(1280, typeof window === 'undefined' ? 1920 : window.innerWidth) / stepSpan
     );
     const firstVisibleStep = Math.floor(scrollLeft / stepSpan);
-    const visibleStepStart = Math.max(0, firstVisibleStep - 8);
-    const visibleStepEnd = Math.min(steps, firstVisibleStep + viewportStepCount + 8);
+    const visibleStepStart = Math.max(0, firstVisibleStep - 24);
+    const visibleStepEnd = Math.min(steps, firstVisibleStep + viewportStepCount + 24);
     const visibleSteps = Array.from(
       { length: Math.max(0, visibleStepEnd - visibleStepStart) },
       (_, index) => visibleStepStart + index
@@ -2930,7 +3697,7 @@ export function Composer() {
       { length: Math.max(0, visibleRowEnd - visibleRowStart) },
       (_, index) => visibleRowStart + index
     );
-    const showTopbar = Boolean(options.showNoteLengthControls || options.showChordControls);
+    const showTopbar = false;
     const noteLengthSteps = options.noteLengthSteps ?? 4;
     const rollStyle = {
       '--piano-grid-gap': `${gridGap}px`,
@@ -2949,8 +3716,10 @@ export function Composer() {
 
     return (
       <section
-        className="composer-roll-shell composer-roll-shell--melody"
+        className={`composer-roll-shell composer-roll-shell--melody is-tool-${pianoEditTool}`}
         key={`${scrollKey}-melody-like`}
+        onMouseUp={() => setPianoMarqueeOrigin(null)}
+        onMouseLeave={() => setPianoMarqueeOrigin(null)}
       >
         <div
           className={`piano-roll piano-roll--melody piano-roll--melody-detached piano-roll--${instrument}`}
@@ -3016,8 +3785,8 @@ export function Composer() {
                 className="piano-roll-step-header piano-roll-step-header--melody"
                 style={{
                   gridTemplateColumns: `repeat(${steps}, ${stepWidth}px)`,
-                  transform: `translateX(-${scrollLeft}px)`,
-                }}
+                  transform: isPlaying ? undefined : `translateX(-${scrollLeft}px)`,
+                } as CSSProperties}
               >
                 {Array.from({ length: steps }).map((_, col) => (
                   <button
@@ -3035,6 +3804,11 @@ export function Composer() {
                     aria-label={`${col + 1}번 위치까지 반복`}
                     title={`${col + 1}번 위치까지 반복`}
                   >
+                    {col % COLLAB_BAR_LENGTH === 0 ? (
+                      <span className="piano-roll-bar-number" aria-hidden="true">
+                        {Math.floor(col / COLLAB_BAR_LENGTH) + 1}
+                      </span>
+                    ) : null}
                     <span className="sr-only">{col + 1}</span>
                   </button>
                 ))}
@@ -3048,7 +3822,7 @@ export function Composer() {
               const nextScrollLeft = event.currentTarget.scrollLeft;
               setPitchedRollScrollLeft((current) => {
                 const nextStoredScrollLeft = isPlayingRef.current
-                  ? Math.floor(nextScrollLeft / (stepSpan * 4)) * stepSpan * 4
+                  ? Math.floor(nextScrollLeft / (stepSpan * 16)) * stepSpan * 16
                   : nextScrollLeft;
 
                 if ((current[scrollKey] ?? 0) === nextStoredScrollLeft) {
@@ -3103,7 +3877,11 @@ export function Composer() {
               <div className="piano-roll-content">
                 <div
                   className="piano-roll-playhead piano-roll-playhead--detached"
-                  style={{ '--piano-step-index': `${currentStep}` } as CSSProperties}
+                  style={
+                    isPlaying
+                      ? undefined
+                      : ({ '--piano-step-index': `${currentStep}` } as CSSProperties)
+                  }
                 />
 
                 <div
@@ -3127,7 +3905,16 @@ export function Composer() {
                       const isNoteStart = Boolean(noteInfo && noteInfo.start === col);
                       const isNoteTail = Boolean(noteInfo && noteInfo.start !== col);
                       const active = noteInfo ? isNoteStart : grid[row]?.[col];
+                      const hasNote = Boolean(active || isNoteTail);
                       const isCurrent = col === currentStep;
+                      const isSelected = Boolean(
+                        pianoSelection &&
+                          pianoSelection.scrollKey === scrollKey &&
+                          row >= Math.min(pianoSelection.startRow, pianoSelection.endRow) &&
+                          row <= Math.max(pianoSelection.startRow, pianoSelection.endRow) &&
+                          col >= Math.min(pianoSelection.startCol, pianoSelection.endCol) &&
+                          col <= Math.max(pianoSelection.startCol, pianoSelection.endCol)
+                      );
                       const lock = currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)];
                       const isLocked = Boolean(lock && !lock.mine);
                       const cellStyle = {
@@ -3150,11 +3937,63 @@ export function Composer() {
                             isNoteTail ? ' is-note-tail' : ''
                           }${
                             isLocked ? ' is-locked' : ''
-                          }${collabId && !canSyncCollab ? ' is-readonly' : ''}`}
+                          }${collabId && !canSyncCollab ? ' is-readonly' : ''}${
+                            isSelected ? ' is-tool-selected' : ''
+                          }`}
                           style={cellStyle}
                           disabled={isLocked || Boolean(collabId && !canSyncCollab)}
-                          onMouseDown={() => {
-                            void onToggle(row, col, noteLengthSteps);
+                          onMouseDown={(event) => {
+                            if (pianoEditTool === 'zoom') {
+                              changePianoZoom(event.shiftKey ? -1 : 1);
+                              return;
+                            }
+
+                            if (pianoEditTool === 'select') {
+                              setPianoSelection({
+                                scrollKey,
+                                startRow: row,
+                                endRow: row,
+                                startCol: noteInfo?.start ?? col,
+                                endCol: noteInfo ? noteInfo.start + noteInfo.length - 1 : col,
+                              });
+                              return;
+                            }
+
+                            if (pianoEditTool === 'marquee') {
+                              setPianoMarqueeOrigin({ scrollKey, row, col });
+                              setPianoSelection({
+                                scrollKey,
+                                startRow: row,
+                                endRow: row,
+                                startCol: col,
+                                endCol: col,
+                              });
+                              return;
+                            }
+
+                            if (pianoEditTool === 'pencil' && hasNote) return;
+                            if (pianoEditTool === 'eraser' && !hasNote) return;
+                            if (hasNote) {
+                              setPianoSelection(null);
+                              setPianoMarqueeOrigin(null);
+                            }
+                            void onToggle(row, noteInfo?.start ?? col, noteLengthSteps);
+                          }}
+                          onMouseMove={() => {
+                            if (
+                              pianoEditTool !== 'marquee' ||
+                              !pianoMarqueeOrigin ||
+                              pianoMarqueeOrigin.scrollKey !== scrollKey
+                            ) {
+                              return;
+                            }
+                            setPianoSelection({
+                              scrollKey,
+                              startRow: pianoMarqueeOrigin.row,
+                              endRow: row,
+                              startCol: pianoMarqueeOrigin.col,
+                              endCol: col,
+                            });
                           }}
                           onDragOver={onChordDrop ? (event) => event.preventDefault() : undefined}
                           onDrop={
@@ -3191,7 +4030,11 @@ export function Composer() {
           <div className="composer-sequencer-body">
             <div
               className="composer-sequencer-playhead"
-              style={{ '--sequencer-step-index': `${currentStep}` } as CSSProperties}
+              style={
+                isPlaying
+                  ? undefined
+                  : ({ '--sequencer-step-index': `${currentStep}` } as CSSProperties)
+              }
               aria-hidden="true"
             />
             <div className="composer-sequencer-header">
@@ -3289,50 +4132,25 @@ export function Composer() {
       />
 
       <div className="composer-workbar">
-        <div className="composer-mode-strip" aria-label="작곡 화면 모드">
-          <span>{composerMode.label}</span>
-          <strong>{composerMode.title}</strong>
-          <small>{composerMode.description}</small>
+        <div className="composer-project-meta" aria-label="작곡 도움말">
           <button
             type="button"
-            className="composer-mode-action"
+            className={`composer-help-toggle-button${isHelpOverlayEnabled ? ' is-active' : ''}`}
             onClick={() => {
-              if (!user) {
-                navigate('/login');
-                return;
-              }
+              setIsHelpOverlayEnabled((enabled) => {
+                const nextEnabled = !enabled;
+                if (!nextEnabled) {
+                  setActiveHelpZone(null);
+                }
 
-              const params = new URLSearchParams({
-                write: '1',
-                title: `${composerMode.title === '새 작업' ? '새 곡' : composerMode.title} 파트 모집`,
-                genre: '작곡',
-                summary: `${bpm} BPM, ${steps} steps 작업에 함께할 파트를 찾습니다.`,
-                roles: 'vocal,guitar,bass,drums,mix',
+                return nextEnabled;
               });
-              navigate(`/community/sessions?${params.toString()}`);
             }}
+            aria-pressed={isHelpOverlayEnabled}
           >
-            파트 모집
+            {isHelpOverlayEnabled ? '도움말 켜짐' : '도움말'}
           </button>
         </div>
-
-        <button
-          type="button"
-          className={`composer-help-toggle-button${isHelpOverlayEnabled ? ' is-active' : ''}`}
-          onClick={() => {
-            setIsHelpOverlayEnabled((enabled) => {
-              const nextEnabled = !enabled;
-              if (!nextEnabled) {
-                setActiveHelpZone(null);
-              }
-
-              return nextEnabled;
-            });
-          }}
-          aria-pressed={isHelpOverlayEnabled}
-        >
-          {isHelpOverlayEnabled ? '도움말 켜짐' : '도움말'}
-        </button>
 
         <div className="composer-workbar-controls">
           <div
@@ -3693,6 +4511,469 @@ export function Composer() {
         ) : null}
       </aside>
 
+      <div
+        className={`composer-studio-layout${isArrangementCollapsed ? ' is-arrangement-collapsed' : ''}`}
+        style={{
+          ['--arrangement-panel-height' as string]: `${
+            52 + Math.min(arrangementVisibleTracks.length, 7) * 58
+          }px`,
+        }}
+      >
+        <aside className="composer-track-panel" aria-label="트랙 목록">
+          <div className="composer-track-panel-head">
+            <strong>트랙 ({arrangementVisibleTracks.length})</strong>
+            <div ref={tabPickerRef} className="composer-track-add-wrap">
+              <button
+                ref={tabAddButtonRef}
+                type="button"
+                className="composer-track-add"
+                onClick={() => setIsTabPickerOpen((open) => !open)}
+                aria-label="트랙 추가"
+                aria-expanded={isTabPickerOpen}
+              >
+                +
+              </button>
+              {isTabPickerOpen ? (
+                <div className="composer-track-add-menu" role="menu" aria-label="추가할 트랙">
+                  {tabPickerGroups.map((group) => (
+                    <div key={group.title} className="composer-track-add-group">
+                      <span>{group.title}</span>
+                      {group.options.map((tab) => (
+                        <button key={tab} type="button" onClick={() => handleTrackPickerOpen(tab)}>
+                          {getTabPickerLabel(tab)}
+                        </button>
+                      ))}
+                    </div>
+                  ))}
+                </div>
+              ) : null}
+            </div>
+          </div>
+
+          <div
+            className={`composer-track-list${
+              arrangementVisibleTracks.length > 7 ? ' has-overflow' : ''
+            }`}
+          >
+            {arrangementVisibleTracks.map((track, index) => {
+              const isActive =
+                activeTab === track.tab &&
+                (track.trackId ? activeTrackId === track.trackId : !activeTrackId);
+              const isMuted = mutedArrangementTracks.has(track.id);
+              const isSolo = soloArrangementTrack === track.id;
+              const trackVolume = track.trackId
+                ? extraTracks.find((item) => item.id === track.trackId)?.volume ?? 80
+                : volumes[track.tab as InstrumentKey] ?? 80;
+
+              return (
+                <div
+                  key={track.key ?? track.id}
+                  className={`composer-track-row is-${track.tone}${isActive ? ' is-active' : ''}${
+                    isMuted ? ' is-muted' : ''
+                  }`}
+                >
+                  <button
+                    type="button"
+                    className="composer-track-select"
+                    onClick={() => handleArrangementTrackSelect(track)}
+                    aria-pressed={isActive}
+                  >
+                    <span className="composer-track-number">{index + 1}</span>
+                    <span
+                      className={`composer-track-icon${isMuted ? ' is-muted' : ''}`}
+                      aria-hidden="true"
+                    >
+                      {track.icon}
+                    </span>
+                    <span className="composer-track-name">{track.label}</span>
+                  </button>
+                  <div className="composer-track-toggles">
+                    <button
+                      type="button"
+                      className={isMuted ? 'is-active' : ''}
+                      onClick={() => handleArrangementMute(track)}
+                      aria-pressed={isMuted}
+                      aria-label={
+                        isMuted
+                          ? `${track.label} 음소거 해제. 이 트랙의 소리를 다시 켭니다.`
+                          : `${track.label} 음소거. 이 트랙의 소리만 끕니다.`
+                      }
+                      title={
+                        isMuted
+                          ? `${track.label} 음소거 해제 (M) · 이 트랙의 소리를 다시 켭니다.`
+                          : `${track.label} 음소거 (M) · 이 트랙의 소리만 끕니다.`
+                      }
+                      disabled={Boolean(soloArrangementTrack)}
+                    >
+                      M
+                    </button>
+                    <button
+                      type="button"
+                      className={isSolo ? 'is-active' : ''}
+                      onClick={() => handleArrangementSolo(track)}
+                      aria-pressed={isSolo}
+                      aria-label={
+                        isSolo
+                          ? `${track.label} 솔로 해제. 모든 트랙을 원래 소리로 되돌립니다.`
+                          : `${track.label} 솔로 재생. 다른 트랙을 끄고 이 트랙만 듣습니다.`
+                      }
+                      title={
+                        isSolo
+                          ? `${track.label} 솔로 해제 (S) · 모든 트랙을 원래 소리로 되돌립니다.`
+                          : `${track.label} 솔로 재생 (S) · 다른 트랙을 끄고 이 트랙만 듣습니다.`
+                      }
+                    >
+                      S
+                    </button>
+                  </div>
+                  <button
+                    type="button"
+                    className="composer-track-more"
+                    aria-label={`${track.label} 메뉴`}
+                    aria-expanded={openTrackMenuId === (track.key ?? track.id)}
+                    onClick={() =>
+                      setOpenTrackMenuId((current) =>
+                        current === (track.key ?? track.id) ? null : (track.key ?? track.id)
+                      )
+                    }
+                  >
+                    ⋮
+                  </button>
+                  {openTrackMenuId === (track.key ?? track.id) ? (
+                    <div className="composer-track-context-menu" role="menu" aria-label={`${track.label} 작업`}>
+                      <div className="composer-track-volume-control">
+                        <span>
+                          볼륨 <strong>{trackVolume}</strong>
+                        </span>
+                        <input
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={trackVolume}
+                          aria-label={`${track.label} 볼륨`}
+                          onChange={(event) =>
+                            handleArrangementVolumeChange(track, Number(event.target.value))
+                          }
+                        />
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          handleDuplicateArrangementTrack(track);
+                        }}
+                      >
+                        트랙 복제
+                      </button>
+                      <button
+                        type="button"
+                        className="is-danger"
+                        onClick={() => handleArrangementTrackDelete(track)}
+                      >
+                        트랙 삭제
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
+              );
+            })}
+          </div>
+        </aside>
+
+        <section className="composer-arrangement-stage">
+          <div
+            className="composer-arrangement-overview"
+            aria-label="편곡 타임라인"
+            style={
+              {
+                '--arrangement-label-count': `${arrangementTimelineBars.length}`,
+                '--arrangement-major-span': `${Math.min(100, (4 / arrangementBarCount) * 100)}%`,
+                '--arrangement-minor-span': `${100 / arrangementBarCount}%`,
+              } as CSSProperties
+            }
+          >
+            <div
+              className="composer-arrangement-ruler"
+              onClick={(event) => {
+                if ((event.target as HTMLElement).closest('.composer-arrangement-tools')) return;
+                const timeline = event.currentTarget.parentElement?.querySelector<HTMLElement>(
+                  '.composer-arrangement-lanes'
+                );
+                if (timeline) handleArrangementPointerSelect(event.clientX, timeline);
+              }}
+            >
+              {arrangementTimelineBars.map((bar) => (
+                <button key={bar} type="button">
+                  {bar}
+                </button>
+              ))}
+              <div className="composer-arrangement-tools" aria-label="타임라인 보기 도구">
+                <button
+                  type="button"
+                  aria-label="전체 화면"
+                  title="전체 화면"
+                  onClick={() => {
+                    const stage = document.querySelector<HTMLElement>('.composer-arrangement-stage');
+                    if (!stage) return;
+
+                    if (document.fullscreenElement) {
+                      void document.exitFullscreen();
+                      return;
+                    }
+
+                    void stage.requestFullscreen();
+                  }}
+                >
+                  ⛶
+                </button>
+              </div>
+            </div>
+            <div
+              className="composer-arrangement-lanes"
+              style={{
+                ['--arrangement-track-count' as string]: `${arrangementVisibleTracks.length}`,
+              }}
+            >
+              {arrangementVisibleTracks.map((track, index) => {
+                const trackKey = track.key ?? track.id;
+                const renderClip = (section: 'first' | 'second', clipNumber: number) => {
+                  const clipKey = `${trackKey}-${section}`;
+                  const layout =
+                    arrangementClipLayouts[clipKey] ??
+                    getDefaultArrangementClipLayout(index, section);
+                  const trackData = getArrangementTrackData(track);
+                  const preview = buildArrangementClipPreview(
+                    trackData.grid,
+                    trackData.lengths,
+                    (layout.start / 100) * steps,
+                    ((layout.start + layout.length) / 100) * steps
+                  );
+                  const isSelected = selectedArrangementClip === clipKey;
+                  const isDragging = draggingArrangementClip === clipKey;
+                  const isActiveTrack =
+                    activeTab === track.tab &&
+                    (track.trackId ? activeTrackId === track.trackId : !activeTrackId);
+
+                  return (
+                    <button
+                      key={clipKey}
+                      type="button"
+                      draggable
+                      className={`composer-clip${preview.hasAudio ? ' has-audio' : ' is-empty'}${
+                        isSelected ? ' is-selected' : ''
+                      }${isDragging ? ' is-dragging' : ''}${isActiveTrack ? ' is-active-track' : ''}`}
+                      style={{ left: `${layout.start}%`, width: `${layout.length}%` }}
+                      onClick={(event) => {
+                        event.stopPropagation();
+                        setSelectedArrangementClip(clipKey);
+                        handleArrangementTrackSelect(track);
+                        const lane = event.currentTarget.closest<HTMLElement>(
+                          '.composer-arrangement-lane'
+                        );
+                        const { bar } = lane
+                          ? handleArrangementPointerSelect(event.clientX, lane)
+                          : handleArrangementProgressSelect(layout.start);
+                        showPianoToolFeedback(`${track.label} ${String(clipNumber).padStart(2, '0')} · ${bar}마디`);
+                      }}
+                      onDragStart={(event) => {
+                        const lane = event.currentTarget.closest<HTMLElement>('.composer-arrangement-lane');
+                        if (!lane) return;
+                        const clipBounds = event.currentTarget.getBoundingClientRect();
+                        const laneBounds = lane.getBoundingClientRect();
+                        const offsetPercent =
+                          ((event.clientX - clipBounds.left) / Math.max(1, laneBounds.width)) * 100;
+                        event.dataTransfer.effectAllowed = 'move';
+                        event.dataTransfer.setData(
+                          'application/x-composer-clip',
+                          JSON.stringify({ clipKey, trackKey, offsetPercent, length: layout.length })
+                        );
+                        setSelectedArrangementClip(clipKey);
+                        setDraggingArrangementClip(clipKey);
+                      }}
+                      onDragEnd={() => setDraggingArrangementClip(null)}
+                    >
+                      <span
+                        className="composer-clip-resize is-start"
+                        onPointerDown={(event) =>
+                          handleArrangementClipResizeStart(event, clipKey, layout, 'start')
+                        }
+                        aria-hidden="true"
+                      />
+                      <strong>{track.label} {String(clipNumber).padStart(2, '0')}</strong>
+                      <span className="composer-clip-activity" aria-hidden="true">
+                        {preview.activityRanges.map((range, rangeIndex) => (
+                          <span
+                            key={`${clipKey}-activity-${rangeIndex}`}
+                            style={{ left: `${range.start}%`, width: `${range.width}%` }}
+                          />
+                        ))}
+                      </span>
+                      <svg
+                        className="composer-clip-pitch-line"
+                        viewBox="0 0 100 24"
+                        preserveAspectRatio="none"
+                        aria-hidden="true"
+                      >
+                        {preview.pitchSegments.map((points, segmentIndex) => (
+                          <polyline
+                            key={`${clipKey}-pitch-${segmentIndex}`}
+                            points={points}
+                            vectorEffect="non-scaling-stroke"
+                          />
+                        ))}
+                      </svg>
+                      <span
+                        className="composer-clip-resize is-end"
+                        onPointerDown={(event) =>
+                          handleArrangementClipResizeStart(event, clipKey, layout, 'end')
+                        }
+                        aria-hidden="true"
+                      />
+                    </button>
+                  );
+                };
+
+                return (
+                  <div
+                    key={trackKey}
+                    className={`composer-arrangement-lane is-${track.tone}`}
+                    onDragOver={(event) => {
+                      event.preventDefault();
+                      event.dataTransfer.dropEffect = 'move';
+                    }}
+                    onDrop={(event) => handleArrangementClipDrop(event, trackKey)}
+                    onClick={(event) => {
+                      if (event.target !== event.currentTarget) return;
+                      const bounds = event.currentTarget.getBoundingClientRect();
+                      const percent = ((event.clientX - bounds.left) / Math.max(1, bounds.width)) * 100;
+                      handleArrangementTrackSelect(track);
+                      handleArrangementProgressSelect(percent);
+                      setSelectedArrangementClip(null);
+                    }}
+                  >
+                    {renderClip('first', 1)}
+                    {renderClip('second', 2)}
+                  </div>
+                );
+              })}
+              <div
+                className="composer-arrangement-playhead"
+                style={
+                  isPlaying
+                    ? undefined
+                    : ({
+                        ['--arrangement-progress' as string]: `${Math.min(100, Math.max(0, (currentStep / Math.max(1, steps - 1)) * 100))}%`,
+                      } as CSSProperties)
+                }
+                aria-hidden="true"
+              />
+            </div>
+          </div>
+
+          <div className="composer-detail-toolbar">
+            <button
+              type="button"
+              className="composer-split-handle"
+              aria-label={isArrangementCollapsed ? '편곡 영역 펼치기' : '편곡 영역 접기'}
+              aria-expanded={!isArrangementCollapsed}
+              onClick={() =>
+                setIsArrangementCollapsed((collapsed) => {
+                  showPianoToolFeedback(collapsed ? '편곡 영역 펼치기' : '편곡 영역 접기');
+                  return !collapsed;
+                })
+              }
+            >
+              <span
+                className={`composer-split-chevron${
+                  isArrangementCollapsed ? ' is-down' : ' is-up'
+                }`}
+                aria-hidden="true"
+              />
+            </button>
+            {pianoToolFeedback ? (
+              <output className="composer-tool-feedback" role="status">
+                {pianoToolFeedback}
+              </output>
+            ) : null}
+            <div className="composer-detail-tabs">
+              <button type="button" className="is-active">
+                {(activeExtraTrack
+                  ? activeExtraTrack.instrument === 'drums'
+                  : activeTab === 'drums')
+                  ? '드럼 패드'
+                  : '피아노롤'}
+              </button>
+            </div>
+            {(activeExtraTrack
+              ? activeExtraTrack.instrument !== 'drums'
+              : activeTab !== 'drums') ? (
+              <div className="composer-detail-tools" aria-label="피아노롤 편집 도구">
+                <div className="composer-edit-tool-group">
+                  <button
+                    type="button"
+                    className={pianoEditTool === 'select' ? 'is-active' : ''}
+                    aria-label="선택 도구"
+                    aria-pressed={pianoEditTool === 'select'}
+                    title="선택"
+                    onClick={() => selectPianoEditTool('select', '선택 도구')}
+                  >↖</button>
+                  <button
+                    type="button"
+                    className={pianoEditTool === 'pencil' ? 'is-active' : ''}
+                    aria-label="연필 도구"
+                    aria-pressed={pianoEditTool === 'pencil'}
+                    title="노트 그리기"
+                    onClick={() => selectPianoEditTool('pencil', '노트 그리기')}
+                  >✎</button>
+                  <button
+                    type="button"
+                    className={pianoEditTool === 'eraser' ? 'is-active' : ''}
+                    aria-label="지우개 도구"
+                    aria-pressed={pianoEditTool === 'eraser'}
+                    title="노트 지우기"
+                    onClick={() => selectPianoEditTool('eraser', '노트 지우기')}
+                  >◇</button>
+                  <button
+                    type="button"
+                    className={pianoEditTool === 'zoom' ? 'is-active' : ''}
+                    aria-label="확대 도구"
+                    aria-pressed={pianoEditTool === 'zoom'}
+                    title="확대 (Shift+클릭: 축소)"
+                    onClick={() => selectPianoEditTool('zoom', '확대 도구 · Shift+클릭 시 축소')}
+                  >⌕</button>
+                </div>
+                <div className="composer-note-zoom">
+                  <button
+                    type="button"
+                    aria-label="축소"
+                    title="피아노롤 축소"
+                    onClick={() => changePianoZoom(-1)}
+                    disabled={pianoZoom <= 0.5}
+                  >−</button>
+                  <button
+                    type="button"
+                    aria-label="확대"
+                    title="피아노롤 확대"
+                    onClick={() => changePianoZoom(1)}
+                    disabled={pianoZoom >= 1.75}
+                  >+</button>
+                  <select
+                    className="composer-grid-value"
+                    value={activePianoGridSteps}
+                    onChange={(event) =>
+                      handlePianoGridChange(Number(event.target.value) as MelodyNoteLengthSteps)
+                    }
+                    aria-label="노트 그리드 간격"
+                    title="새 노트 길이"
+                  >
+                    {melodyNoteLengthOptions.map((option) => (
+                      <option key={option.steps} value={option.steps}>{option.label}</option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+            ) : null}
+          </div>
+
       <main
         ref={mainViewportRef}
         className={`composer-main composer-main--${activeTab}`}
@@ -3737,11 +5018,21 @@ export function Composer() {
           <>
             <section
               ref={melodyRollRef}
-              className={`composer-roll-shell composer-roll-shell--melody${getGuideHighlightClass(
+              className={`composer-roll-shell composer-roll-shell--melody is-tool-${pianoEditTool}${getGuideHighlightClass(
                 'melody-roll'
               )}`}
             >
               <PianoRoll
+                editTool={pianoEditTool}
+                stepWidth={Math.round(64 * pianoZoom)}
+                noteLengthSteps={primaryTrackNoteLengths.melody}
+                onNoteLengthChange={(stepsValue) =>
+                  setPrimaryTrackNoteLengths((current) => ({
+                    ...current,
+                    melody: stepsValue,
+                  }))
+                }
+                onRequestZoom={changePianoZoom}
                 loopRange={loopRange}
                 onStepHeaderSelect={handleStepLoopSelect}
                 collabBarLocks={currentTabLockMap}
@@ -3879,32 +5170,6 @@ export function Composer() {
 
         {activeTab === 'bass' && isActivePrimaryTabOpen && (
           <>
-            <section
-              className={`composer-chord-bar composer-chord-bar--bass${getGuideHighlightClass(
-                'bass-grid'
-              )}`}
-            >
-              <div className="composer-chord-copy">
-                <span className="composer-chord-label">{chordMeta.bass.label}</span>
-                <p className="composer-chord-description">{chordMeta.bass.description}</p>
-              </div>
-
-              <div className="composer-chord-list">
-                {chordOptions.map((chord) => (
-                  <div
-                    key={chord}
-                    className="composer-chord-chip"
-                    draggable
-                    onDragStart={(event) => {
-                      event.dataTransfer.setData('text/plain', chord);
-                    }}
-                  >
-                    {chord}
-                  </div>
-                ))}
-              </div>
-            </section>
-
             <section ref={bassShellRef} className={getGuideHighlightClass('bass-grid')}>
               {renderMelodyLikeSequencer(
                 'bass',
@@ -3918,7 +5183,7 @@ export function Composer() {
                   noteLengthSteps: primaryTrackNoteLengths.bass,
                   onNoteLengthChange: (lengthSteps) =>
                     setPrimaryTrackNoteLengths((current) => ({ ...current, bass: lengthSteps })),
-                  showNoteLengthControls: true,
+                  showNoteLengthControls: false,
                 }
               )}
             </section>
@@ -3935,7 +5200,11 @@ export function Composer() {
                 <div className="composer-sequencer-body">
                   <div
                     className="composer-sequencer-playhead"
-                    style={{ '--sequencer-step-index': `${currentStep}` } as CSSProperties}
+                    style={
+                      isPlaying
+                        ? undefined
+                        : ({ '--sequencer-step-index': `${currentStep}` } as CSSProperties)
+                    }
                     aria-hidden="true"
                   />
                   <div className="composer-sequencer-header">
@@ -4035,6 +5304,8 @@ export function Composer() {
           </>
         )}
       </main>
+        </section>
+      </div>
 
       {activeHelpPanel ? (
         <div

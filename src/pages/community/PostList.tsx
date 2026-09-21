@@ -106,9 +106,19 @@ export default function PostList() {
       <main className="community-shell community-board-shell">
         <CommunitySpaceNav active="board" />
         <section className="community-board-hero">
-          <span className="community-board-kicker">ALL DISCUSSIONS</span>
-          <h1>커뮤니티 게시판</h1>
-          <p>함께 만들고, 듣고, 의견을 나눠보세요.</p>
+          <div>
+            <span className="community-board-kicker">ALL DISCUSSIONS</span>
+            <h1>커뮤니티 게시판</h1>
+            <p>함께 만들고, 듣고, 의견을 나눠보세요.</p>
+          </div>
+          <button
+            type="button"
+            className="community-board-write-button"
+            onClick={() => navigate(user ? '/community/write' : '/login')}
+          >
+            <span aria-hidden="true">+</span>
+            글쓰기
+          </button>
         </section>
 
         <div className="community-board-layout">

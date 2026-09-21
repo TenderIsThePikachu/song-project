@@ -1,47 +1,61 @@
 .collab-hub-tabs {
-  display: inline-grid;
-  grid-template-columns: repeat(2, minmax(180px, 1fr));
-  gap: 10px;
-  margin-bottom: 20px;
-  padding: 8px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
-  border-radius: 999px;
-  background: rgba(20, 22, 29, 0.88);
-  box-shadow: 0 18px 34px rgba(0, 0, 0, 0.16);
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  width: min(430px, 100%);
+  margin-bottom: 14px;
 }
 
 .collab-hub-tab {
-  min-height: 44px;
-  padding: 0 18px;
-  border: 1px solid rgba(255, 255, 255, 0.08);
+  min-height: 42px;
+  padding: 0 24px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: rgba(34, 37, 45, 0.96);
-  color: #e8edf9;
+  background: #eef3f8;
+  color: #253552;
   font: inherit;
-  font-weight: 700;
+  font-size: 14px;
+  font-weight: 800;
   cursor: pointer;
-  transition:
-    transform 0.18s ease,
-    border-color 0.18s ease,
-    background 0.18s ease,
-    color 0.18s ease;
+  transition: transform 0.18s ease, box-shadow 0.18s ease, background 0.18s ease;
 }
 
 .collab-hub-tab:hover {
   transform: translateY(-1px);
-  border-color: rgba(120, 142, 255, 0.28);
+  background: #e6edf5;
 }
 
 .collab-hub-tab.is-active {
-  border-color: rgba(120, 142, 255, 0.34);
-  background: linear-gradient(135deg, rgba(79, 91, 255, 0.94), rgba(112, 126, 255, 0.88));
-  color: #fff;
+  border-color: #20b98f;
+  background: #20bc91;
+  color: #ffffff;
+  box-shadow: 0 9px 22px rgba(32, 188, 145, 0.2);
 }
 
-@media (max-width: 720px) {
+.collab-hub-tab:focus-visible {
+  outline: 3px solid rgba(32, 188, 145, 0.2);
+  outline-offset: 2px;
+}
+
+html[data-theme='dark'] .collab-hub-tab {
+  background: #202a37;
+  color: #dce7f3;
+}
+
+html[data-theme='dark'] .collab-hub-tab.is-active {
+  background: #20bc91;
+  color: #ffffff;
+}
+
+@media (max-width: 560px) {
   .collab-hub-tabs {
-    display: grid;
     width: 100%;
-    grid-template-columns: 1fr;
+    gap: 8px;
+  }
+
+  .collab-hub-tab {
+    min-height: 42px;
+    padding: 0 14px;
+    font-size: 13px;
   }
 }

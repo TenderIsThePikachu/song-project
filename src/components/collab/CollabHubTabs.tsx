@@ -1,5 +1,4 @@
 import { useNavigate } from 'react-router-dom';
-import { useAuthStore } from '../../store/authStore';
 import './CollabHubTabs.css';
 
 type CollabHubTabsProps = {
@@ -8,7 +7,6 @@ type CollabHubTabsProps = {
 
 export default function CollabHubTabs({ activeTab }: CollabHubTabsProps) {
   const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
 
   return (
     <div className="collab-hub-tabs" role="tablist" aria-label="협업 세션 허브">
@@ -16,7 +14,7 @@ export default function CollabHubTabs({ activeTab }: CollabHubTabsProps) {
         type="button"
         className={`collab-hub-tab${activeTab === 'collab' ? ' is-active' : ''}`}
         aria-selected={activeTab === 'collab'}
-        onClick={() => navigate(user ? '/collab' : '/login')}
+        onClick={() => navigate('/collab')}
       >
         협업 작업실
       </button>

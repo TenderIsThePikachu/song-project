@@ -7472,6 +7472,7 @@ function createSongProject(prompt: string): SongProject {
 
   return {
     version: 2,
+    compositionMode: promptIdentity.isPiano ? 'soloPiano' : 'standard',
     steps: TOTAL_STEPS,
     bpm: promptAware.bpm,
     tempoAutomation: createExpressiveTempoAutomation(promptAware.bpm, analysis, promptIdentity),

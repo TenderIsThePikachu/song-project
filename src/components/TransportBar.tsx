@@ -108,6 +108,97 @@ function renderGenreOptions() {
   ));
 }
 
+type ShareDialogIconName =
+  | 'share'
+  | 'save'
+  | 'music'
+  | 'document'
+  | 'tag'
+  | 'image'
+  | 'globe'
+  | 'file'
+  | 'send'
+  | 'settings'
+  | 'waveform'
+  | 'database';
+
+function ShareDialogIcon({ name }: { name: ShareDialogIconName }) {
+  const paths: Record<ShareDialogIconName, React.ReactNode> = {
+    share: (
+      <>
+        <circle cx="18" cy="5" r="3" />
+        <circle cx="6" cy="12" r="3" />
+        <circle cx="18" cy="19" r="3" />
+        <path d="m8.6 10.5 6.8-4M8.6 13.5l6.8 4" />
+      </>
+    ),
+    save: (
+      <>
+        <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z" />
+        <path d="M17 21v-8H7v8M7 3v5h8" />
+      </>
+    ),
+    music: (
+      <>
+        <path d="M9 18V5l10-2v13" />
+        <circle cx="6" cy="18" r="3" />
+        <circle cx="16" cy="16" r="3" />
+      </>
+    ),
+    document: (
+      <>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+        <path d="M14 2v6h6M8 13h8M8 17h8" />
+      </>
+    ),
+    tag: (
+      <>
+        <path d="M20.6 13.6 11 23.2 1 13.2V3h10.2Z" transform="scale(.82) translate(2 1)" />
+        <circle cx="8.2" cy="7.5" r="1.2" />
+      </>
+    ),
+    image: (
+      <>
+        <rect x="3" y="3" width="18" height="18" rx="2" />
+        <circle cx="8.5" cy="8.5" r="1.5" />
+        <path d="m21 15-5-5L5 21" />
+      </>
+    ),
+    globe: (
+      <>
+        <circle cx="12" cy="12" r="9" />
+        <path d="M3 12h18M12 3a14 14 0 0 1 0 18M12 3a14 14 0 0 0 0 18" />
+      </>
+    ),
+    file: (
+      <>
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z" />
+        <path d="M14 2v6h6" />
+      </>
+    ),
+    send: <path d="m22 2-7 20-4-9-9-4ZM22 2 11 13" />,
+    settings: (
+      <>
+        <circle cx="12" cy="12" r="3" />
+        <path d="M19.4 15a1.7 1.7 0 0 0 .3 1.9l.1.1-2.8 2.8-.1-.1a1.7 1.7 0 0 0-1.9-.3 1.7 1.7 0 0 0-1 1.6v.2h-4V21a1.7 1.7 0 0 0-1-1.6 1.7 1.7 0 0 0-1.9.3l-.1.1L4.2 17l.1-.1a1.7 1.7 0 0 0 .3-1.9A1.7 1.7 0 0 0 3 14H2.8v-4H3a1.7 1.7 0 0 0 1.6-1 1.7 1.7 0 0 0-.3-1.9L4.2 7 7 4.2l.1.1A1.7 1.7 0 0 0 9 4.6 1.7 1.7 0 0 0 10 3V2.8h4V3a1.7 1.7 0 0 0 1 1.6 1.7 1.7 0 0 0 1.9-.3l.1-.1L19.8 7l-.1.1a1.7 1.7 0 0 0-.3 1.9 1.7 1.7 0 0 0 1.6 1h.2v4H21a1.7 1.7 0 0 0-1.6 1Z" />
+      </>
+    ),
+    waveform: <path d="M3 12h2l2-7 4 14 3-11 3 8 2-4h2" />,
+    database: (
+      <>
+        <ellipse cx="12" cy="5" rx="8" ry="3" />
+        <path d="M4 5v6c0 1.7 3.6 3 8 3s8-1.3 8-3V5M4 11v6c0 1.7 3.6 3 8 3s8-1.3 8-3v-6" />
+      </>
+    ),
+  };
+
+  return (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+      {paths[name]}
+    </svg>
+  );
+}
+
 type ComposerDialog = 'save' | 'share' | null;
 type SaveFormat = 'wav' | 'mp3' | 'flac';
 
@@ -333,9 +424,15 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
   useEffect(() => {
     const handlePlaybackStep = (event: Event) => {
-      if (!backingTrackName) return;
       const step = (event as CustomEvent<{ step: number }>).detail.step;
       const previousStep = previousPlaybackStepRef.current;
+      previousPlaybackStepRef.current = step;
+
+      if (step % BAR_LENGTH === 0) {
+        setCurrentStep(step);
+      }
+
+      if (!backingTrackName) return;
       const loopRestarted = loopRange
         ? previousStep === loopRange.end && step === loopRange.start
         : previousStep !== null && step < previousStep;
@@ -347,12 +444,11 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           if (audio.paused) void audio.play().catch(() => undefined);
         }
       }
-      previousPlaybackStepRef.current = step;
     };
 
     window.addEventListener('composer-playhead-step', handlePlaybackStep);
     return () => window.removeEventListener('composer-playhead-step', handlePlaybackStep);
-  }, [backingTrackName, backingTrackSourceBpm, loopRange]);
+  }, [backingTrackName, backingTrackSourceBpm, loopRange, setCurrentStep]);
 
   const createProjectSnapshot = (): SongProject => {
     return buildSongProjectSnapshot(useSongStore.getState());
@@ -396,22 +492,28 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
   const handleTogglePlay = async () => {
     if (isPlaying) {
+      const pausedStep = previousPlaybackStepRef.current ?? currentStep;
       Tone.Transport.stop();
       Tone.Transport.position = 0;
       stopBackingTrack();
       previousPlaybackStepRef.current = null;
-      setCurrentStep(loopRange?.start ?? 0);
+      setCurrentStep(pausedStep);
       setPlaying(false);
       return;
     }
 
     try {
-      await preparePlaybackEngine();
+      const loopStart = loopRange?.start ?? 0;
+      const loopEnd = loopRange?.end ?? steps - 1;
+      const startStep = loopRange
+        ? Math.min(loopEnd, Math.max(loopStart, currentStep))
+        : Math.min(steps - 1, Math.max(0, currentStep));
+      setCurrentStep(startStep);
+      previousPlaybackStepRef.current = startStep;
+      await preparePlaybackEngine(startStep);
       Tone.Transport.bpm.value = bpm;
       Tone.Transport.stop();
       Tone.Transport.position = 0;
-      const startStep = loopRange?.start ?? 0;
-      setCurrentStep(startStep);
       setPlaying(true);
       onPlayStarted?.();
       window.requestAnimationFrame(() => {
@@ -736,7 +838,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           className="transport-button"
           onClick={() => navigate(getRecruitUrlFromSketch(saveTitle.trim() || shareTitle.trim() || '내 곡 스케치'))}
         >
-          파트 모집
+          파트 모음
         </button>
         <button type="button" className="transport-button" onClick={() => openDialog('save')}>
           저장하기
@@ -766,18 +868,34 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
       </div>
 
       {activeDialog ? (
-        <div className="transport-dialog-backdrop" onClick={closeDialog} aria-hidden="true">
+        <div
+          className={`transport-dialog-backdrop${
+            activeDialog === 'share'
+              ? ' transport-dialog-backdrop--share'
+              : ' transport-dialog-backdrop--save'
+          }`}
+          onClick={closeDialog}
+        >
           <section
-            className="transport-dialog"
+            className={`transport-dialog${
+              activeDialog === 'share' ? ' transport-dialog--share' : ' transport-dialog--save'
+            }`}
             onClick={(event) => event.stopPropagation()}
             aria-label={activeDialog === 'save' ? '프로젝트 저장' : '프로젝트 공유'}
+            role="dialog"
+            aria-modal="true"
           >
             {activeDialog === 'save' ? (
               <>
-                <div className="transport-dialog-header">
-                  <div className="transport-dialog-title">
-                    <span className="transport-dialog-icon">S</span>
-                    <strong>저장하기</strong>
+                <div className="transport-dialog-header transport-save-dialog-header">
+                  <div className="transport-save-dialog-title">
+                    <span className="transport-save-dialog-title-icon">
+                      <ShareDialogIcon name="save" />
+                    </span>
+                    <div className="transport-save-dialog-title-copy">
+                      <strong>저장하기</strong>
+                      <p>지금까지 작업한 프로젝트를 저장해보세요.</p>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -785,41 +903,38 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                     onClick={closeDialog}
                     aria-label="닫기"
                   >
-                    ×
+                    <span aria-hidden="true">×</span>
                   </button>
                 </div>
 
-                <div className="transport-dialog-group">
-                  <span className="transport-dialog-kicker">기본 정보</span>
-                  <label className="transport-dialog-field">
-                    <span>제목</span>
+                <div className="transport-dialog-group transport-save-dialog-fields">
+                  <label className="transport-dialog-field transport-save-dialog-field">
+                    <span className="transport-save-dialog-label">제목</span>
                     <input
                       type="text"
                       value={saveTitle}
                       onChange={(event) => setSaveTitle(event.target.value)}
                       placeholder="프로젝트 제목을 입력해 주세요."
                     />
+                    <small className="transport-save-dialog-counter">{saveTitle.length}/100</small>
                   </label>
-                  <label className="transport-dialog-field">
-                    <span>설명</span>
+                  <label className="transport-dialog-field transport-save-dialog-field">
+                    <span className="transport-save-dialog-label">설명</span>
                     <textarea
                       value={saveDescription}
                       onChange={(event) => setSaveDescription(event.target.value)}
                       placeholder="곡에 대한 설명을 입력해 주세요."
                     />
+                    <small className="transport-save-dialog-counter">{saveDescription.length}/500</small>
                   </label>
-                  <label className="transport-dialog-field">
-                    <span>장르</span>
+                  <label className="transport-dialog-field transport-save-dialog-field">
+                    <span className="transport-save-dialog-label">장르</span>
                     <select value={saveGenre} onChange={(event) => setSaveGenre(event.target.value)}>
                       {renderGenreOptions()}
                     </select>
                   </label>
-                </div>
-
-                <div className="transport-dialog-group">
-                  <span className="transport-dialog-kicker">파일 설정</span>
-                  <div className="transport-dialog-field">
-                    <span>형식</span>
+                  <div className="transport-dialog-field transport-save-dialog-format-field">
+                    <span className="transport-save-dialog-label">파일 형식</span>
                     <div className="transport-dialog-format-row" role="tablist" aria-label="형식">
                       {(['wav', 'mp3', 'flac'] as const).map((format) => (
                         <button
@@ -837,7 +952,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                   </div>
                 </div>
 
-                <div className="transport-dialog-group">
+                <div className="transport-dialog-group transport-save-dialog-backup-section">
                   <button
                     type="button"
                     className="transport-dialog-toggle-row"
@@ -853,7 +968,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                   </button>
                 </div>
 
-                <div className="transport-dialog-actions">
+                <div className="transport-dialog-actions transport-save-dialog-actions">
                   <button type="button" className="transport-dialog-button" onClick={closeDialog}>
                     취소
                   </button>
@@ -869,10 +984,15 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
               </>
             ) : (
               <>
-                <div className="transport-dialog-header">
-                  <div className="transport-dialog-title">
-                    <span className="transport-dialog-icon transport-dialog-icon--share">↗</span>
-                    <strong>공유하기</strong>
+                <div className="transport-dialog-header transport-share-dialog-header">
+                  <div className="transport-share-dialog-heading">
+                    <span className="transport-share-dialog-header-icon">
+                      <ShareDialogIcon name="share" />
+                    </span>
+                    <div>
+                      <strong>공유하기</strong>
+                      <p>지금 만든 곡을 다른 사람들과 공유해보세요.</p>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -880,40 +1000,65 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                     onClick={closeDialog}
                     aria-label="닫기"
                   >
-                    ×
+                    <span aria-hidden="true">×</span>
                   </button>
                 </div>
 
-                <div className="transport-dialog-group">
-                  <label className="transport-dialog-field">
-                    <span>제목</span>
-                    <input
-                      type="text"
-                      value={shareTitle}
-                      onChange={(event) => setShareTitle(event.target.value)}
-                      placeholder="공유 제목을 입력해 주세요."
-                    />
+                <div className="transport-dialog-group transport-share-dialog-fields">
+                  <label className="transport-dialog-field transport-share-dialog-field">
+                    <span className="transport-share-dialog-label">제목</span>
+                    <span className="transport-share-dialog-control">
+                      <span className="transport-share-dialog-field-icon">
+                        <ShareDialogIcon name="music" />
+                      </span>
+                      <input
+                        type="text"
+                        value={shareTitle}
+                        onChange={(event) => setShareTitle(event.target.value)}
+                        placeholder="곡 제목을 입력해 주세요."
+                      />
+                    </span>
+                    <small className="transport-share-dialog-counter">{shareTitle.length}/50</small>
                   </label>
-                  <label className="transport-dialog-field">
-                    <span>설명</span>
-                    <textarea
-                      value={shareDescription}
-                      onChange={(event) => setShareDescription(event.target.value)}
-                      placeholder="공유할 곡 설명을 적어 주세요."
-                    />
+                  <label className="transport-dialog-field transport-share-dialog-field">
+                    <span className="transport-share-dialog-label">설명</span>
+                    <span className="transport-share-dialog-control transport-share-dialog-control--textarea">
+                      <span className="transport-share-dialog-field-icon">
+                        <ShareDialogIcon name="document" />
+                      </span>
+                      <textarea
+                        value={shareDescription}
+                        onChange={(event) => setShareDescription(event.target.value)}
+                        placeholder={'곡에 대한 설명을 작성해 주세요.\n(장르, 분위기, 의도 등)'}
+                      />
+                    </span>
+                    <small className="transport-share-dialog-counter">{shareDescription.length}/500</small>
                   </label>
-                  <label className="transport-dialog-field">
-                    <span>장르</span>
-                    <select
-                      value={shareGenre}
-                      onChange={(event) => setShareGenre(event.target.value)}
-                    >
-                      {renderGenreOptions()}
-                    </select>
+                  <label className="transport-dialog-field transport-share-dialog-field">
+                    <span className="transport-share-dialog-label">장르</span>
+                    <span className="transport-share-dialog-control">
+                      <span className="transport-share-dialog-field-icon">
+                        <ShareDialogIcon name="tag" />
+                      </span>
+                      <select
+                        value={shareGenre}
+                        onChange={(event) => setShareGenre(event.target.value)}
+                      >
+                        {renderGenreOptions()}
+                      </select>
+                    </span>
                   </label>
-                  <label className="transport-dialog-field">
-                    <span>파일 업로드</span>
-                    <input type="file" accept="image/*" onChange={handleSelectShareCover} />
+                  <label className="transport-dialog-field transport-share-dialog-field">
+                    <span className="transport-share-dialog-label">커버 이미지</span>
+                    <span className="transport-share-dialog-upload">
+                      <span className="transport-share-dialog-field-icon">
+                        <ShareDialogIcon name="image" />
+                      </span>
+                      <strong>파일 선택</strong>
+                      <i aria-hidden="true" />
+                      <span>{shareCoverFile?.name ?? '선택된 파일 없음'}</span>
+                      <input type="file" accept="image/*" onChange={handleSelectShareCover} />
+                    </span>
                     <small>업로드할 파일을 선택해주세요 (20mb 이하).</small>
                   </label>
                   {shareCoverPreviewUrl ? (
@@ -932,15 +1077,18 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                   ) : null}
                 </div>
 
-                <div className="transport-dialog-group">
+                <div className="transport-dialog-group transport-share-dialog-options">
                   <button
                     type="button"
                     className="transport-dialog-toggle-row"
                     onClick={() => setShareIsPublic((value) => !value)}
                   >
+                    <span className="transport-share-dialog-option-icon">
+                      <ShareDialogIcon name="globe" />
+                    </span>
                     <div className="transport-dialog-toggle-copy">
                       <span>공개 여부</span>
-                      <small>끄면 본인만 볼 수 있습니다.</small>
+                      <small>다른 사용자도 이 곡을 볼 수 있습니다.</small>
                     </div>
                     <span className={`transport-dialog-switch${shareIsPublic ? ' is-on' : ''}`}>
                       <span />
@@ -952,9 +1100,12 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                     className="transport-dialog-toggle-row"
                     onClick={() => setShareMidiEnabled((value) => !value)}
                   >
+                    <span className="transport-share-dialog-option-icon">
+                      <ShareDialogIcon name="file" />
+                    </span>
                     <div className="transport-dialog-toggle-copy">
                       <span>MIDI 공유</span>
-                      <small>원본 편집 정보도 함께 공유합니다.</small>
+                      <small>함께 편집할 수 있도록 MIDI 파일도 공유합니다.</small>
                     </div>
                     <span className={`transport-dialog-switch${shareMidiEnabled ? ' is-on' : ''}`}>
                       <span />
@@ -972,7 +1123,14 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
                     onClick={handleShareConfirm}
                     disabled={isUploadingShareCover}
                   >
-                    {isUploadingShareCover ? '공유 중...' : '공유하기'}
+                    {isUploadingShareCover ? (
+                      '공유 중...'
+                    ) : (
+                      <>
+                        <ShareDialogIcon name="send" />
+                        <span>공유하기</span>
+                      </>
+                    )}
                   </button>
                 </div>
               </>

@@ -16,6 +16,200 @@ html[data-theme="light"] {
   --light-shadow-hover: 0 20px 50px rgba(35, 52, 80, 0.15);
 }
 
+html[data-theme="light"] .composer-studio-layout,
+html[data-theme="light"] .composer-arrangement-stage {
+  background: #f5f8fb;
+}
+
+html[data-theme="light"] .composer-track-panel,
+html[data-theme="light"] .composer-track-row,
+html[data-theme="light"] .composer-arrangement-overview,
+html[data-theme="light"] .composer-arrangement-ruler,
+html[data-theme="light"] .composer-detail-toolbar {
+  border-color: #dbe3ec;
+  background: #ffffff;
+}
+
+html[data-theme="light"] .composer-track-row.is-active {
+  background: #f0f7f5;
+}
+
+html[data-theme="light"] .composer-track-row.is-muted .composer-track-name {
+  color: #8995a8;
+}
+
+html[data-theme="light"] .composer-track-icon.is-muted::after {
+  background: #ffffff;
+  box-shadow: 0 0 0 1px rgba(44, 57, 76, .42);
+}
+
+html[data-theme="light"] :is(
+  .composer-track-panel-head > strong,
+  .composer-track-name,
+  .composer-project-meta strong
+) {
+  color: #142036;
+}
+
+html[data-theme="light"] .composer-tool-feedback {
+  border-color: #cfdae6;
+  background: #ffffff;
+  box-shadow: 0 10px 26px rgba(35, 52, 80, .16);
+  color: #172238;
+}
+
+html[data-theme="light"] :is(
+  .composer-track-number,
+  .composer-detail-toolbar > span,
+  .composer-project-meta small,
+  .composer-arrangement-ruler button
+) {
+  color: #607089;
+}
+
+html[data-theme="light"] .composer-project-meta > span,
+html[data-theme="light"] .composer-track-add,
+html[data-theme="light"] .composer-track-toggles button {
+  border-color: #d9e2ed;
+  background: #ffffff;
+  color: #35445b;
+}
+
+html[data-theme="light"] .composer-track-add-menu {
+  border-color: #d9e2ed;
+  background: #ffffff;
+  box-shadow: 0 18px 42px rgba(37, 50, 69, 0.16);
+  scrollbar-color: rgba(116, 133, 155, .5) transparent;
+}
+
+html[data-theme="light"] .composer-track-add-menu::-webkit-scrollbar-thumb {
+  background: rgba(116, 133, 155, .5);
+  background-clip: padding-box;
+}
+
+html[data-theme="light"] .composer-track-add-menu::-webkit-scrollbar-thumb:hover {
+  background: rgba(32, 185, 143, .72);
+  background-clip: padding-box;
+}
+
+html[data-theme="light"] .composer-track-context-menu {
+  border-color: #d8e1eb;
+  background: #ffffff;
+  box-shadow: 0 14px 34px rgba(37, 50, 69, .16);
+}
+
+html[data-theme="light"] .composer-track-context-menu button {
+  color: #344359;
+}
+
+html[data-theme="light"] .composer-track-context-menu button:hover {
+  background: #eef5f3;
+  color: #087f66;
+}
+
+html[data-theme="light"] .composer-track-context-menu button.is-danger {
+  color: #cf4150;
+}
+
+html[data-theme="light"] .composer-track-volume-control {
+  border-color: #e0e7ef;
+}
+
+html[data-theme="light"] .composer-track-volume-control span {
+  color: #64748b;
+}
+
+html[data-theme="light"] .composer-track-volume-control strong {
+  color: #087f66;
+}
+
+html[data-theme="light"] .composer-track-add-group button {
+  color: #25334a;
+}
+
+html[data-theme="light"] .composer-track-add-group button:hover {
+  background: #eef5f3;
+  color: #087f66;
+}
+
+html[data-theme="light"] .composer-arrangement-lanes {
+  scrollbar-color: rgba(116, 133, 155, .48) transparent;
+  background-color: #f8fafc;
+  background-image:
+    repeating-linear-gradient(to right, transparent 0, transparent calc(6.25% - 1px), #dbe4ed calc(6.25% - 1px), #dbe4ed 6.25%),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(1.5625% - 1px), rgba(89, 106, 128, .07) calc(1.5625% - 1px), rgba(89, 106, 128, .07) 1.5625%);
+}
+
+html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-track,
+html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-corner {
+  border: 0;
+  background: transparent;
+}
+
+html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-thumb {
+  border-color: transparent;
+  background: rgba(116, 133, 155, .48);
+  background-clip: padding-box;
+}
+
+html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-thumb:hover {
+  background: rgba(32, 185, 143, .68);
+  background-clip: padding-box;
+}
+
+html[data-theme="light"] .piano-roll--melody-detached .piano-roll-sidebar {
+  background: #f8fafc;
+  border-right-color: #d8e1eb;
+  box-shadow: 8px 0 12px -12px rgba(35, 52, 80, .35);
+}
+
+html[data-theme="light"] .composer-arrangement-lane {
+  border-color: #dfe7ef;
+}
+
+html[data-theme="light"] .composer-clip {
+  background: color-mix(in srgb, var(--clip-color) 7%, #ffffff 93%);
+}
+
+html[data-theme="light"] .composer-clip.has-audio {
+  background: color-mix(in srgb, var(--clip-color) 19%, #ffffff 81%);
+}
+
+html[data-theme="light"] .composer-clip.is-empty {
+  color: color-mix(in srgb, var(--clip-color) 55%, #64748b 45%);
+}
+
+html[data-theme="light"] .composer-detail-tabs button {
+  color: #66758b;
+}
+
+html[data-theme="light"] .composer-detail-tabs button.is-active {
+  color: #087f66;
+}
+
+html[data-theme="light"] .composer-arrangement-tools {
+  background: linear-gradient(90deg, transparent, #ffffff 16%);
+}
+
+html[data-theme="light"] :is(
+  .composer-arrangement-tools button,
+  .composer-edit-tool-group button,
+  .composer-note-zoom button,
+  .composer-note-zoom .composer-grid-value,
+  .composer-split-handle
+) {
+  border-color: #d8e1eb;
+  background: #ffffff;
+  color: #45546a;
+}
+
+html[data-theme="light"] .composer-edit-tool-group button.is-active {
+  border-color: #20b98f;
+  background: #20b98f;
+  color: #ffffff;
+}
+
+
 html[data-theme="light"] *::-webkit-scrollbar-track,
 html[data-theme="light"] *::-webkit-scrollbar-corner {
   border-color: rgba(35, 48, 72, 0.05);
@@ -1350,9 +1544,9 @@ html[data-theme="light"] .collab-primary-button {
 }
 
 html[data-theme="light"] .collab-hub-tabs {
-  border-color: var(--light-border) !important;
-  background: #ffffff !important;
-  box-shadow: var(--light-shadow) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .collab-hub-tab {
@@ -2622,6 +2816,18 @@ html[data-theme="light"] .composer-help-toggle-button.is-active {
   color: #095440 !important;
   font-weight: 900 !important;
   box-shadow: 0 6px 16px rgba(22, 134, 106, 0.16) !important;
+}
+
+html[data-theme="light"] .composer-project-meta .composer-help-toggle-button,
+html[data-theme="light"] .composer-project-meta .composer-help-toggle-button:hover,
+html[data-theme="light"] .composer-project-meta .composer-help-toggle-button.is-active {
+  position: static !important;
+  top: auto !important;
+  right: auto !important;
+  height: 40px !important;
+  border-radius: 8px !important;
+  box-shadow: none !important;
+  transform: none !important;
 }
 
 html[data-theme="light"] .composer-media-overlay {
@@ -4679,4 +4885,166 @@ html.is-theme-changing :is(
 .piano-roll-grid,
 .composer-sequencer-body {
   contain: layout paint style;
+}
+
+/* Arrangement-matched detail editor. */
+html[data-theme="light"] .composer-roll-shell--melody {
+  border-color: #d4dde8 !important;
+  background: #f8fafc !important;
+  box-shadow: none !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(
+  .piano-roll--melody,
+  .piano-roll-melody-scroller
+) {
+  background: #f8fafc !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(
+  .piano-roll-melody-topbar,
+  .piano-roll-melody-header-row,
+  .piano-roll-step-header-viewport,
+  .piano-roll-step-header--melody
+) {
+  border-color: #d4dde8 !important;
+  background-color: #f5f8fb !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(
+  .piano-roll-melody-corner,
+  .piano-roll--melody .piano-roll-sidebar,
+  .piano-roll--melody-detached .piano-roll-sidebar,
+  .piano-roll-sidebar-cover
+) {
+  border-color: #cdd7e3 !important;
+  background: #f1f5f9 !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll--melody-detached .piano-roll-sidebar {
+  box-shadow: 8px 0 14px -12px rgba(51, 65, 85, .35) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-grid--melody {
+  background:
+    repeating-linear-gradient(
+      to bottom,
+      transparent 0 calc(var(--piano-row-span) - 1px),
+      #dfe6ef calc(var(--piano-row-span) - 1px) var(--piano-row-span)
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
+      #e1e8f0 calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+    ),
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(var(--piano-step-span) * 16 - 1px),
+      #bdcad8 calc(var(--piano-step-span) * 16 - 1px) calc(var(--piano-step-span) * 16)
+    ),
+    #fbfcfe !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-step-header--melody {
+  background:
+    repeating-linear-gradient(
+      to right,
+      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
+      #d8e1eb calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+    ),
+    #f5f8fb !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody {
+  background: transparent !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody.is-sharp:not(.is-active) {
+  background: rgba(41, 55, 75, .025) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody:hover {
+  background: var(--editor-accent-soft) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody:is(.is-eighth, .is-quarter, .is-half)::before {
+  background: #dfe6ee !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody.is-half::before {
+  background: #ccd7e3 !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody.is-bar {
+  box-shadow: inset 1px 0 0 #aebdcd !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-note-block {
+  border-color: color-mix(in srgb, var(--editor-accent) 62%, #ffffff) !important;
+  background: color-mix(in srgb, var(--editor-accent) 82%, #ffffff 18%) !important;
+  box-shadow: 0 2px 5px color-mix(in srgb, var(--editor-accent) 20%, transparent) !important;
+  filter: none !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-key.is-melody.is-natural {
+  border-bottom: 1px solid #d5dde7 !important;
+  background: #fdfefe !important;
+  color: #4a586d !important;
+  box-shadow: inset -1px 0 0 #cbd5e1 !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-key.is-melody.is-sharp {
+  background: #2f3948 !important;
+  color: #f8fafc !important;
+  box-shadow:
+    inset -1px 0 0 rgba(255, 255, 255, .08),
+    1px 1px 2px rgba(40, 52, 70, .2) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-sidebar-notes {
+  background: #f1f5f9 !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-sidebar-notes::after {
+  background: color-mix(in srgb, var(--editor-accent) 68%, transparent) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(
+  .piano-roll-step-number.is-current,
+  .piano-roll-step-number.is-current-live
+) {
+  background: var(--editor-accent-soft) !important;
+  box-shadow: inset 0 2px 0 var(--editor-accent) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-bar-number {
+  color: #607089 !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-playhead,
+html[data-theme="light"] .composer-roll-shell .piano-roll--melody .piano-roll-playhead {
+  width: 2px !important;
+  background: var(--editor-accent) !important;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--editor-accent) 16%, transparent) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell .piano-roll-playhead::before {
+  width: var(--piano-step-width) !important;
+  border: 0 !important;
+  background: color-mix(in srgb, var(--editor-accent) 8%, transparent) !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller) {
+  scrollbar-color: color-mix(in srgb, var(--editor-accent) 45%, #8b98a9) #eef2f6 !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-track,
+html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-corner {
+  background: #eef2f6 !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-thumb {
+  border-color: #eef2f6 !important;
+  background: color-mix(in srgb, var(--editor-accent) 45%, #8b98a9) !important;
+  background-clip: padding-box !important;
 }
