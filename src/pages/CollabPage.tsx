@@ -2,7 +2,6 @@ import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import CollabHubTabs from '../components/collab/CollabHubTabs';
 import SiteHeader from '../components/layout/SiteHeader';
-import { DEMO_COLLAB_PROJECT } from '../utils/demoPreviewData';
 import { useAuthStore } from '../store/authStore';
 import { useCollabStore, type CollabProject } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
@@ -93,12 +92,6 @@ export default function CollabPage() {
   useEffect(() => {
     void seedLibrary().catch(console.error);
   }, [seedLibrary]);
-
-  useEffect(() => {
-    if (!projects.length) {
-      useCollabStore.setState({ projects: [DEMO_COLLAB_PROJECT] });
-    }
-  }, [projects.length]);
 
   const sortedProjects = useMemo(
     () => [...projects].sort((left, right) => right.updatedAt - left.updatedAt),

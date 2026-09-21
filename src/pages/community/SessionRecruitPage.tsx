@@ -4,7 +4,6 @@ import { useNavigate } from 'react-router-dom';
 import { useSearchParams } from 'react-router-dom';
 import CollabHubTabs from '../../components/collab/CollabHubTabs';
 import SiteHeader from '../../components/layout/SiteHeader';
-import { DEMO_SESSION_ID, DEMO_SESSION_POST } from '../../utils/demoPreviewData';
 import { useAuthStore } from '../../store/authStore';
 import { useSessionRecruitStore } from '../../store/sessionRecruitStore';
 import type {
@@ -197,20 +196,6 @@ export default function SessionRecruitPage() {
     setWantedRoles(roles.length ? roles : ['producer']);
     setTagInput('#작곡 #협업 #파트모집');
   }, [searchParams]);
-
-  useEffect(() => {
-    if (!posts.length) {
-      useSessionRecruitStore.setState({ posts: [DEMO_SESSION_POST] });
-      return;
-    }
-
-    const savedDemo = posts.find((post) => post.id === DEMO_SESSION_ID);
-    if (savedDemo && savedDemo.title !== DEMO_SESSION_POST.title) {
-      useSessionRecruitStore.setState({
-        posts: posts.map((post) => post.id === DEMO_SESSION_ID ? DEMO_SESSION_POST : post),
-      });
-    }
-  }, [posts]);
 
   const filteredPosts = useMemo(() => {
     const normalizedKeyword = searchKeyword.trim().toLowerCase();

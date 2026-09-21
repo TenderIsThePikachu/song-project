@@ -2,7 +2,6 @@ import { lazy, Suspense } from 'react';
 import { BrowserRouter, Navigate, Route, Routes } from 'react-router-dom';
 import { AppErrorBoundary } from './components/AppErrorBoundary';
 import ProtectedRoute from './components/auth/ProtectedRoute';
-import { DEMO_COLLAB_ID } from './utils/demoPreviewData';
 
 const MainPage = lazy(() => import('./pages/MainPage'));
 const Composer = lazy(() =>
@@ -53,7 +52,6 @@ function App() {
             <Route path="/community/sessions/:postId" element={<SessionRecruitDetailPage />} />
             <Route path="/community/write" element={<PostWrite />} />
             <Route path="/community/:id" element={<PostDetail />} />
-            <Route path="/collab/demo-collab-preview" element={<CollabRoomPage previewProjectId={DEMO_COLLAB_ID} />} />
             <Route element={<ProtectedRoute />}>
               <Route path="/collab" element={<CollabPage />} />
               <Route path="/collab/:projectId" element={<CollabRoomPage />} />

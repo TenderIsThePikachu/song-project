@@ -6,14 +6,11 @@ import {
   COLLAB_PRESENCE_PING_INTERVAL_MS,
   COLLAB_PRESENCE_TIMEOUT_MS,
   useCollabStore,
-  type CollabComposerHistoryEntry,
   type CollabStatus,
-  type CollabTask,
 } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
 import { useSongStore } from '../store/songStore';
 import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
-import { DEMO_COLLAB_ID, DEMO_COLLAB_PROJECT } from '../utils/demoPreviewData';
 import './CollabPage.css';
 import './CollabRoomPage.css';
 
@@ -21,20 +18,6 @@ const STATUS_OPTIONS: Array<{ key: CollabStatus; label: string }> = [
   { key: 'planning', label: '준비 중' },
   { key: 'working', label: '작업 중' },
   { key: 'feedback', label: '피드백' },
-];
-
-const DEMO_TASKS: CollabTask[] = [
-  { id: 'demo-task-3', projectId: DEMO_COLLAB_ID, content: '3', completed: false, assigneeName: 'test', createdAt: Date.now() - 3_000 },
-  { id: 'demo-task-2', projectId: DEMO_COLLAB_ID, content: '2', completed: false, assigneeName: 'test', createdAt: Date.now() - 2_000 },
-  { id: 'demo-task-1', projectId: DEMO_COLLAB_ID, content: '1', completed: true, assigneeName: 'test', createdAt: Date.now() - 1_000 },
-];
-
-const DEMO_HISTORY: CollabComposerHistoryEntry[] = [
-  { id: 'demo-history-1', projectId: DEMO_COLLAB_ID, instrument: 'bass', barIndex: 9, authorEmail: 'demo@songbap.local', authorName: '123', action: 'toggle-bass-step', summary: '10마디 toggle bass step 작업을 수정했습니다.', createdAt: 1788843120000, revision: 5 },
-  { id: 'demo-history-2', projectId: DEMO_COLLAB_ID, instrument: 'bass', barIndex: 9, authorEmail: 'demo@songbap.local', authorName: '123', action: 'toggle-bass-step', summary: '10마디 toggle bass step 작업을 수정했습니다.', createdAt: 1788843120000, revision: 4 },
-  { id: 'demo-history-3', projectId: DEMO_COLLAB_ID, instrument: 'transport', barIndex: null, authorEmail: 'demo@songbap.local', authorName: '123', action: 'snapshot-update', summary: '작곡 화면 변경사항을 저장했습니다.', createdAt: 1788843120000, revision: 3 },
-  { id: 'demo-history-4', projectId: DEMO_COLLAB_ID, instrument: 'transport', barIndex: null, authorEmail: 'demo@songbap.local', authorName: '123', action: 'snapshot-update', summary: '작곡 화면 변경사항을 저장했습니다.', createdAt: 1788843120000, revision: 2 },
-  { id: 'demo-history-5', projectId: DEMO_COLLAB_ID, instrument: 'melody', barIndex: null, authorEmail: 'demo@songbap.local', authorName: '123', action: 'set-volume', summary: 'melody 파트를 조정했습니다.', createdAt: 1788843120000, revision: 1 },
 ];
 
 type RoomIconName = 'bolt' | 'bars' | 'chat' | 'clock' | 'exit' | 'link' | 'list' | 'music' | 'overview' | 'user' | 'users';
@@ -73,14 +56,10 @@ function getConnectionLabel(status: ReturnType<typeof useCollabStore.getState>['
   return '실시간 서버 대기 중';
 }
 
-type CollabRoomPageProps = {
-  previewProjectId?: string;
-};
-
-export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps) {
+export default function CollabRoomPage() {
   const navigate = useNavigate();
   const { projectId: routeProjectId } = useParams<{ projectId: string }>();
-  const projectId = routeProjectId ?? previewProjectId;
+  const projectId = routeProjectId;
   const user = useAuthStore((state) => state.user);
   const projects = useCollabStore((state) => state.projects);
   const messages = useCollabStore((state) => state.messages);
@@ -114,8 +93,7 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
     void seedLibrary().catch(console.error);
   }, [seedLibrary]);
 
-  const project = projects.find((item) => item.id === projectId)
-    ?? (projectId === DEMO_COLLAB_ID ? DEMO_COLLAB_PROJECT : null);
+  const project = projects.find((item) => item.id === projectId) ?? null;
   const linkedProject = composerProjects.find((item) => item.id === project?.sourceProjectId) ?? null;
 
   const projectMessages = useMemo(
@@ -127,26 +105,19 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
   );
 
   const projectTasks = useMemo(
-    () => {
-      const matchingTasks = tasks
-        .filter((task) => task.projectId === projectId)
-        .sort((left, right) => Number(left.completed) - Number(right.completed));
-      return matchingTasks.length || projectId !== DEMO_COLLAB_ID ? matchingTasks : DEMO_TASKS;
-    },
+    () => tasks
+      .filter((task) => task.projectId === projectId)
+      .sort((left, right) => Number(left.completed) - Number(right.completed)),
     [tasks, projectId]
   );
 
   const projectHistory = useMemo(
-    () => {
-      const matchingHistory = projectId ? (composerHistoryByProject[projectId] ?? []).slice(0, 8) : [];
-      return matchingHistory.length || projectId !== DEMO_COLLAB_ID ? matchingHistory : DEMO_HISTORY;
-    },
+    () => projectId ? (composerHistoryByProject[projectId] ?? []).slice(0, 8) : [],
     [composerHistoryByProject, projectId]
   );
 
   const isMember = user ? project?.members.some((member) => member.email === user.email) ?? false : false;
-  const isPreview = projectId === DEMO_COLLAB_ID;
-  const canEdit = isMember || isPreview;
+  const canEdit = isMember;
 
   const activePresenceMembers = useMemo(() => {
     const entries = presenceByProject[projectId ?? ''] ?? [];
@@ -217,7 +188,6 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
   };
 
   const handleOpenComposer = () => {
-    if (project.id === DEMO_COLLAB_ID) return;
     const snapshot = project.snapshot ?? linkedProject?.project;
     if (!snapshot) return;
 
@@ -275,8 +245,8 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
                 <div className="collab-room-title-row"><h1>{project.title}</h1></div>
                 <p>{project.summary || '멤버들과 함께 좋은 곡을 만들어보세요.'}</p>
                 <div className="collab-connection-row">
-                  <span className={`collab-connection-chip is-${isPreview ? 'connected' : connectionStatus}`}>
-                    <i aria-hidden="true" /> {isPreview ? '실시간 서버 연결됨' : getConnectionLabel(connectionStatus)}
+                  <span className={`collab-connection-chip is-${connectionStatus}`}>
+                    <i aria-hidden="true" /> {getConnectionLabel(connectionStatus)}
                   </span>
                   {connectionError || roomError ? <small>{roomError || connectionError}</small> : null}
                 </div>
@@ -292,7 +262,6 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
                       type="button"
                       className={`collab-status-button${project.status === option.key ? ' is-active' : ''}`}
                       onClick={() => {
-                        if (project.id === DEMO_COLLAB_ID) return;
                         void setStatus(project.id, option.key).catch((error) => {
                           console.error(error);
                           setRoomError(error instanceof Error ? error.message : '상태를 바꾸지 못했습니다.');
@@ -330,7 +299,7 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
                 <div className="collab-room-summary-card">
                   <i className="collab-summary-icon"><RoomIcon name="link" /></i>
                   <span>연결 프로젝트</span>
-                  <strong>{linkedProject?.title ?? (project.id === DEMO_COLLAB_ID ? project.title : '스냅샷 작업')}</strong>
+                  <strong>{linkedProject?.title ?? '스냅샷 작업'}</strong>
                 </div>
               </div>
             </article>
@@ -353,7 +322,6 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
                         aria-label={`${task.content} 완료 상태`}
                         checked={task.completed}
                         onChange={() => {
-                          if (isPreview) return;
                           void toggleTask(project.id, task.id).catch((error) => {
                             console.error(error);
                             setRoomError(error instanceof Error ? error.message : '작업 상태를 바꾸지 못했습니다.');
@@ -435,8 +403,7 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
 
               <div className="collab-member-list">
                 {project.members.map((member) => {
-                  const isOnline = activePresenceMembers.some((activeMember) => activeMember.email === member.email)
-                    || (project.id === DEMO_COLLAB_ID && member.role === 'owner');
+                  const isOnline = activePresenceMembers.some((activeMember) => activeMember.email === member.email);
                   return (
                     <div key={`${project.id}-${member.email}`} className="collab-member-card">
                       <span className="collab-member-avatar"><RoomIcon name="user" /></span>
@@ -456,7 +423,7 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
               <div className="collab-room-panel-head"><strong><i className="collab-heading-glyph"><RoomIcon name="bolt" /></i> 빠른 액션</strong></div>
 
               <div className="collab-room-side-actions">
-                {!isMember && !isPreview ? (
+                {!isMember ? (
                   <button type="button" className="collab-primary-button" onClick={handleJoin}>
                     협업 참여하기
                   </button>
@@ -466,7 +433,7 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
                   type="button"
                   className="collab-primary-button collab-composer-button"
                   onClick={handleOpenComposer}
-                  disabled={project.id !== DEMO_COLLAB_ID && !linkedProject && !project.snapshot}
+                  disabled={!linkedProject && !project.snapshot}
                 >
                   <RoomIcon name="music" /> 작곡 화면 열기
                 </button>
@@ -500,7 +467,7 @@ export default function CollabRoomPage({ previewProjectId }: CollabRoomPageProps
                       <i aria-hidden="true" />
                       <div>
                         <strong>{entry.summary}</strong>
-                        <span>{isPreview ? formatDateTime(entry.createdAt) : `${entry.authorName} · ${formatDateTime(entry.createdAt)}`}</span>
+                        <span>{`${entry.authorName} · ${formatDateTime(entry.createdAt)}`}</span>
                       </div>
                       <em>{entry.instrument}</em>
                     </article>

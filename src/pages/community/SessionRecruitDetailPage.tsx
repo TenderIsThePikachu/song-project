@@ -7,7 +7,6 @@ import { useComposerLibraryStore } from '../../store/composerLibraryStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useSessionRecruitStore } from '../../store/sessionRecruitStore';
 import type { SessionRole, SessionStatus } from '../../types/sessionRecruit';
-import { DEMO_SESSION_ID, DEMO_SESSION_POST } from '../../utils/demoPreviewData';
 import './SessionRecruitDetailPage.css';
 
 const ROLE_LABELS: Record<SessionRole, string> = {
@@ -125,9 +124,7 @@ export default function SessionRecruitDetailPage() {
     });
   }, [initializeRealtime, seedLibrary]);
 
-  const post = postId === DEMO_SESSION_ID
-    ? DEMO_SESSION_POST
-    : posts.find((item) => item.id === postId) ?? null;
+  const post = posts.find((item) => item.id === postId) ?? null;
   const applicants = post?.applicants ?? [];
   const isOwner = Boolean(user && post?.hostEmail === user.email);
   const linkedCollabProject = post?.collabProjectId
