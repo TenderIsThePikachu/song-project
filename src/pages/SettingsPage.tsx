@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { type ReactNode, useEffect, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SiteHeader from '../components/layout/SiteHeader';
 import { useAuthStore } from '../store/authStore';
@@ -20,25 +20,53 @@ type SettingToggleKey = keyof Pick<
   | 'showActivity'
 >;
 
+type SettingsIconName = 'activity' | 'bell' | 'camera' | 'check' | 'chevron' | 'collab' | 'community' | 'eye' | 'folder' | 'lock' | 'mail' | 'message' | 'music' | 'navigation' | 'user';
+
+function SettingsIcon({ name }: { name: SettingsIconName }) {
+  const paths: Record<SettingsIconName, ReactNode> = {
+    activity: <><path d="M5 4h14v16H5z" /><path d="M8 8h8M8 12h8M8 16h5" /></>,
+    bell: <><path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9" /><path d="M10 21h4" /></>,
+    camera: <><path d="M4 7h4l2-3h4l2 3h4v13H4z" /><circle cx="12" cy="13" r="4" /></>,
+    check: <path d="m5 12 4 4L19 6" />,
+    chevron: <path d="m9 18 6-6-6-6" />,
+    collab: <><path d="M8 12 5 9l-3 3 5 5 3-3" /><path d="m16 12 3-3 3 3-5 5-3-3" /><path d="m8 12 2-2a3 3 0 0 1 4 0l2 2M10 14l2 2 2-2" /></>,
+    community: <><circle cx="9" cy="8" r="3" /><path d="M3 20c.5-4 2.5-6 6-6s5.5 2 6 6M16 6a3 3 0 0 1 0 6M17 14c2.5.5 3.8 2.3 4 5" /></>,
+    eye: <><path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12Z" /><circle cx="12" cy="12" r="3" /></>,
+    folder: <path d="M3 6h7l2 2h9v11H3z" />,
+    lock: <><rect x="5" y="10" width="14" height="11" rx="2" /><path d="M8 10V7a4 4 0 0 1 8 0v3M12 15v2" /></>,
+    mail: <><rect x="3" y="5" width="18" height="14" rx="3" /><path d="m4 7 8 6 8-6" /></>,
+    message: <path d="M5 5h14a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H9l-5 3v-3.5A2 2 0 0 1 3 15V7a2 2 0 0 1 2-2Z" />,
+    music: <><path d="M9 18V5l11-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="17" cy="16" r="3" /></>,
+    navigation: <><path d="m22 2-7 20-4-9-9-4Z" /><path d="M22 2 11 13" /></>,
+    user: <><circle cx="12" cy="8" r="4" /><path d="M4 21c.8-5 3.4-7 8-7s7.2 2 8 7" /></>,
+  };
+
+  return <svg className="settings-icon" viewBox="0 0 24 24" aria-hidden="true">{paths[name]}</svg>;
+}
+
 const NOTIFICATION_SETTING_ITEMS: Array<{
   key: SettingToggleKey;
   title: string;
   description: string;
+  icon: SettingsIconName;
 }> = [
   {
     key: 'communityNotifications',
     title: '커뮤니티 알림',
     description: '댓글, 좋아요, 게시글 반응을 바로 확인할 수 있어요.',
+    icon: 'community',
   },
   {
     key: 'musicNotifications',
     title: '음악 공유 알림',
     description: '공유한 곡의 좋아요, 댓글, 다운로드 반응을 빠르게 받아볼 수 있어요.',
+    icon: 'music',
   },
   {
     key: 'collabNotifications',
     title: '협업 알림',
     description: '협업방 메시지와 상태 변경을 실시간 흐름에 가깝게 확인할 수 있어요.',
+    icon: 'collab',
   },
 ];
 
@@ -46,16 +74,19 @@ const PRIVACY_SETTING_ITEMS: Array<{
   key: SettingToggleKey;
   title: string;
   description: string;
+  icon: SettingsIconName;
 }> = [
   {
     key: 'profilePublic',
     title: '프로필 공개',
     description: '다른 사용자가 내 공개 프로필과 업로드한 작업을 볼 수 있어요.',
+    icon: 'eye',
   },
   {
     key: 'showActivity',
     title: '활동 기록 공개',
     description: '좋아요, 최근 작업, 저장한 곡 같은 활동을 프로필에 노출할 수 있어요.',
+    icon: 'activity',
   },
 ];
 
@@ -193,7 +224,7 @@ export default function SettingsPage() {
               className="settings-outline-button"
               onClick={() => navigate('/profile')}
             >
-              프로필 보기
+              <SettingsIcon name="eye" /> 프로필 보기
             </button>
             <button
               type="button"
@@ -201,7 +232,7 @@ export default function SettingsPage() {
               onClick={() => void handleSave()}
               disabled={isSaving}
             >
-              {isSaving ? '저장 중...' : '저장하기'}
+              <SettingsIcon name="check" /> {isSaving ? '저장 중...' : '저장하기'}
             </button>
           </div>
         </section>
@@ -209,8 +240,8 @@ export default function SettingsPage() {
         <section className="settings-grid">
           <article className="settings-card">
             <div className="settings-section-head">
-              <strong>계정 정보</strong>
-              <span>프로필 기본 정보를 관리할 수 있어요.</span>
+              <span className="settings-section-icon"><SettingsIcon name="user" /></span>
+              <div><strong>계정 정보</strong><span>프로필 기본 정보를 관리할 수 있어요.</span></div>
             </div>
 
             <div className="settings-account-row">
@@ -227,34 +258,29 @@ export default function SettingsPage() {
                 <span>{user.email}</span>
                 <button
                   type="button"
-                  className="settings-inline-link"
+                  className="settings-avatar-button"
                   onClick={() => navigate('/profile')}
                 >
-                  프로필 이미지 변경
+                  <SettingsIcon name="camera" /> 프로필 이미지 변경
                 </button>
               </div>
             </div>
 
             <label className="settings-field">
               <span>닉네임</span>
-              <input
-                type="text"
-                value={displayName}
-                onChange={(event) => setDisplayName(event.target.value)}
-                placeholder="닉네임을 입력해주세요"
-              />
+              <span className="settings-input-wrap"><SettingsIcon name="user" /><input type="text" value={displayName} onChange={(event) => setDisplayName(event.target.value)} placeholder="닉네임을 입력해주세요" /></span>
             </label>
 
             <label className="settings-field">
               <span>이메일</span>
-              <input type="email" value={user.email} disabled />
+              <span className="settings-input-wrap"><SettingsIcon name="mail" /><input type="email" value={user.email} disabled /></span>
             </label>
           </article>
 
           <article className="settings-card">
             <div className="settings-section-head">
-              <strong>알림 설정</strong>
-              <span>받고 싶은 반응만 골라서 켤 수 있어요.</span>
+              <span className="settings-section-icon"><SettingsIcon name="bell" /></span>
+              <div><strong>알림 설정</strong><span>받고 싶은 반응만 골라서 켤 수 있어요.</span></div>
             </div>
 
             <div className="settings-toggle-list">
@@ -265,6 +291,7 @@ export default function SettingsPage() {
                   className="settings-toggle-card"
                   onClick={() => handleToggle(item.key)}
                 >
+                  <span className="settings-row-icon"><SettingsIcon name={item.icon} /></span>
                   <div className="settings-toggle-copy">
                     <strong>{item.title}</strong>
                     <span>{item.description}</span>
@@ -279,8 +306,8 @@ export default function SettingsPage() {
 
           <article className="settings-card">
             <div className="settings-section-head">
-              <strong>공개 범위</strong>
-              <span>프로필과 활동 공개 범위를 정할 수 있어요.</span>
+              <span className="settings-section-icon"><SettingsIcon name="lock" /></span>
+              <div><strong>공개 범위</strong><span>프로필과 활동 공개 범위를 정할 수 있어요.</span></div>
             </div>
 
             <div className="settings-toggle-list">
@@ -291,6 +318,7 @@ export default function SettingsPage() {
                   className="settings-toggle-card"
                   onClick={() => handleToggle(item.key)}
                 >
+                  <span className="settings-row-icon"><SettingsIcon name={item.icon} /></span>
                   <div className="settings-toggle-copy">
                     <strong>{item.title}</strong>
                     <span>{item.description}</span>
@@ -305,8 +333,8 @@ export default function SettingsPage() {
 
           <article className="settings-card">
             <div className="settings-section-head">
-              <strong>빠른 이동</strong>
-              <span>자주 쓰는 페이지로 바로 이동할 수 있어요.</span>
+              <span className="settings-section-icon"><SettingsIcon name="navigation" /></span>
+              <div><strong>빠른 이동</strong><span>자주 쓰는 페이지로 바로 이동할 수 있어요.</span></div>
             </div>
 
             <div className="settings-shortcut-grid">
@@ -315,16 +343,18 @@ export default function SettingsPage() {
                 className="settings-shortcut-card"
                 onClick={() => navigate('/messages')}
               >
-                <strong>메시지함</strong>
-                <span>친구와 그룹 채팅을 확인하고 새 대화를 시작할 수 있어요.</span>
+                <span className="settings-row-icon"><SettingsIcon name="message" /></span>
+                <span className="settings-shortcut-copy"><strong>메시지함</strong><span>친구와 그룹 채팅을 확인하고 새 대화를 시작할 수 있어요.</span></span>
+                <SettingsIcon name="chevron" />
               </button>
               <button
                 type="button"
                 className="settings-shortcut-card"
                 onClick={() => navigate('/collab')}
               >
-                <strong>협업 프로젝트</strong>
-                <span>진행 중인 협업방과 최근 코멘트를 한 번에 확인할 수 있어요.</span>
+                <span className="settings-row-icon"><SettingsIcon name="folder" /></span>
+                <span className="settings-shortcut-copy"><strong>협업 프로젝트</strong><span>진행 중인 협업방과 최근 코멘트를 한 번에 확인할 수 있어요.</span></span>
+                <SettingsIcon name="chevron" />
               </button>
             </div>
           </article>
