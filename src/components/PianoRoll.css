@@ -385,7 +385,7 @@
 }
 
 .piano-roll-step-number.is-locked {
-  color: #fca5a5;
+  color: var(--collab-member-color, #fca5a5);
 }
 
 .piano-roll--bass .piano-roll-step-number.is-current,
@@ -525,7 +525,8 @@
 }
 
 .piano-roll-cell.is-melody.is-locked {
-  background: rgba(248, 113, 113, 0.08);
+  background: color-mix(in srgb, var(--collab-member-color, #f87171) 14%, transparent);
+  box-shadow: inset 2px 0 0 var(--collab-member-color, #f87171);
 }
 
 .piano-roll-cell.is-melody.is-current::after,
@@ -579,6 +580,18 @@
     inset 0 -1px 0 rgba(0, 0, 0, 0.24),
     0 0 0 1px rgba(0, 0, 0, 0.08);
   pointer-events: none;
+}
+
+.piano-roll-cell.is-collab-authored .piano-roll-note-block {
+  border-color: color-mix(in srgb, var(--collab-note-color) 72%, #ffffff);
+  background: var(--collab-note-color);
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--collab-note-color) 28%, transparent);
+}
+
+.piano-roll-cell.is-bass.is-active.is-collab-authored {
+  border-color: color-mix(in srgb, var(--collab-note-color) 72%, #ffffff);
+  background: var(--collab-note-color);
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--collab-note-color) 28%, transparent);
 }
 
 .piano-roll-lyric-label {
@@ -707,7 +720,12 @@
 }
 
 .piano-roll-cell.is-bass.is-locked::before {
-  background: linear-gradient(90deg, transparent, rgba(248, 113, 113, 0.34), transparent);
+  background: linear-gradient(
+    90deg,
+    transparent,
+    color-mix(in srgb, var(--collab-member-color, #f87171) 48%, transparent),
+    transparent
+  );
 }
 
 .piano-roll-cell.is-bass.is-active {

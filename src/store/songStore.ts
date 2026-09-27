@@ -126,6 +126,8 @@ type SongHistorySnapshot = {
   steps: number;
   currentStep: number;
   noteLyrics: Record<string, string>;
+  barLyrics: string[];
+  lyricsStartBar: number;
   melody: boolean[][];
   melodyLengths: number[][];
   melodyVelocities: number[][];
@@ -150,6 +152,8 @@ export type SongState = {
   currentStep: number;
   isPlaying: boolean;
   noteLyrics: Record<string, string>;
+  barLyrics: string[];
+  lyricsStartBar: number;
   volumes: InstrumentVolumes;
   melody: boolean[][];
   melodyLengths: number[][];
@@ -199,6 +203,9 @@ export type SongState = {
   setCurrentStep: (step: number) => void;
   setPlaying: (playing: boolean) => void;
   setMelodyLyric: (row: number, col: number, lyric: string) => void;
+  setBarLyrics: (lyrics: string[]) => void;
+  setLyricsStartBar: (bar: number) => void;
+  syncBarLyricsToMelody: () => void;
   clear: () => void;
   loadProject: (project: SongProject) => void;
   applyRemoteProject: (project: SongProject) => void;
@@ -211,6 +218,8 @@ export type SongProject = {
   tempoAutomation?: TempoAutomationPoint[];
   steps: number;
   noteLyrics?: Record<string, string>;
+  barLyrics?: string[];
+  lyricsStartBar?: number;
   volumes?: Partial<InstrumentVolumes>;
   tracks: {
     melody: MusicEvent[];
@@ -230,6 +239,8 @@ type SongProjectSnapshotInput = Pick<
   | 'tempoAutomation'
   | 'steps'
   | 'noteLyrics'
+  | 'barLyrics'
+  | 'lyricsStartBar'
   | 'volumes'
   | 'melody'
   | 'melodyLengths'
@@ -506,6 +517,94 @@ function clampStep(step: number, steps: number) {
   return Math.min(Math.max(step, 0), steps - 1);
 }
 
+function normalizeBarLyrics(value: unknown): string[] {
+  if (!Array.isArray(value)) {
+    return [''];
+  }
+
+  const lyrics = value.slice(0, FIXED_BAR_COUNT).map((line) =>
+    typeof line === 'string' ? line : ''
+  );
+  return lyrics.length ? lyrics : [''];
+}
+
+function normalizeLyricsStartBar(value: unknown) {
+  const bar = typeof value === 'number' && Number.isFinite(value) ? Math.floor(value) : 1;
+  return Math.max(1, Math.min(FIXED_BAR_COUNT, bar));
+}
+
+function getMelodyNotesInBar(melody: boolean[][], barIndex: number) {
+  const start = barIndex * BAR_LENGTH;
+  const end = start + BAR_LENGTH;
+  const notes: Array<{ row: number; col: number }> = [];
+
+  melody.forEach((rowValues, row) => {
+    for (let col = start; col < end; col += 1) {
+      if (rowValues?.[col]) {
+        notes.push({ row, col });
+      }
+    }
+  });
+
+  return notes.sort((left, right) => left.col - right.col || left.row - right.row);
+}
+
+function mapBarLyricsToMelodyNotes(
+  currentLyrics: Record<string, string>,
+  melody: boolean[][],
+  barLyrics: string[],
+  lyricsStartBar: number
+) {
+  const nextLyrics = { ...currentLyrics };
+  const firstBarIndex = lyricsStartBar - 1;
+  const lastBarIndex = firstBarIndex + barLyrics.length - 1;
+
+  Object.keys(nextLyrics).forEach((key) => {
+    const col = Number(key.split('-')[1]);
+    const barIndex = Math.floor(col / BAR_LENGTH);
+    if (Number.isFinite(col) && barIndex >= firstBarIndex && barIndex <= lastBarIndex) {
+      delete nextLyrics[key];
+    }
+  });
+
+  barLyrics.forEach((line, lineIndex) => {
+    const tokens = line.trim().split(/\s+/).filter(Boolean);
+    const notes = getMelodyNotesInBar(melody, firstBarIndex + lineIndex);
+    notes.forEach((note, noteIndex) => {
+      const token = tokens[noteIndex];
+      if (token) {
+        nextLyrics[`${note.row}-${note.col}`] = token;
+      }
+    });
+  });
+
+  return nextLyrics;
+}
+
+function areLyricMapsEqual(left: Record<string, string>, right: Record<string, string>) {
+  const leftKeys = Object.keys(left);
+  const rightKeys = Object.keys(right);
+  return leftKeys.length === rightKeys.length && leftKeys.every((key) => left[key] === right[key]);
+}
+
+function deriveBarLyricsFromMelodyNotes(
+  melody: boolean[][],
+  noteLyrics: Record<string, string>,
+  lyricsStartBar: number
+) {
+  const lines = Array.from({ length: FIXED_BAR_COUNT - lyricsStartBar + 1 }, (_, index) =>
+    getMelodyNotesInBar(melody, lyricsStartBar - 1 + index)
+      .map((note) => noteLyrics[`${note.row}-${note.col}`] ?? '')
+      .filter(Boolean)
+      .join(' ')
+  );
+
+  while (lines.length > 1 && !lines.at(-1)) {
+    lines.pop();
+  }
+  return lines.length ? lines : [''];
+}
+
 function clampVolume(volume: number) {
   return Math.min(Math.max(Math.round(volume), 0), 100);
 }
@@ -689,6 +788,8 @@ function createHistorySnapshot(state: Pick<
   | 'steps'
   | 'currentStep'
   | 'noteLyrics'
+  | 'barLyrics'
+  | 'lyricsStartBar'
   | 'melody'
   | 'melodyLengths'
   | 'melodyVelocities'
@@ -711,6 +812,8 @@ function createHistorySnapshot(state: Pick<
     steps: state.steps,
     currentStep: state.currentStep,
     noteLyrics: { ...state.noteLyrics },
+    barLyrics: [...state.barLyrics],
+    lyricsStartBar: state.lyricsStartBar,
     melody: cloneMatrix(state.melody),
     melodyLengths: cloneLengthMatrix(state.melodyLengths),
     melodyVelocities: cloneVelocityMatrix(state.melodyVelocities),
@@ -1015,6 +1118,8 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
     tempoAutomation: normalizeTempoAutomation(state.tempoAutomation, state.steps, state.bpm),
     steps: state.steps,
     noteLyrics: state.noteLyrics,
+    barLyrics: [...state.barLyrics],
+    lyricsStartBar: state.lyricsStartBar,
     volumes: {
       melody: clampVolume(state.volumes.melody ?? 82),
       violin: clampVolume(state.volumes.violin ?? 78),
@@ -1065,6 +1170,8 @@ function restoreHistorySnapshot(
     steps: snapshot.steps,
     currentStep: clampStep(snapshot.currentStep, snapshot.steps),
     noteLyrics: { ...snapshot.noteLyrics },
+    barLyrics: [...snapshot.barLyrics],
+    lyricsStartBar: snapshot.lyricsStartBar,
     isPlaying: false,
     melody: cloneMatrix(snapshot.melody),
     melodyLengths: cloneLengthMatrix(snapshot.melodyLengths),
@@ -1234,6 +1341,8 @@ export const useSongStore = create<SongState>()(
   currentStep: 0,
   isPlaying: false,
   noteLyrics: {},
+  barLyrics: [''],
+  lyricsStartBar: 1,
   volumes: {
     melody: 82,
     violin: 78,
@@ -2087,7 +2196,63 @@ export const useSongStore = create<SongState>()(
         delete nextLyrics[key];
       }
 
-      return { noteLyrics: nextLyrics };
+      const barIndex = Math.floor(col / BAR_LENGTH);
+      const lineIndex = barIndex - (state.lyricsStartBar - 1);
+      if (lineIndex < 0 || lineIndex >= state.barLyrics.length) {
+        return { noteLyrics: nextLyrics };
+      }
+
+      const barLyrics = [...state.barLyrics];
+      barLyrics[lineIndex] = getMelodyNotesInBar(state.melody, barIndex)
+        .map((note) => nextLyrics[`${note.row}-${note.col}`] ?? '')
+        .filter(Boolean)
+        .join(' ');
+      return { noteLyrics: nextLyrics, barLyrics };
+    }),
+
+  setBarLyrics: (lyrics) =>
+    set((state) => {
+      const barLyrics = normalizeBarLyrics(lyrics);
+      return {
+        barLyrics,
+        noteLyrics: mapBarLyricsToMelodyNotes(
+          state.noteLyrics,
+          state.melody,
+          barLyrics,
+          state.lyricsStartBar
+        ),
+      };
+    }),
+
+  setLyricsStartBar: (bar) =>
+    set((state) => {
+      const lyricsStartBar = normalizeLyricsStartBar(bar);
+      const lyricsWithoutPreviousBars = mapBarLyricsToMelodyNotes(
+        state.noteLyrics,
+        state.melody,
+        state.barLyrics.map(() => ''),
+        state.lyricsStartBar
+      );
+      return {
+        lyricsStartBar,
+        noteLyrics: mapBarLyricsToMelodyNotes(
+          lyricsWithoutPreviousBars,
+          state.melody,
+          state.barLyrics,
+          lyricsStartBar
+        ),
+      };
+    }),
+
+  syncBarLyricsToMelody: () =>
+    set((state) => {
+      const noteLyrics = mapBarLyricsToMelodyNotes(
+        state.noteLyrics,
+        state.melody,
+        state.barLyrics,
+        state.lyricsStartBar
+      );
+      return areLyricMapsEqual(noteLyrics, state.noteLyrics) ? {} : { noteLyrics };
     }),
 
   clear: () =>
@@ -2097,6 +2262,8 @@ export const useSongStore = create<SongState>()(
         currentStep: 0,
         tempoAutomation: [],
         noteLyrics: {},
+        barLyrics: [''],
+        lyricsStartBar: 1,
         melody: createEmptyMatrix(MELODY_ROWS, state.steps),
         melodyLengths: createEmptyLengthMatrix(MELODY_ROWS, state.steps),
         melodyVelocities: createEmptyVelocityMatrix(MELODY_ROWS, state.steps),
@@ -2127,7 +2294,11 @@ export const useSongStore = create<SongState>()(
     const tempoAutomation = normalizeTempoAutomation(project.tempoAutomation, steps, bpm);
     const grids = parseV2TracksToGrids(project, steps); // V2 파싱
 
-    
+    const lyricsStartBar = normalizeLyricsStartBar(project.lyricsStartBar);
+    const barLyrics = project.barLyrics
+      ? normalizeBarLyrics(project.barLyrics)
+      : deriveBarLyricsFromMelodyNotes(grids.melody, project.noteLyrics ?? {}, lyricsStartBar);
+
     set((state) =>
       buildHistoryUpdate(state, {
         compositionMode: project.compositionMode ?? 'standard',
@@ -2135,6 +2306,8 @@ export const useSongStore = create<SongState>()(
         tempoAutomation,
         steps,
         noteLyrics: project.noteLyrics ?? {},
+        barLyrics,
+        lyricsStartBar,
         currentStep: 0,
         isPlaying: false,
         volumes: {
@@ -2175,12 +2348,19 @@ export const useSongStore = create<SongState>()(
     const tempoAutomation = normalizeTempoAutomation(project.tempoAutomation, steps, bpm);
     const grids = parseV2TracksToGrids(project, steps); // V2 파싱
 
+    const lyricsStartBar = normalizeLyricsStartBar(project.lyricsStartBar);
+    const barLyrics = project.barLyrics
+      ? normalizeBarLyrics(project.barLyrics)
+      : deriveBarLyricsFromMelodyNotes(grids.melody, project.noteLyrics ?? {}, lyricsStartBar);
+
     set((state) => ({
       compositionMode: project.compositionMode ?? 'standard',
       bpm,
       tempoAutomation,
       steps,
       noteLyrics: project.noteLyrics ?? {},
+      barLyrics,
+      lyricsStartBar,
       currentStep: clampStep(state.currentStep, steps),
       volumes: {
         melody: clampVolume(project.volumes?.melody ?? 82),
@@ -2226,6 +2406,8 @@ export const useSongStore = create<SongState>()(
         steps: state.steps,
         currentStep: state.currentStep,
         noteLyrics: state.noteLyrics,
+        barLyrics: state.barLyrics,
+        lyricsStartBar: state.lyricsStartBar,
         volumes: state.volumes,
         melody: state.melody,
         melodyLengths: state.melodyLengths,

@@ -1,16 +1,18 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import SiteHeader from '../components/layout/SiteHeader';
 import { useAuthStore } from '../store/authStore';
 import {
   COLLAB_PRESENCE_PING_INTERVAL_MS,
   COLLAB_PRESENCE_TIMEOUT_MS,
+  COLLAB_SESSION_COLOR,
   useCollabStore,
   type CollabStatus,
 } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
 import { useSongStore } from '../store/songStore';
 import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
+import { getCollabMemberInitial } from '../utils/collabMemberColor';
 import './CollabPage.css';
 import './CollabRoomPage.css';
 
@@ -121,15 +123,18 @@ export default function CollabRoomPage() {
 
   const activePresenceMembers = useMemo(() => {
     const entries = presenceByProject[projectId ?? ''] ?? [];
-    const grouped = new Map<string, string>();
+    const grouped = new Map<string, { name: string; color: string }>();
 
     entries
       .filter((presence) => presenceNow - presence.lastSeenAt <= COLLAB_PRESENCE_TIMEOUT_MS)
       .forEach((presence) => {
-        grouped.set(presence.email, presence.name);
+        grouped.set(presence.email, {
+          name: presence.name,
+          color: presence.color || '#94a3b8',
+        });
       });
 
-    return Array.from(grouped, ([email, name]) => ({ email, name }));
+    return Array.from(grouped, ([email, presence]) => ({ email, ...presence }));
   }, [presenceByProject, presenceNow, projectId]);
 
   useEffect(() => {
@@ -143,7 +148,7 @@ export default function CollabRoomPage() {
   useEffect(() => {
     if (!projectId || !user || !isMember) return;
 
-    const payload = { email: user.email, name: user.name };
+    const payload = { email: user.email, name: user.name, color: COLLAB_SESSION_COLOR.accent };
     void touchPresence(projectId, payload).catch(console.error);
 
     const timer = window.setInterval(() => {
@@ -404,9 +409,22 @@ export default function CollabRoomPage() {
               <div className="collab-member-list">
                 {project.members.map((member) => {
                   const isOnline = activePresenceMembers.some((activeMember) => activeMember.email === member.email);
+                  const memberColor = activePresenceMembers.find(
+                    (activeMember) => activeMember.email === member.email
+                  )?.color || '#94a3b8';
                   return (
-                    <div key={`${project.id}-${member.email}`} className="collab-member-card">
-                      <span className="collab-member-avatar"><RoomIcon name="user" /></span>
+                    <div
+                      key={`${project.id}-${member.email}`}
+                      className="collab-member-card"
+                      style={{
+                        '--member-color': memberColor,
+                        '--member-soft': `color-mix(in srgb, ${memberColor} 16%, #ffffff)`,
+                        '--member-ink': memberColor,
+                      } as CSSProperties}
+                    >
+                      <span className="collab-member-avatar has-initial">
+                        {getCollabMemberInitial(member.name)}
+                      </span>
                       <div>
                         <strong>{member.name}{member.role === 'owner' ? <span className="collab-owner-mark" aria-label="프로젝트 소유자">♛</span> : null}</strong>
                         <span>{member.role}</span>

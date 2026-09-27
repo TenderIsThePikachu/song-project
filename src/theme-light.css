@@ -59,7 +59,6 @@ html[data-theme="light"] .composer-tool-feedback {
 }
 
 html[data-theme="light"] :is(
-  .composer-track-number,
   .composer-detail-toolbar > span,
   .composer-project-meta small,
   .composer-arrangement-ruler button
@@ -133,11 +132,11 @@ html[data-theme="light"] .composer-track-add-group button:hover {
 }
 
 html[data-theme="light"] .composer-arrangement-lanes {
-  scrollbar-color: rgba(116, 133, 155, .48) transparent;
+  scrollbar-color: rgba(159, 173, 191, .78) transparent;
   background-color: #f8fafc;
   background-image:
-    repeating-linear-gradient(to right, transparent 0, transparent calc(6.25% - 1px), #dbe4ed calc(6.25% - 1px), #dbe4ed 6.25%),
-    repeating-linear-gradient(to right, transparent 0, transparent calc(1.5625% - 1px), rgba(89, 106, 128, .07) calc(1.5625% - 1px), rgba(89, 106, 128, .07) 1.5625%);
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-major-span, 6.25%) - 1px), #dbe4ed calc(var(--arrangement-major-span, 6.25%) - 1px), #dbe4ed var(--arrangement-major-span, 6.25%)),
+    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(89, 106, 128, .07) calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(89, 106, 128, .07) var(--arrangement-minor-span, 1.5625%));
 }
 
 html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-track,
@@ -148,12 +147,12 @@ html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-corner {
 
 html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-thumb {
   border-color: transparent;
-  background: rgba(116, 133, 155, .48);
+  background: rgba(159, 173, 191, .78);
   background-clip: padding-box;
 }
 
 html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-thumb:hover {
-  background: rgba(32, 185, 143, .68);
+  background: rgba(130, 146, 167, .9);
   background-clip: padding-box;
 }
 
@@ -4084,6 +4083,12 @@ html[data-theme="light"] .composer-drum-cell.is-active.is-perc {
   box-shadow: 0 8px 18px rgba(20, 184, 166, 0.2) !important;
 }
 
+html[data-theme="light"] .composer-drum-cell.is-active.is-collab-authored {
+  border-color: color-mix(in srgb, var(--collab-note-color) 72%, #ffffff) !important;
+  background: var(--collab-note-color) !important;
+  box-shadow: 0 6px 14px color-mix(in srgb, var(--collab-note-color) 24%, transparent) !important;
+}
+
 html[data-theme="light"] .composer-drum-cell--bass.is-active,
 html[data-theme="light"] .composer-drum-cell--guitar.is-active {
   border-color: var(--bass-accent, var(--guitar-accent, #8a96a8)) !important;
@@ -4986,6 +4991,12 @@ html[data-theme="light"] .composer-roll-shell .piano-roll-note-block {
   filter: none !important;
 }
 
+html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-collab-authored .piano-roll-note-block {
+  border-color: color-mix(in srgb, var(--collab-note-color) 68%, #ffffff) !important;
+  background: var(--collab-note-color) !important;
+  box-shadow: 0 2px 7px color-mix(in srgb, var(--collab-note-color) 24%, transparent) !important;
+}
+
 html[data-theme="light"] .composer-roll-shell .piano-roll-key.is-melody.is-natural {
   border-bottom: 1px solid #d5dde7 !important;
   background: #fdfefe !important;
@@ -5035,16 +5046,35 @@ html[data-theme="light"] .composer-roll-shell .piano-roll-playhead::before {
 }
 
 html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller) {
-  scrollbar-color: color-mix(in srgb, var(--editor-accent) 45%, #8b98a9) #eef2f6 !important;
+  scrollbar-color: rgba(159, 173, 191, .78) transparent !important;
+  scrollbar-width: thin !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar {
+  width: 6px !important;
+  height: 6px !important;
 }
 
 html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-track,
 html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-corner {
-  background: #eef2f6 !important;
+  border: 0 !important;
+  background: transparent !important;
 }
 
 html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-thumb {
-  border-color: #eef2f6 !important;
-  background: color-mix(in srgb, var(--editor-accent) 45%, #8b98a9) !important;
+  border: 1px solid transparent !important;
+  border-radius: 999px !important;
+  background: rgba(159, 173, 191, .78) !important;
   background-clip: padding-box !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-thumb:hover {
+  background: rgba(130, 146, 167, .9) !important;
+  background-clip: padding-box !important;
+}
+
+html[data-theme="light"] .composer-roll-shell :is(.piano-roll, .piano-roll-melody-scroller)::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }

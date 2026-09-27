@@ -670,6 +670,7 @@
   min-height: 59px;
   padding: 8px 12px 8px 14px;
   border: 1px solid #e5eaf0;
+  border-left: 3px solid var(--member-color, #20c997);
   border-radius: 14px;
   background: #ffffff;
 }
@@ -685,10 +686,15 @@
   height: 43px;
   place-items: center;
   border-radius: 50%;
-  background: #f0f3f8;
-  color: #138b6b;
+  background: var(--member-soft, #f0f3f8);
+  color: var(--member-ink, #138b6b);
   font-size: 14px;
   font-weight: 850;
+}
+
+.collab-member-avatar.has-initial::before,
+.collab-member-avatar.has-initial::after {
+  display: none;
 }
 
 .collab-member-avatar svg {
@@ -959,6 +965,7 @@ html[data-theme="light"] .collab-room-page .collab-room-empty {
 
 html[data-theme="light"] .collab-room-page .collab-member-card {
   border: 1px solid #e5eaf0 !important;
+  border-left: 3px solid var(--member-color, #20c997) !important;
   border-radius: 14px !important;
   background: #ffffff !important;
   box-shadow: none !important;
@@ -1061,6 +1068,10 @@ html[data-theme="dark"] .collab-room-page .collab-member-card {
   box-shadow: none;
 }
 
+html[data-theme="dark"] .collab-room-page .collab-member-card {
+  border-left-color: var(--member-color, #20c997);
+}
+
 html[data-theme="dark"] .collab-room-page .collab-task-card.is-done {
   border-color: #28594b;
   background: #19362e;
@@ -1107,7 +1118,8 @@ html[data-theme="dark"] .collab-room-page .collab-connection-chip.is-connected {
 }
 
 html[data-theme="dark"] .collab-room-page .collab-member-avatar {
-  background: #252d3a;
+  background: color-mix(in srgb, var(--member-color, #8396bb) 24%, #252d3a);
+  color: color-mix(in srgb, var(--member-color, #8396bb) 72%, #ffffff 28%);
 }
 
 html[data-theme="dark"] .collab-room-page .collab-member-avatar::before,

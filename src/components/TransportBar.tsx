@@ -230,6 +230,9 @@ function persistRecord(key: string, record: unknown) {
 
 type TransportBarProps = {
   onPlayStarted?: () => void;
+  songTitle?: string;
+  onSongTitleChange?: (title: string) => void;
+  workMode?: 'personal' | 'collab';
 };
 
 const UndoIcon = () => (
@@ -280,7 +283,47 @@ const FirstBarIcon = () => (
   </svg>
 );
 
-export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
+type AiModalIconName = 'document' | 'settings' | 'bulb';
+
+const AiModalIcon = ({ name }: { name: AiModalIconName }) => {
+  const paths = {
+    document: (
+      <>
+        <path d="M6 3.5h6.5L16 7v9.5H6z" />
+        <path d="M12.5 3.5V7H16M8.5 10h5M8.5 12.5h5M8.5 15h3.5" />
+      </>
+    ),
+    settings: (
+      <>
+        <path d="M4 6h12M4 10h12M4 14h12" />
+        <circle cx="8" cy="6" r="1.7" />
+        <circle cx="13" cy="10" r="1.7" />
+        <circle cx="7" cy="14" r="1.7" />
+      </>
+    ),
+    bulb: (
+      <>
+        <path d="M6.4 11.7A5 5 0 1 1 13.6 11.7c-.9.8-1.2 1.5-1.3 2.3H7.7c-.1-.8-.4-1.5-1.3-2.3Z" />
+        <path d="M8 16h4M8.8 18h2.4" />
+      </>
+    ),
+  } as const;
+
+  return (
+    <span className="transport-ai-icon" aria-hidden="true">
+      <svg viewBox="0 0 20 20" focusable="false">
+        {paths[name]}
+      </svg>
+    </span>
+  );
+};
+
+export const TransportBar = ({
+  onPlayStarted,
+  songTitle = '',
+  onSongTitleChange,
+  workMode = 'personal',
+}: TransportBarProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
   const bpm = useSongStore((state) => state.bpm);
@@ -324,6 +367,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
   }, [aiCompletionToast]);
 
   const [saveTitle, setSaveTitle] = useState('');
+  const [editableSongTitle, setEditableSongTitle] = useState(songTitle);
   const [saveDescription, setSaveDescription] = useState('');
   const [saveGenre, setSaveGenre] = useState('ballad');
   const [saveFormat, setSaveFormat] = useState<SaveFormat>('wav');
@@ -350,6 +394,10 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
   const currentBar = Math.floor(currentStep / BAR_LENGTH) + 1;
   const totalBars = Math.max(1, Math.ceil(steps / BAR_LENGTH));
+
+  useEffect(() => {
+    setEditableSongTitle(songTitle);
+  }, [songTitle]);
 
   const getBackingTrackStartTime = (step = loopRange?.start ?? 0) =>
     step * (60 / Math.max(1, backingTrackSourceBpm) / 4);
@@ -456,6 +504,9 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
   const openDialog = (dialog: Exclude<ComposerDialog, null>) => {
     setIsAiPanelOpen(false);
+    if (dialog === 'save' && !saveTitle.trim()) {
+      setSaveTitle(editableSongTitle.trim());
+    }
     setActiveDialog(dialog);
   };
 
@@ -503,9 +554,14 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
     }
 
     try {
-      const loopStart = loopRange?.start ?? 0;
-      const loopEnd = loopRange?.end ?? steps - 1;
-      const startStep = loopRange
+      const effectiveLoopRange =
+        loopRange && loopRange.end > loopRange.start ? loopRange : null;
+      if (loopRange && !effectiveLoopRange) {
+        setLoopRange(null);
+      }
+      const loopStart = effectiveLoopRange?.start ?? 0;
+      const loopEnd = effectiveLoopRange?.end ?? steps - 1;
+      const startStep = effectiveLoopRange
         ? Math.min(loopEnd, Math.max(loopStart, currentStep))
         : Math.min(steps - 1, Math.max(0, currentStep));
       setCurrentStep(startStep);
@@ -540,9 +596,7 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
     setLoopRange(null);
     setCurrentStep(0);
     setPlaying(false);
-    window.requestAnimationFrame(() => {
-      window.dispatchEvent(new Event(GO_TO_FIRST_BAR_EVENT));
-    });
+    window.dispatchEvent(new Event(GO_TO_FIRST_BAR_EVENT));
   };
 
   const handleLoadProjectClick = () => {
@@ -630,6 +684,8 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
         creatorEmail: user?.email ?? 'guest@songmaker.local',
         exportFormat: saveFormat,
       });
+      setEditableSongTitle(title);
+      onSongTitleChange?.(title);
 
       const blob = saveFormat === 'wav' ? await exportSongAsWav() : await exportSongAsMp3();
       const extension = saveFormat === 'wav' ? 'wav' : 'mp3';
@@ -747,6 +803,24 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
 
   return (
     <div className="transport-bar">
+      <input
+        className="transport-song-title"
+        value={editableSongTitle}
+        onChange={(event) => {
+          setEditableSongTitle(event.target.value);
+          onSongTitleChange?.(event.target.value);
+        }}
+        placeholder="곡 제목"
+        aria-label="곡 제목"
+        maxLength={100}
+      />
+      <div
+        className={`transport-work-mode is-${workMode}`}
+        aria-label={workMode === 'collab' ? '협업 작업 중' : '개인 작업 중'}
+      >
+        <span aria-hidden="true" />
+        {workMode === 'collab' ? '협업 작업' : '개인 작업'}
+      </div>
       <div className="transport-primary">
         <button
           type="button"
@@ -1140,7 +1214,20 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
       ) : null}
 
       {isAiPanelOpen ? (
-        <section className="transport-ai-panel" aria-label="AI composition panel">
+        <div
+          className="transport-ai-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget && !isGenerating) {
+              setIsAiPanelOpen(false);
+            }
+          }}
+        >
+        <section
+          className="transport-ai-panel"
+          aria-label="작곡 AI"
+          aria-modal="true"
+          role="dialog"
+        >
           {isGenerating ? (
             <div className="transport-ai-generating" role="status" aria-live="polite">
               <div className="transport-ai-scan" aria-hidden="true" />
@@ -1172,21 +1259,24 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           ) : null}
           <div className="transport-ai-header">
             <div>
-              <span className="transport-ai-eyebrow">작곡 AI</span>
+              <span className="transport-ai-eyebrow"><span aria-hidden="true">✦</span> 작곡 AI</span>
               <strong>원하는 곡을 바로 만들어보세요.</strong>
             </div>
             <button
               type="button"
               className="transport-ai-close"
               onClick={() => setIsAiPanelOpen(false)}
-              aria-label="Close AI panel"
+              aria-label="작곡 AI 닫기"
             >
               ×
             </button>
           </div>
 
           <label className="transport-ai-field">
-            <span>한 줄 요약</span>
+            <span className="transport-ai-field-label">
+              <AiModalIcon name="document" />
+              한 줄 요약
+            </span>
             <input
               type="text"
               className="transport-ai-input"
@@ -1197,37 +1287,43 @@ export const TransportBar = ({ onPlayStarted }: TransportBarProps = {}) => {
           </label>
 
           <label className="transport-ai-field">
-            <span>상세 요청</span>
+            <span className="transport-ai-field-label">
+              <AiModalIcon name="settings" />
+              상세 요청
+            </span>
             <textarea
               className="transport-ai-textarea"
               value={aiDetails}
               onChange={(event) => setAiDetails(event.target.value)}
-              placeholder="분위기, 참고곡, 악기 구성, 리듬 무드 등을 자세히 적어 주세요."
+              placeholder={DEFAULT_AI_TEMPLATE}
             />
           </label>
 
-          <p className="transport-ai-helper">
-            AI가 장르, 분위기, BPM, 악기 조건을 분석해서 코드 진행과 필요한 악기 파트를 생성합니다.
-          </p>
+          <div className="transport-ai-helper">
+            <AiModalIcon name="bulb" />
+            <p>AI가 장르, 분위기, BPM, 악기 조건을 분석해서 코드 진행과 필요한 악기 파트를 생성합니다.</p>
+          </div>
 
           <div className="transport-ai-actions">
             <button
               type="button"
-              className="transport-button"
+              className="transport-button transport-ai-cancel"
               onClick={() => setIsAiPanelOpen(false)}
+              disabled={isGenerating}
             >
               닫기
             </button>
             <button
               type="button"
-              className="transport-button transport-button--accent is-open"
+              className="transport-button transport-button--accent transport-ai-submit is-open"
               onClick={handleAiGenerate}
               disabled={isGenerating}
             >
-              {isGenerating ? '생성 중...' : 'AI로 생성'}
+              {isGenerating ? '생성 중...' : '✦ AI로 생성'}
             </button>
           </div>
         </section>
+        </div>
       ) : null}
 
       {aiCompletionToast ? (

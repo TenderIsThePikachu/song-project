@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import type { SongProject } from './songStore';
 import { useSongStore, buildSongProjectSnapshot } from './songStore'; 
 import { db } from '../firebase'; 
+import { createRandomCollabMemberColor } from '../utils/collabMemberColor';
 import { 
   collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, increment, arrayUnion, query, orderBy, limit, writeBatch
 } from 'firebase/firestore';
@@ -33,11 +34,11 @@ export type CollabProject = {
   status: CollabStatus; createdAt: number; updatedAt: number; ownerEmail: string; ownerName: string;
   sourceProjectId: string | null; snapshot?: SongProject; snapshotRevision: number;
   snapshotUpdatedByEmail: string | null; snapshotUpdatedBySessionId: string | null;
-  members: CollabMember[]; tags: string[];
+  members: CollabMember[]; tags: string[]; noteColors?: Record<string, string>;
 };
-export type CollabMessage = { id: string; projectId: string; authorEmail: string; authorName: string; content: string; createdAt: number; };
+export type CollabMessage = { id: string; projectId: string; authorEmail: string; authorName: string; authorColor?: string; content: string; createdAt: number; };
 export type CollabTask = { id: string; projectId: string; content: string; completed: boolean; assigneeName: string; createdAt: number; };
-export type CollabPresence = { sessionId: string; projectId: string; email: string; name: string; focus?: string; lastSeenAt: number; };
+export type CollabPresence = { sessionId: string; projectId: string; email: string; name: string; color?: string; focus?: string; lastSeenAt: number; };
 export type CollabComposerInstrument =
   | 'melody'
   | 'violin'
@@ -50,8 +51,8 @@ export type CollabComposerInstrument =
   | 'studioAltoSax'
   | 'drums'
   | 'bass';
-export type CollabComposerLock = { projectId: string; instrument: CollabComposerInstrument; barIndex: number; sessionId: string; email: string; name: string; lockedAt: number; expiresAt: number; };
-export type CollabComposerHistoryEntry = { id: string; projectId: string; instrument: CollabComposerInstrument | 'transport'; barIndex: number | null; authorEmail: string; authorName: string; action: string; summary: string; createdAt: number; revision: number; };
+export type CollabComposerLock = { projectId: string; instrument: CollabComposerInstrument; barIndex: number; sessionId: string; email: string; name: string; color?: string; lockedAt: number; expiresAt: number; };
+export type CollabComposerHistoryEntry = { id: string; projectId: string; instrument: CollabComposerInstrument | 'transport'; barIndex: number | null; authorEmail: string; authorName: string; authorColor?: string; action: string; summary: string; createdAt: number; revision: number; };
 
 type CreateCollabFromComposerPayload = { sourceProjectId: string; title: string; summary: string; genre: string; bpm: number; steps: number; ownerEmail: string; ownerName: string; snapshot: SongProject; sessionId?: string; };
 type UpdateComposerPayload = { snapshot: SongProject; email: string; name: string; sessionId?: string; baseRevision?: number; };
@@ -62,11 +63,12 @@ export type CollabComposerOperation =
   | { type: 'toggle-guitar-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
   | { type: 'toggle-drum-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
   | { type: 'toggle-bass-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
+  | { type: 'set-track-note'; instrument: CollabComposerInstrument; trackId?: string; row: number; col: number; nextValue: boolean; barIndex: number; }
   | { type: 'apply-chord'; chord: string; col: number; isBass: boolean; rows: number[]; barIndex: number; }
   | { type: 'set-volume'; instrument: CollabComposerInstrument; volume: number; };
 
-type ApplyComposerOperationPayload = { operation: CollabComposerOperation; email: string; name: string; sessionId?: string; baseRevision?: number; };
-type ComposerLockPayload = { instrument: CollabComposerInstrument; barIndex: number; email?: string; name?: string; sessionId?: string; lock: boolean; };
+type ApplyComposerOperationPayload = { operation: CollabComposerOperation; email: string; name: string; color?: string; sessionId?: string; baseRevision?: number; };
+type ComposerLockPayload = { instrument: CollabComposerInstrument; barIndex: number; email?: string; name?: string; color?: string; sessionId?: string; lock: boolean; };
 
 type CollabState = {
   version: number; projects: CollabProject[]; messages: CollabMessage[]; tasks: CollabTask[];
@@ -75,14 +77,14 @@ type CollabState = {
   initializeRealtime: () => Promise<void>;
   createFromComposerProject: (payload: CreateCollabFromComposerPayload) => Promise<string>;
   joinProject: (projectId: string, payload: { email: string; name: string }) => Promise<void>;
-  addMessage: (projectId: string, payload: { email: string; name: string; content: string }) => Promise<void>;
+  addMessage: (projectId: string, payload: { email: string; name: string; color?: string; content: string }) => Promise<void>;
   addTask: (projectId: string, payload: { content: string; assigneeName: string }) => Promise<void>;
   toggleTask: (projectId: string, taskId: string) => Promise<void>;
   setStatus: (projectId: string, status: CollabStatus) => Promise<void>;
   updateComposerSnapshot: (projectId: string, payload: UpdateComposerPayload) => Promise<number>;
   applyComposerOperation: (projectId: string, payload: ApplyComposerOperationPayload) => Promise<number>;
   setComposerLock: (projectId: string, payload: ComposerLockPayload) => Promise<void>;
-  touchPresence: (projectId: string, payload: { email: string; name: string; focus?: string }) => Promise<void>;
+  touchPresence: (projectId: string, payload: { email: string; name: string; color?: string; focus?: string }) => Promise<void>;
   leavePresence: (projectId: string) => Promise<void>;
 
   deleteProject: (projectId: string) => Promise<void>;
@@ -97,6 +99,59 @@ function createId(prefix: string) {
 }
 
 export const COLLAB_SESSION_ID = createId('collab-session');
+export const COLLAB_SESSION_COLOR = createRandomCollabMemberColor();
+
+export function getCollabNoteColorKey(
+  instrument: CollabComposerInstrument,
+  row: number,
+  col: number,
+  trackId?: string
+) {
+  return `${trackId || instrument}:${row}:${col}`;
+}
+
+function getOperationNoteColorChanges(operation: CollabComposerOperation, color: string) {
+  const changes: Array<{ key: string; color: string | null }> = [];
+
+  switch (operation.type) {
+    case 'set-melody-note':
+      changes.push({
+        key: getCollabNoteColorKey('melody', operation.row, operation.col),
+        color: operation.length > 0 ? color : null,
+      });
+      break;
+    case 'apply-chord':
+      operation.rows.forEach((row) => {
+        changes.push({
+          key: getCollabNoteColorKey(operation.isBass ? 'bass' : 'melody', row, operation.col),
+          color,
+        });
+      });
+      break;
+    case 'set-track-note':
+      changes.push({
+        key: getCollabNoteColorKey(operation.instrument, operation.row, operation.col, operation.trackId),
+        color: operation.nextValue ? color : null,
+      });
+      break;
+    case 'toggle-violin-step':
+    case 'toggle-saxophone-step':
+    case 'toggle-guitar-step':
+    case 'toggle-drum-step':
+    case 'toggle-bass-step': {
+      const instrument = operation.type.replace('toggle-', '').replace('-step', '') as CollabComposerInstrument;
+      changes.push({
+        key: getCollabNoteColorKey(instrument, operation.row, operation.col),
+        color: operation.nextValue ? color : null,
+      });
+      break;
+    }
+    default:
+      break;
+  }
+
+  return changes;
+}
 
 function getOperationSummary(operation: CollabComposerOperation) {
   switch (operation.type) {
@@ -233,7 +288,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
       id: projectId, title: payload.title, summary: payload.summary, genre: payload.genre, bpm: payload.bpm, steps: payload.steps,
       status: 'planning', createdAt: Date.now(), updatedAt: Date.now(), ownerEmail: payload.ownerEmail, ownerName: payload.ownerName,
       sourceProjectId: payload.sourceProjectId, snapshotRevision: 1, snapshotUpdatedByEmail: payload.ownerEmail, snapshotUpdatedBySessionId: payload.sessionId || COLLAB_SESSION_ID,
-      members: [{ email: payload.ownerEmail, name: payload.ownerName, role: 'owner', joinedAt: Date.now() }], tags: [],
+      members: [{ email: payload.ownerEmail, name: payload.ownerName, role: 'owner', joinedAt: Date.now() }], tags: [], noteColors: {},
       snapshot: sanitizeForFirestore(payload.snapshot)
     };
     await setDoc(doc(db, 'collab_projects', projectId), newProject);
@@ -250,7 +305,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     const msgRef = doc(collection(db, 'collab_messages'));
     const now = Date.now();
     const batch = writeBatch(db);
-    batch.set(msgRef, { id: msgRef.id, projectId, authorEmail: payload.email, authorName: payload.name, content: payload.content, createdAt: now });
+    batch.set(msgRef, { id: msgRef.id, projectId, authorEmail: payload.email, authorName: payload.name, authorColor: payload.color || COLLAB_SESSION_COLOR.accent, content: payload.content, createdAt: now });
     batch.update(doc(db, 'collab_projects', projectId), { updatedAt: now });
     await batch.commit();
   },
@@ -302,8 +357,19 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     const currentSnapshot = buildSongProjectSnapshot(currentSongState);
     const revision = (payload.baseRevision ?? 0) + 1;
     if (currentSnapshot) {
+      const operationColor = payload.color || COLLAB_SESSION_COLOR.accent;
+      const currentProject = get().projects.find((project) => project.id === projectId);
+      const noteColors = { ...(currentProject?.noteColors ?? {}) };
+      getOperationNoteColorChanges(payload.operation, operationColor).forEach((change) => {
+        if (change.color) {
+          noteColors[change.key] = change.color;
+        } else {
+          delete noteColors[change.key];
+        }
+      });
       await updateDoc(doc(db, 'collab_projects', projectId), {
         snapshot: sanitizeForFirestore(currentSnapshot),
+        noteColors,
         snapshotRevision: increment(1),
         snapshotUpdatedByEmail: payload.email,
         updatedAt: Date.now()
@@ -315,6 +381,8 @@ export const useCollabStore = create<CollabState>((set, get) => ({
             ? payload.operation.isBass
               ? 'bass'
               : 'melody'
+            : payload.operation.type === 'set-track-note'
+              ? payload.operation.instrument
             : payload.operation.type === 'set-volume'
               ? payload.operation.instrument
               : payload.operation.type.includes('drum')
@@ -331,6 +399,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
         barIndex: 'barIndex' in payload.operation ? payload.operation.barIndex : null,
         authorEmail: payload.email,
         authorName: payload.name,
+        authorColor: operationColor,
         action: payload.operation.type,
         summary: getOperationSummary(payload.operation),
         revision,
@@ -345,7 +414,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     if (payload.lock) {
       await setDoc(lockRef, {
         projectId, instrument: payload.instrument, barIndex: payload.barIndex, sessionId: payload.sessionId || COLLAB_SESSION_ID,
-        email: payload.email || '', name: payload.name || '', lockedAt: Date.now(), expiresAt: Date.now() + 60000
+        email: payload.email || '', name: payload.name || '', color: payload.color || COLLAB_SESSION_COLOR.accent, lockedAt: Date.now(), expiresAt: Date.now() + 60000
       });
     } else {
       await deleteDoc(lockRef);
@@ -355,7 +424,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
   touchPresence: async (projectId, payload) => {
     const presenceId = `${projectId}_${COLLAB_SESSION_ID}`;
     await setDoc(doc(db, 'collab_presence', presenceId), {
-      projectId, sessionId: COLLAB_SESSION_ID, email: payload.email, name: payload.name, focus: payload.focus || '', lastSeenAt: Date.now()
+      projectId, sessionId: COLLAB_SESSION_ID, email: payload.email, name: payload.name, color: payload.color || COLLAB_SESSION_COLOR.accent, focus: payload.focus || '', lastSeenAt: Date.now()
     }, { merge: true });
   },
 

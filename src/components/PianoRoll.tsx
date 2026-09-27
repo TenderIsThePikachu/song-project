@@ -92,17 +92,20 @@ type PianoEditTool = 'select' | 'pencil' | 'eraser' | 'marquee' | 'zoom';
 type CollabBarLockState = {
   mine: boolean;
   name: string;
+  color?: string;
 };
 
 type PianoRollProps = {
   editTool?: PianoEditTool;
   stepWidth?: number;
+  sidebarWidth?: number | string;
   noteLengthSteps?: MelodyNoteLengthSteps;
   onNoteLengthChange?: (steps: MelodyNoteLengthSteps) => void;
   onRequestZoom?: (direction: -1 | 1) => void;
   loopRange?: { start: number; end: number } | null;
   onStepHeaderSelect?: (col: number) => void;
   collabBarLocks?: Record<number, CollabBarLockState>;
+  collabNoteColors?: Record<string, string>;
   canEditCollab?: boolean;
   requestCollabBarLock?: (instrument: 'melody' | 'bass', barIndex: number) => Promise<boolean>;
   releaseCollabBarLock?: (instrument: 'melody' | 'bass', barIndex: number) => void;
@@ -169,14 +172,16 @@ function findMelodyNoteInfo(melodyRow: boolean[], melodyLengthRow: number[], col
 }
 
 export const PianoRoll = ({
-  editTool = 'select',
+  editTool = 'pencil',
   stepWidth: requestedStepWidth,
+  sidebarWidth,
   noteLengthSteps: controlledNoteLengthSteps,
   onNoteLengthChange,
   onRequestZoom,
   loopRange = null,
   onStepHeaderSelect,
   collabBarLocks = {},
+  collabNoteColors = {},
   canEditCollab = true,
   requestCollabBarLock,
   releaseCollabBarLock,
@@ -237,6 +242,7 @@ export const PianoRoll = ({
   const pendingScrollLeftRef = useRef(0);
   const lastDrawCellRef = useRef<string | null>(null);
   const lastMelodyDragLengthRef = useRef<number | null>(null);
+  const hasMelodyDragMovedRef = useRef(false);
 
   useEffect(() => {
     if (editTool === 'select' || editTool === 'marquee') {
@@ -416,6 +422,7 @@ export const PianoRoll = ({
       setDragMelodyOrigin(null);
       lastDrawCellRef.current = null;
       lastMelodyDragLengthRef.current = null;
+      hasMelodyDragMovedRef.current = false;
       releaseActiveLock();
       return;
     }
@@ -438,6 +445,7 @@ export const PianoRoll = ({
     setDragMelodyOrigin(null);
     lastDrawCellRef.current = null;
     lastMelodyDragLengthRef.current = null;
+    hasMelodyDragMovedRef.current = false;
     releaseActiveLock();
   };
 
@@ -483,7 +491,10 @@ export const PianoRoll = ({
     '--piano-row-span': `calc(${rowHeight}px + ${gridGap}px)`,
     '--piano-row-count': `${rowCount}`,
     '--piano-sidebar-offset': `${sidebarTopOffset}px`,
-    '--piano-sidebar-width': `${isBass ? 102 : 68}px`,
+    '--piano-sidebar-width':
+      typeof sidebarWidth === 'number'
+        ? `${sidebarWidth}px`
+        : sidebarWidth ?? `${isBass ? 102 : 68}px`,
   } as CSSProperties;
 
   const sidebarNotes = useMemo(
@@ -517,11 +528,10 @@ export const PianoRoll = ({
         key={`step-${col}`}
         type="button"
         data-playhead-step={col}
-        className={`piano-roll-step-number${
-          col === initialStepRef.current ? ' is-current' : ''
-        }${getSubdivisionClassName(col)}${isLocked ? ' is-locked' : ''}${
+        className={`piano-roll-step-number${getSubdivisionClassName(col)}${isLocked ? ' is-locked' : ''}${
           loopRange && col >= loopRange.start && col <= loopRange.end ? ' is-loop-active' : ''
         }${loopRange?.end === col ? ' is-loop-end' : ''}`}
+        style={{ '--collab-member-color': barLock?.color } as CSSProperties}
         onClick={() => onStepHeaderSelect?.(col)}
         aria-label={`${col + 1}번 위치까지 반복`}
         title={`${col + 1}번 위치까지 반복`}
@@ -552,6 +562,9 @@ export const PianoRoll = ({
       const isNoteStart = Boolean(melodyNoteInfo && melodyNoteInfo.start === col);
       const isNoteTail = Boolean(melodyNoteInfo && melodyNoteInfo.start !== col);
       const active = isBass ? bass[row]?.[col] : isNoteStart;
+      const collabNoteColor = active
+        ? collabNoteColors[`${isBass ? 'bass' : 'melody'}:${row}:${col}`]
+        : undefined;
       const isSelected = Boolean(
         selectedRange &&
           row >= Math.min(selectedRange.startRow, selectedRange.endRow) &&
@@ -559,7 +572,6 @@ export const PianoRoll = ({
           col >= Math.min(selectedRange.startCol, selectedRange.endCol) &&
           col <= Math.max(selectedRange.startCol, selectedRange.endCol)
       );
-      const isCurrent = col === initialStepRef.current;
       const barIndex = Math.floor(col / 16);
       const barLock = collabBarLocks[barIndex];
       const isLocked = Boolean(barLock && !barLock.mine);
@@ -568,6 +580,8 @@ export const PianoRoll = ({
       const lyricLabel = !isBass && isNoteStart ? noteLyrics[lyricKey] ?? '' : '';
       const cellStyle = {
         '--cell-accent': getAccentColor(row, isBass, isGuitar),
+        '--collab-member-color': barLock?.color,
+        '--collab-note-color': collabNoteColor,
         ...(isBass
           ? {
               gridColumnStart: col + 1,
@@ -588,13 +602,11 @@ export const PianoRoll = ({
           role="button"
           tabIndex={isLocked || !canEditCollab ? -1 : 0}
           data-playhead-step={col}
-          className={`piano-roll-cell is-${modeClass}${active ? ' is-active' : ''}${
-            isCurrent ? ' is-current' : ''
-          }${getSubdivisionClassName(col)}${
+          className={`piano-roll-cell is-${modeClass}${active ? ' is-active' : ''}${getSubdivisionClassName(col)}${
             !isBass && isSharpNote(currentLabels[row]) ? ' is-sharp' : ''
           }${!isBass && isNoteStart ? ' is-note-start' : ''}${
             !isBass && isNoteTail ? ' is-note-tail' : ''
-          }${isLocked ? ' is-locked' : ''}${!canEditCollab ? ' is-readonly' : ''}${
+          }${collabNoteColor ? ' is-collab-authored' : ''}${isLocked ? ' is-locked' : ''}${!canEditCollab ? ' is-readonly' : ''}${
             isSelected ? ' is-tool-selected' : ''
           }`}
           style={cellStyle}
@@ -627,8 +639,6 @@ export const PianoRoll = ({
             }
 
             if (isBass) {
-              if (editTool === 'pencil' && active) return;
-              if (editTool === 'eraser' && !active) return;
               if (!(await requestCollabBarLock?.('bass', barIndex) ?? true)) {
                 return;
               }
@@ -650,8 +660,6 @@ export const PianoRoll = ({
               liveMelodyLengths[row] ?? [],
               col
             );
-            if (editTool === 'pencil' && existingNote) return;
-            if (editTool === 'eraser' && !existingNote) return;
             const originBarIndex = Math.floor((existingNote?.start ?? col) / 16);
 
             if (!(await requestCollabBarLock?.('melody', originBarIndex) ?? true)) {
@@ -676,6 +684,7 @@ export const PianoRoll = ({
               setDragMelodyOrigin(null);
               lastDrawCellRef.current = null;
               lastMelodyDragLengthRef.current = null;
+              hasMelodyDragMovedRef.current = false;
               releaseActiveLock();
               return;
             }
@@ -687,6 +696,7 @@ export const PianoRoll = ({
             setDragMelodyOrigin({ row, col });
             lastDrawCellRef.current = `${row}-${col}`;
             lastMelodyDragLengthRef.current = melodyNoteLengthSteps;
+            hasMelodyDragMovedRef.current = false;
             pendingMelodyCommitRef.current = {
               row,
               col,
@@ -713,10 +723,15 @@ export const PianoRoll = ({
                 return;
               }
 
+              if (!hasMelodyDragMovedRef.current && col === dragMelodyOrigin.col) {
+                return;
+              }
+
               if (Math.floor(col / 16) !== Math.floor(dragMelodyOrigin.col / 16)) {
                 return;
               }
 
+              hasMelodyDragMovedRef.current = true;
               const nextLength = col - dragMelodyOrigin.col + 1;
               if (lastMelodyDragLengthRef.current === nextLength) {
                 return;
@@ -811,6 +826,7 @@ export const PianoRoll = ({
     bass,
     canEditCollab,
     collabBarLocks,
+    collabNoteColors,
     currentLabels,
     dragMelodyOrigin,
     drawValue,

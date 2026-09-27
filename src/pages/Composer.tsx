@@ -1,8 +1,5 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
-import type {
-  DragEvent as ReactDragEvent,
-  PointerEvent as ReactPointerEvent,
-} from 'react';
+import type { DragEvent as ReactDragEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
 import SiteHeader from '../components/layout/SiteHeader';
 import { PianoRoll } from '../components/PianoRoll.tsx';
@@ -55,7 +52,9 @@ import { useAuthStore } from '../store/authStore.ts';
 import {
   COLLAB_PRESENCE_PING_INTERVAL_MS,
   CollabRequestError,
+  COLLAB_SESSION_COLOR,
   COLLAB_SESSION_ID,
+  getCollabNoteColorKey,
   type CollabComposerHistoryEntry,
   type CollabComposerInstrument,
   type CollabComposerOperation,
@@ -93,21 +92,14 @@ const melodyNoteLengthOptions = [
 ] as const;
 type MelodyNoteLengthSteps = (typeof melodyNoteLengthOptions)[number]['steps'];
 type ComposerNotepadMode = 'lyrics' | 'memo';
+type CollabPanelTab = 'activity' | 'members' | 'chat';
 type PianoEditTool = 'select' | 'pencil' | 'eraser' | 'marquee' | 'zoom';
-type PianoSelection = {
-  scrollKey: string;
-  startRow: number;
-  endRow: number;
-  startCol: number;
-  endCol: number;
-};
 type ArrangementClipLayout = {
   start: number;
   length: number;
 };
 type ArrangementClipPreview = {
   hasAudio: boolean;
-  activityRanges: Array<{ start: number; width: number }>;
   pitchSegments: string[];
 };
 
@@ -176,7 +168,6 @@ const composerInstrumentLabels: Record<ComposerTab, string> = {
 };
 
 type ComposerHelpZone = 'length' | 'chords' | 'instruments';
-type LyricsViewMode = 'notes' | 'full';
 
 const composerHelpPanels: Record<
   ComposerHelpZone,
@@ -218,7 +209,30 @@ const tabOrder: ComposerTab[] = [
 const DEFAULT_OPEN_TABS: ComposerTab[] = ['melody', 'drums', 'bass'];
 
 function includeDefaultComposerTabs(tabs: ComposerTab[]) {
-  return tabOrder.filter((tab) => DEFAULT_OPEN_TABS.includes(tab) || tabs.includes(tab));
+  return [...new Set([...DEFAULT_OPEN_TABS, ...tabs])];
+}
+
+function getLyricsBarLines(value: string) {
+  const lines = value.replace(/\r/g, '').split('\n');
+  return lines.length ? lines : [''];
+}
+
+function distributeLyricsIntoBars(value: string) {
+  const explicitLines = getLyricsBarLines(value).map((line) => line.trim()).filter(Boolean);
+  if (explicitLines.length > 1) {
+    return explicitLines;
+  }
+
+  const words = value.trim().split(/\s+/).filter(Boolean);
+  if (!words.length) {
+    return [''];
+  }
+
+  const lines: string[] = [];
+  for (let index = 0; index < words.length; index += 8) {
+    lines.push(words.slice(index, index + 8).join(' '));
+  }
+  return lines;
 }
 
 const tabPickerGroups: TabPickerGroup[] = [
@@ -397,6 +411,7 @@ type MelodyLyricNote = {
 };
 type MelodySequencerOptions = {
   scrollKey?: string;
+  noteColorTrackId?: string;
   melodyLengths?: number[][];
   noteLengthSteps?: MelodyNoteLengthSteps;
   onNoteLengthChange?: (steps: MelodyNoteLengthSteps) => void;
@@ -415,27 +430,30 @@ type ArrangementTrackDefinition = {
   tone: 'mint' | 'blue' | 'violet' | 'coral' | 'gold';
 };
 
+const arrangementTrackIcons: Record<InstrumentComposerTab, string> = {
+  melody: '🎵',
+  violin: '🎻',
+  saxophone: '🎷',
+  guitar: '🎸',
+  glockenspiel: '🔔',
+  piccolo: '🪈',
+  supportingPiano: '🎶',
+  chicagoStreet: '🎺',
+  studioAltoSax: '🎷',
+  drums: '🥁',
+  bass: '🎸',
+};
+
 const arrangementTrackDefinitions: ArrangementTrackDefinition[] = [
-  { id: 'melody', label: '멜로디', icon: '♪', tab: 'melody', tone: 'mint' },
-  { id: 'piano', label: '피아노', icon: '♬', tab: 'supportingPiano', tone: 'blue' },
-  { id: 'support', label: '서포트 캐스트', icon: '≋', tab: 'glockenspiel', tone: 'violet' },
-  { id: 'drums', label: '드럼', icon: '◉', tab: 'drums', tone: 'coral' },
-  { id: 'bass', label: '베이스', icon: '⌁', tab: 'bass', tone: 'gold' },
+  { id: 'melody', label: tabPickerLabels.melody, icon: arrangementTrackIcons.melody, tab: 'melody', tone: 'mint' },
+  { id: 'piano', label: tabPickerLabels.supportingPiano, icon: arrangementTrackIcons.supportingPiano, tab: 'supportingPiano', tone: 'blue' },
+  { id: 'support', label: tabPickerLabels.glockenspiel, icon: arrangementTrackIcons.glockenspiel, tab: 'glockenspiel', tone: 'violet' },
+  { id: 'drums', label: tabPickerLabels.drums, icon: arrangementTrackIcons.drums, tab: 'drums', tone: 'coral' },
+  { id: 'bass', label: tabPickerLabels.bass, icon: arrangementTrackIcons.bass, tab: 'bass', tone: 'gold' },
 ];
 
-function getDefaultArrangementClipLayout(
-  trackIndex: number,
-  section: 'first' | 'second'
-): ArrangementClipLayout {
-  const firstStarts = [1.4, 5, 8, 8, 8];
-  const firstLengths = [36, 37, 41, 38, 38];
-  const secondStarts = [43, 50, 58, 50, 50];
-  const secondLengths = [48, 47, 39, 42, 42];
-  const index = trackIndex % firstStarts.length;
-
-  return section === 'first'
-    ? { start: firstStarts[index], length: firstLengths[index] }
-    : { start: secondStarts[index], length: secondLengths[index] };
+function getDefaultArrangementClipLayout(): ArrangementClipLayout {
+  return { start: 0, length: 100 };
 }
 
 function buildArrangementClipPreview(
@@ -474,20 +492,6 @@ function buildArrangementClipPreview(
     );
   }
 
-  const activityRanges: Array<{ start: number; width: number }> = [];
-  let rangeStart: number | null = null;
-  pitches.forEach((pitch, index) => {
-    if (pitch !== null && rangeStart === null) rangeStart = index;
-    const isRangeEnd = rangeStart !== null && (pitch === null || index === pitches.length - 1);
-    if (!isRangeEnd || rangeStart === null) return;
-    const exclusiveEnd = pitch === null ? index : index + 1;
-    activityRanges.push({
-      start: (rangeStart / span) * 100,
-      width: Math.max(1.2, ((exclusiveEnd - rangeStart) / span) * 100),
-    });
-    rangeStart = null;
-  });
-
   const pitchSegments: string[] = [];
   let segment: string[] = [];
   pitches.forEach((pitch, index) => {
@@ -508,7 +512,6 @@ function buildArrangementClipPreview(
 
   return {
     hasAudio: pitches.some((pitch) => pitch !== null),
-    activityRanges,
     pitchSegments,
   };
 }
@@ -542,10 +545,12 @@ function isPitchedTab(tab: ComposerTab): tab is PitchedTab {
 }
 
 function readComposerTabDraft() {
+  const defaultTrackOrder = DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`);
   if (typeof window === 'undefined') {
     return {
       openTabs: DEFAULT_OPEN_TABS,
       openExtraTrackIds: [] as string[],
+      arrangementTrackOrder: defaultTrackOrder,
       activeTrackId: null as string | null,
     };
   }
@@ -558,11 +563,21 @@ function readComposerTabDraft() {
       ? parsed.openTabs.filter(isComposerTab)
       : [];
 
+    const normalizedOpenTabs = includeDefaultComposerTabs(openTabs);
+    const openExtraTrackIds: string[] = Array.isArray(parsed?.openExtraTrackIds)
+      ? parsed.openExtraTrackIds.filter((value: unknown): value is string => typeof value === 'string')
+      : [];
+    const fallbackTrackOrder = [
+      ...normalizedOpenTabs.filter((tab) => tab !== 'lyrics').map((tab) => `primary-${tab}`),
+      ...openExtraTrackIds.map((id) => `extra-${id}`),
+    ];
+
     return {
-      openTabs: includeDefaultComposerTabs(openTabs),
-      openExtraTrackIds: Array.isArray(parsed?.openExtraTrackIds)
-        ? parsed.openExtraTrackIds.filter((value: unknown): value is string => typeof value === 'string')
-        : [],
+      openTabs: normalizedOpenTabs,
+      openExtraTrackIds,
+      arrangementTrackOrder: Array.isArray(parsed?.arrangementTrackOrder)
+        ? parsed.arrangementTrackOrder.filter((value: unknown): value is string => typeof value === 'string')
+        : fallbackTrackOrder,
       activeTrackId:
         typeof parsed?.activeTrackId === 'string' ? parsed.activeTrackId : null,
     };
@@ -570,6 +585,7 @@ function readComposerTabDraft() {
     return {
       openTabs: DEFAULT_OPEN_TABS,
       openExtraTrackIds: [] as string[],
+      arrangementTrackOrder: defaultTrackOrder,
       activeTrackId: null as string | null,
     };
   }
@@ -599,6 +615,8 @@ export function Composer() {
     tempoAutomation,
     steps,
     noteLyrics,
+    barLyrics,
+    lyricsStartBar,
     melody,
     melodyLengths,
     melodyVelocities,
@@ -633,6 +651,9 @@ export function Composer() {
     setBpm,
     setSteps,
     setMelodyLyric,
+    setBarLyrics,
+    setLyricsStartBar,
+    syncBarLyricsToMelody,
     loopRange,
     setLoopRange,
     loadProject,
@@ -653,6 +674,8 @@ export function Composer() {
   const presenceByProject = useCollabStore((state) => state.presenceByProject);
   const composerLocksByProject = useCollabStore((state) => state.composerLocksByProject);
   const composerHistoryByProject = useCollabStore((state) => state.composerHistoryByProject);
+  const collabMessages = useCollabStore((state) => state.messages);
+  const addCollabMessage = useCollabStore((state) => state.addMessage);
   const libraryProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
   const collabId = searchParams.get('collab');
@@ -664,6 +687,7 @@ export function Composer() {
     () => (collabId ? projects.find((project) => project.id === collabId) ?? null : null),
     [collabId, projects]
   );
+  const collabNoteColors = collabProject?.noteColors ?? {};
   const loadedLibraryProject = useMemo(
     () => (projectId ? libraryProjects.find((project) => project.id === projectId) ?? null : null),
     [libraryProjects, projectId]
@@ -725,19 +749,23 @@ export function Composer() {
   const [openExtraTrackIds, setOpenExtraTrackIds] = useState<string[]>(
     () => (newProjectRequested ? [] : readComposerTabDraft().openExtraTrackIds)
   );
+  const [arrangementTrackOrder, setArrangementTrackOrder] = useState<string[]>(
+    () => newProjectRequested
+      ? DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`)
+      : readComposerTabDraft().arrangementTrackOrder
+  );
   const [activeTrackId, setActiveTrackId] = useState<string | null>(
     () => (newProjectRequested ? null : readComposerTabDraft().activeTrackId)
   );
   const [mutedArrangementTracks, setMutedArrangementTracks] = useState<Set<string>>(
     () => new Set()
   );
-  const [soloArrangementTrack, setSoloArrangementTrack] = useState<string | null>(null);
   const [openTrackMenuId, setOpenTrackMenuId] = useState<string | null>(null);
   const [hiddenArrangementTrackIds, setHiddenArrangementTrackIds] = useState<Set<string>>(
     () => new Set()
   );
   const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(false);
-  const [pianoEditTool, setPianoEditTool] = useState<PianoEditTool>('select');
+  const pianoEditTool: PianoEditTool = 'pencil';
   const [pianoZoom, setPianoZoom] = useState(1);
   const [pianoToolFeedback, setPianoToolFeedback] = useState('');
   const [arrangementClipLayouts, setArrangementClipLayouts] = useState<
@@ -745,14 +773,7 @@ export function Composer() {
   >({});
   const [selectedArrangementClip, setSelectedArrangementClip] = useState<string | null>(null);
   const [draggingArrangementClip, setDraggingArrangementClip] = useState<string | null>(null);
-  const [pianoSelection, setPianoSelection] = useState<PianoSelection | null>(null);
-  const [pianoMarqueeOrigin, setPianoMarqueeOrigin] = useState<{
-    scrollKey: string;
-    row: number;
-    col: number;
-  } | null>(null);
   const mutedVolumeSnapshotRef = useRef<Record<string, number>>({});
-  const soloVolumeSnapshotRef = useRef<Record<string, number> | null>(null);
   const pianoToolFeedbackTimerRef = useRef<number | null>(null);
   const [extraTrackNoteLengths, setExtraTrackNoteLengths] = useState<Record<string, MelodyNoteLengthSteps>>({});
   const [primaryTrackNoteLengths, setPrimaryTrackNoteLengths] = useState<
@@ -818,10 +839,17 @@ export function Composer() {
   const [isMediaOverlayCompact, setIsMediaOverlayCompact] = useState(false);
   const [isHelpOverlayEnabled, setIsHelpOverlayEnabled] = useState(false);
   const [activeHelpZone, setActiveHelpZone] = useState<ComposerHelpZone | null>(null);
-  const [lyricsViewMode, setLyricsViewMode] = useState<LyricsViewMode>('notes');
   const [isNotepadOpen, setIsNotepadOpen] = useState(true);
   const [notepadMode, setNotepadMode] = useState<ComposerNotepadMode>('lyrics');
   const [notepadDraft, setNotepadDraft] = useState(readComposerNotepadDraft);
+  const [isLyricsWorkspaceOpen, setIsLyricsWorkspaceOpen] = useState(false);
+  const [isCollabPanelOpen, setIsCollabPanelOpen] = useState(false);
+  const [collabPanelTab, setCollabPanelTab] = useState<CollabPanelTab>('activity');
+  const [collabMessageDraft, setCollabMessageDraft] = useState('');
+  const [collabMessageError, setCollabMessageError] = useState('');
+  const [isSendingCollabMessage, setIsSendingCollabMessage] = useState(false);
+  const [selectedLyricsBar, setSelectedLyricsBar] = useState(0);
+  const [lyricsHistory, setLyricsHistory] = useState<string[]>([]);
   const [helpOverlayPosition, setHelpOverlayPosition] = useState({ x: 18, y: 126 });
   const [playedTutorialOnce, setPlayedTutorialOnce] = useState(false);
   const [tabPickerMenuPosition, setTabPickerMenuPosition] = useState<{
@@ -868,7 +896,7 @@ export function Composer() {
       return [...tabOrder];
     }
 
-    return tabOrder.filter((tab) => openTabsState.includes(tab));
+    return [...openTabsState];
   }, [openTabsState, tutorialRequested]);
   const getExtraTrackDisplayLabel = useCallback(
     (track: ExtraInstrumentTrack) => {
@@ -896,11 +924,13 @@ export function Composer() {
       JSON.stringify({
         openTabs: DEFAULT_OPEN_TABS,
         openExtraTrackIds: [],
+        arrangementTrackOrder: DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`),
         activeTrackId: null,
       })
     );
     setOpenTabsState(DEFAULT_OPEN_TABS);
     setOpenExtraTrackIds([]);
+    setArrangementTrackOrder(DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`));
     setActiveTrackId(null);
     setVisitedTabs([]);
     navigate('/composer', { replace: true });
@@ -908,76 +938,50 @@ export function Composer() {
 
   const isActivePrimaryTabOpen = !activeTrackId && openTabsState.includes(activeTab);
   const openTabItems = useMemo<ComposerTabItem[]>(() => {
-    return tabOrder.flatMap((tab) => {
-      const items: ComposerTabItem[] = [];
-
-      if (openTabs.includes(tab)) {
-        items.push({
-          id: `primary-${tab}`,
-          tab,
-          label: tabLabels[tab],
-        });
-      }
-
-      if (tab !== 'lyrics') {
-        extraTracks
-          .filter((track) => track.instrument === tab && openExtraTrackIds.includes(track.id))
-          .forEach((track) => {
-            items.push({
-              id: `extra-${track.id}`,
-              tab,
-              trackId: track.id,
-              label: getExtraTrackDisplayLabel(track),
-            });
-          });
-      }
-
-      return items;
+    const items: ComposerTabItem[] = [
+      ...openTabs.map((tab) => ({
+        id: `primary-${tab}`,
+        tab,
+        label: tabLabels[tab],
+      })),
+      ...openExtraTrackIds.flatMap((trackId) => {
+        const track = extraTracks.find((item) => item.id === trackId);
+        if (!track) return [];
+        return [{
+          id: `extra-${track.id}`,
+          tab: track.instrument as ComposerTab,
+          trackId: track.id,
+          label: getExtraTrackDisplayLabel(track),
+        }];
+      }),
+    ];
+    const orderIndex = new Map(arrangementTrackOrder.map((id, index) => [id, index]));
+    return items.sort((left, right) => {
+      const leftIndex = orderIndex.get(left.id) ?? Number.MAX_SAFE_INTEGER;
+      const rightIndex = orderIndex.get(right.id) ?? Number.MAX_SAFE_INTEGER;
+      return leftIndex - rightIndex;
     });
-  }, [extraTracks, getExtraTrackDisplayLabel, openExtraTrackIds, openTabs]);
+  }, [arrangementTrackOrder, extraTracks, getExtraTrackDisplayLabel, openExtraTrackIds, openTabs]);
   const arrangementVisibleTracks = useMemo<ArrangementTrackDefinition[]>(() => {
-    const representedItemIds = new Set<string>();
-    const baseTracks = arrangementTrackDefinitions.filter(
-      (track) => {
-        if (hiddenArrangementTrackIds.has(track.id)) return false;
-        if (track.id === 'piano' || track.id === 'support') {
-          return openTabItems.some((item) => item.tab === track.tab && Boolean(item.trackId));
-        }
-        return openTabsState.includes(track.tab);
-      }
-    ).map((track) => {
-      const usesExtraTrackAsBase = track.id === 'piano' || track.id === 'support';
-      const matchingItem = usesExtraTrackAsBase
-        ? openTabItems.find(
-            (item) => item.tab === track.tab && Boolean(item.trackId) && !representedItemIds.has(item.id)
-          )
+    return openTabItems.flatMap((item) => {
+      if (item.tab === 'lyrics') return [];
+      const baseTrack = !item.trackId
+        ? arrangementTrackDefinitions.find((track) => track.tab === item.tab)
         : undefined;
-      if (matchingItem) representedItemIds.add(matchingItem.id);
+      const id = baseTrack?.id ?? `added-${item.id}`;
+      if (hiddenArrangementTrackIds.has(id)) return [];
 
-      return {
-        ...track,
-        key: `base-${track.id}`,
-        trackId: matchingItem?.trackId,
-      };
-    });
-
-    const dynamicTracks = openTabItems
-      .filter((item) => {
-        if (item.tab === 'lyrics' || representedItemIds.has(item.id)) return false;
-        return !['primary-melody', 'primary-drums', 'primary-bass'].includes(item.id);
-      })
-      .map((item) => ({
-        id: `added-${item.id}`,
-        key: `added-${item.id}`,
+      return [{
+        id,
+        key: item.id,
         trackId: item.trackId,
         label: item.label,
-        icon: item.tab === 'drums' ? '◉' : item.tab === 'bass' ? '⌁' : '♫',
+        icon: baseTrack?.icon ?? arrangementTrackIcons[item.tab as InstrumentComposerTab],
         tab: item.tab as InstrumentComposerTab,
-        tone: getArrangementTrackTone(item.tab as InstrumentComposerTab),
-      }));
-
-    return [...baseTracks, ...dynamicTracks];
-  }, [hiddenArrangementTrackIds, openTabItems, openTabsState]);
+        tone: baseTrack?.tone ?? getArrangementTrackTone(item.tab as InstrumentComposerTab),
+      }];
+    });
+  }, [hiddenArrangementTrackIds, openTabItems]);
   const activeExtraTrack = useMemo(
     () => extraTracks.find((track) => track.id === activeTrackId) ?? null,
     [activeTrackId, extraTracks]
@@ -1047,6 +1051,118 @@ export function Composer() {
 
     return items.sort((left, right) => left.col - right.col || left.row - right.row);
   }, [melody, melodyLengths, noteLyrics]);
+  const lyricsBarLines = barLyrics;
+  const lyricsText = useMemo(() => lyricsBarLines.join('\n'), [lyricsBarLines]);
+
+  useEffect(() => {
+    setNotepadDraft((current) =>
+      current.lyrics === lyricsText ? current : { ...current, lyrics: lyricsText }
+    );
+  }, [lyricsText]);
+
+  useEffect(() => {
+    syncBarLyricsToMelody();
+  }, [melody, barLyrics, lyricsStartBar, syncBarLyricsToMelody]);
+
+  useEffect(() => {
+    if (
+      activeTab === 'lyrics' &&
+      lyricsStartBar !== 1 &&
+      barLyrics.every((line) => !line.trim())
+    ) {
+      setLyricsStartBar(1);
+    }
+  }, [activeTab, barLyrics, lyricsStartBar, setLyricsStartBar]);
+
+  useEffect(() => {
+    setSelectedLyricsBar((current) => Math.min(current, Math.max(0, lyricsBarLines.length - 1)));
+  }, [lyricsBarLines.length]);
+
+  const commitLyricsBarLines = useCallback(
+    (nextLines: string[]) => {
+      setLyricsHistory((current) => [...current.slice(-19), lyricsText]);
+      setBarLyrics(nextLines);
+      setNotepadDraft((current) => ({ ...current, lyrics: nextLines.join('\n') }));
+    },
+    [lyricsText, setBarLyrics]
+  );
+
+  const handleDistributeLyrics = useCallback(() => {
+    const nextLines = distributeLyricsIntoBars(lyricsText);
+    commitLyricsBarLines(nextLines);
+    setSelectedLyricsBar(0);
+  }, [commitLyricsBarLines, lyricsText]);
+
+  const handleFillEmptyLyricsBars = useCallback(() => {
+    const nextLength = Math.max(lyricsBarLines.length, arrangementBarCount - lyricsStartBar + 1);
+    commitLyricsBarLines([
+      ...lyricsBarLines,
+      ...Array.from({ length: nextLength - lyricsBarLines.length }, () => ''),
+    ]);
+  }, [arrangementBarCount, commitLyricsBarLines, lyricsBarLines, lyricsStartBar]);
+
+  const handleUndoLyrics = useCallback(() => {
+    const previous = lyricsHistory.at(-1);
+    if (previous === undefined) {
+      return;
+    }
+
+    setNotepadDraft((current) => ({ ...current, lyrics: previous }));
+    setBarLyrics(getLyricsBarLines(previous));
+    setLyricsHistory((current) => current.slice(0, -1));
+  }, [lyricsHistory, setBarLyrics]);
+
+  const handleLyricsBarChange = useCallback(
+    (index: number, value: string) => {
+      const nextLines = [...lyricsBarLines];
+      nextLines[index] = value;
+      commitLyricsBarLines(nextLines);
+    },
+    [commitLyricsBarLines, lyricsBarLines]
+  );
+
+  const handleClearSelectedLyricsBar = useCallback(() => {
+    handleLyricsBarChange(selectedLyricsBar, '');
+  }, [handleLyricsBarChange, selectedLyricsBar]);
+
+  const handleMoveSelectedLyricsBar = useCallback(
+    (direction: -1 | 1) => {
+      const targetIndex = selectedLyricsBar + direction;
+      if (targetIndex < 0 || targetIndex >= lyricsBarLines.length) {
+        return;
+      }
+
+      const nextLines = [...lyricsBarLines];
+      [nextLines[selectedLyricsBar], nextLines[targetIndex]] = [
+        nextLines[targetIndex],
+        nextLines[selectedLyricsBar],
+      ];
+      commitLyricsBarLines(nextLines);
+      setSelectedLyricsBar(targetIndex);
+      setCurrentStep((lyricsStartBar + targetIndex - 1) * COLLAB_BAR_LENGTH);
+    },
+    [commitLyricsBarLines, lyricsBarLines, lyricsStartBar, selectedLyricsBar, setCurrentStep]
+  );
+
+  const handleSelectLyricsBar = useCallback(
+    (index: number) => {
+      setSelectedLyricsBar(index);
+      setCurrentStep((lyricsStartBar + index - 1) * COLLAB_BAR_LENGTH);
+    },
+    [lyricsStartBar, setCurrentStep]
+  );
+
+  useEffect(() => {
+    if (!isLyricsWorkspaceOpen) {
+      return;
+    }
+
+    const currentBar = Math.floor(currentStep / COLLAB_BAR_LENGTH) + 1;
+    const nextIndex = currentBar - lyricsStartBar;
+    if (nextIndex >= 0 && nextIndex < lyricsBarLines.length) {
+      setSelectedLyricsBar(nextIndex);
+    }
+  }, [currentStep, isLyricsWorkspaceOpen, lyricsBarLines.length, lyricsStartBar]);
   const activeHelpPanel = activeHelpZone ? composerHelpPanels[activeHelpZone] : null;
   const getTabPickerLabel = (tab: TabPickerOption) => {
     if (tab === 'airInstrument') {
@@ -1181,10 +1297,11 @@ export function Composer() {
       JSON.stringify({
         openTabs: openTabsState,
         openExtraTrackIds,
+        arrangementTrackOrder,
         activeTrackId,
       })
     );
-  }, [activeTrackId, openExtraTrackIds, openTabsState]);
+  }, [activeTrackId, arrangementTrackOrder, openExtraTrackIds, openTabsState]);
 
   useEffect(() => {
     window.localStorage.setItem(COMPOSER_NOTEPAD_STORAGE_KEY, JSON.stringify(notepadDraft));
@@ -1503,6 +1620,8 @@ export function Composer() {
         tempoAutomation,
         steps,
         noteLyrics,
+        barLyrics,
+        lyricsStartBar,
         volumes,
         melody,
         melodyLengths,
@@ -1521,6 +1640,7 @@ export function Composer() {
     [
       bass,
       bassLengths,
+      barLyrics,
       bpm,
       compositionMode,
       tempoAutomation,
@@ -1531,9 +1651,11 @@ export function Composer() {
       melody,
       melodyLengths,
       melodyVelocities,
+      noteLyrics,
       saxophone,
       saxophoneLengths,
       steps,
+      lyricsStartBar,
       violin,
       violinLengths,
       volumes,
@@ -1560,18 +1682,6 @@ export function Composer() {
 
     return '작업방 연결을 준비하고 있습니다.';
   }, [canSyncCollab, collabId, connectionError, connectionStatus]);
-  const activeEditorsLabel = useMemo(() => {
-    if (!collabId || !user) {
-      return '';
-    }
-
-    const entries = presenceByProject[collabId] ?? [];
-    const activeEditors = entries
-      .filter((entry) => entry.email !== user.email && entry.focus)
-      .map((entry) => `${entry.name} - ${entry.focus}`);
-
-    return activeEditors.join(', ');
-  }, [collabId, presenceByProject, user]);
   const activeComposerLocks = useMemo(
     () => (collabId ? composerLocksByProject[collabId] ?? [] : []),
     [collabId, composerLocksByProject]
@@ -1579,7 +1689,7 @@ export function Composer() {
   const currentTabLockMap = useMemo(() => {
     const currentCollabInstrument = getCollabInstrumentForTab(activeTab);
 
-    return activeComposerLocks.reduce<Record<number, { mine: boolean; name: string }>>(
+    return activeComposerLocks.reduce<Record<number, { mine: boolean; name: string; color: string }>>(
       (map, lock) => {
         if (lock.instrument !== currentCollabInstrument) {
           return map;
@@ -1588,6 +1698,7 @@ export function Composer() {
         map[lock.barIndex] = {
           mine: lock.sessionId === COLLAB_SESSION_ID,
           name: lock.name,
+          color: lock.color || '#94a3b8',
         };
         return map;
       },
@@ -1602,8 +1713,32 @@ export function Composer() {
     [activeComposerLocks]
   );
   const recentComposerHistory = useMemo<CollabComposerHistoryEntry[]>(
-    () => (collabId ? (composerHistoryByProject[collabId] ?? []).slice(0, 4) : []),
+    () => (collabId ? (composerHistoryByProject[collabId] ?? []).slice(0, 24) : []),
     [collabId, composerHistoryByProject]
+  );
+  const projectCollabMessages = useMemo(
+    () =>
+      collabId
+        ? collabMessages
+            .filter((message) => message.projectId === collabId)
+            .sort((left, right) => left.createdAt - right.createdAt)
+            .slice(-60)
+        : [],
+    [collabId, collabMessages]
+  );
+  const collabPresenceEmails = useMemo(
+    () => new Set(collabId ? (presenceByProject[collabId] ?? []).map((entry) => entry.email) : []),
+    [collabId, presenceByProject]
+  );
+  const collabPresenceColors = useMemo(
+    () =>
+      new Map(
+        (collabId ? presenceByProject[collabId] ?? [] : []).map((entry) => [
+          entry.email,
+          entry.color || '#94a3b8',
+        ])
+      ),
+    [collabId, presenceByProject]
   );
   const activeGuideStep = COMPOSER_GUIDE_STEPS[guideStepIndex];
   const matchedChordTargets = useMemo(
@@ -2098,9 +2233,15 @@ export function Composer() {
       setMelodyLyric(item.row, item.col, lyricTokens[index] ?? '');
     });
     setOpenTabsState((current) => tabOrder.filter((tab) => tab === 'lyrics' || current.includes(tab)));
-    setLyricsViewMode('notes');
     activateTab('lyrics');
   }, [activateTab, melodyLyricNotes, notepadDraft.lyrics, setMelodyLyric]);
+
+  const handleOpenComposerPage = useCallback(() => {
+    activateTab('melody');
+    const nextParams = new URLSearchParams(searchParams);
+    nextParams.set('tab', 'melody');
+    navigate(`/composer?${nextParams.toString()}`, { replace: true });
+  }, [activateTab, navigate, searchParams]);
 
   const handleExportNotepad = useCallback(() => {
     const activeText = notepadMode === 'lyrics' ? notepadDraft.lyrics : notepadDraft.memo;
@@ -2116,6 +2257,28 @@ export function Composer() {
     anchor.click();
     URL.revokeObjectURL(url);
   }, [notepadDraft, notepadMode]);
+
+  const handleSendCollabMessage = useCallback(async () => {
+    const content = collabMessageDraft.trim();
+    if (!collabId || !user || !content || isSendingCollabMessage) return;
+
+    setIsSendingCollabMessage(true);
+    setCollabMessageError('');
+    try {
+      await addCollabMessage(collabId, {
+        email: user.email,
+        name: user.name,
+        color: COLLAB_SESSION_COLOR.accent,
+        content,
+      });
+      setCollabMessageDraft('');
+    } catch (error) {
+      console.error(error);
+      setCollabMessageError(error instanceof Error ? error.message : '메시지를 보내지 못했습니다.');
+    } finally {
+      setIsSendingCollabMessage(false);
+    }
+  }, [addCollabMessage, collabId, collabMessageDraft, isSendingCollabMessage, user]);
 
   const syncTabsToLoadedProject = useCallback(() => {
     const state = useSongStore.getState();
@@ -2147,6 +2310,10 @@ export function Composer() {
 
     setOpenTabsState(nextPrimaryTabs);
     setOpenExtraTrackIds(extraTrackIds);
+    setArrangementTrackOrder([
+      ...nextPrimaryTabs.filter((tab) => tab !== 'lyrics').map((tab) => `primary-${tab}`),
+      ...extraTrackIds.map((id) => `extra-${id}`),
+    ]);
 
     if (nextPrimaryTabs.length) {
       activateTab(nextPrimaryTabs[0]);
@@ -2169,14 +2336,36 @@ export function Composer() {
 
   useEffect(() => {
     const handleGoToFirstBar = () => {
+      isPlayingRef.current = false;
+      if (followScrollFrameRef.current !== null) {
+        window.cancelAnimationFrame(followScrollFrameRef.current);
+        followScrollFrameRef.current = null;
+      }
+      liveVisualStepRef.current = -1;
+      liveStepElementsRef.current.forEach((element) => {
+        element.classList.remove('is-current-live');
+      });
+      liveStepElementsRef.current = [];
+      liveStepElementCacheRef.current.clear();
+
       document.querySelectorAll<HTMLElement>('.piano-roll-melody-scroller').forEach((scroller) => {
         scroller.scrollLeft = 0;
+        scroller.dispatchEvent(new Event('scroll'));
+      });
+      document.querySelectorAll<HTMLElement>('.piano-roll-step-header--melody').forEach((header) => {
+        header.style.transform = 'translateX(0px)';
       });
       document.querySelectorAll<HTMLElement>('.composer-drums-wrap').forEach((scroller) => {
         scroller.scrollLeft = 0;
       });
+      document.querySelectorAll<HTMLElement>('.piano-roll-playhead').forEach((playhead) => {
+        playhead.style.setProperty('--piano-step-index', '0');
+      });
       document.querySelectorAll<HTMLElement>('.composer-sequencer-playhead').forEach((playhead) => {
         playhead.style.setProperty('--sequencer-step-index', '0');
+      });
+      document.querySelectorAll<HTMLElement>('.composer-arrangement-playhead').forEach((playhead) => {
+        playhead.style.setProperty('--arrangement-progress', '0%');
       });
 
       setPitchedRollScrollLeft({});
@@ -2205,6 +2394,7 @@ export function Composer() {
       if (isSampledInstrumentTab(tab)) {
         const trackId = addInstrumentTrack(tab);
         setOpenExtraTrackIds((current) => [...current, trackId]);
+        setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
         activateTab(tab, trackId);
         setIsTabPickerOpen(false);
         return;
@@ -2218,12 +2408,14 @@ export function Composer() {
         } else {
           const trackId = addInstrumentTrack(tab);
           setOpenExtraTrackIds((current) => [...current, trackId]);
+          setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
           activateTab(tab, trackId);
         }
       } else {
-        setOpenTabsState((current) =>
-          tabOrder.filter((candidate) => candidate === tab || current.includes(candidate))
-        );
+        setOpenTabsState((current) => [...current, tab]);
+        if (tab !== 'lyrics') {
+          setArrangementTrackOrder((current) => [...current, `primary-${tab}`]);
+        }
         activateTab(tab);
       }
 
@@ -2237,11 +2429,7 @@ export function Composer() {
       const baseTrackId =
         tab === 'melody' || tab === 'drums' || tab === 'bass'
           ? tab
-          : tab === 'supportingPiano'
-            ? 'piano'
-            : tab === 'glockenspiel'
-              ? 'support'
-              : null;
+          : null;
       const isRestoringBaseTrack = Boolean(baseTrackId && hiddenArrangementTrackIds.has(baseTrackId));
 
       if (baseTrackId) {
@@ -2251,6 +2439,12 @@ export function Composer() {
           next.delete(baseTrackId);
           return next;
         });
+        if (isRestoringBaseTrack) {
+          setArrangementTrackOrder((current) => {
+            const itemId = `primary-${tab}`;
+            return current.includes(itemId) ? current : [...current, itemId];
+          });
+        }
       }
 
       handleOpenTab(tab, !isRestoringBaseTrack);
@@ -2262,6 +2456,7 @@ export function Composer() {
     (track: ArrangementTrackDefinition) => {
       const trackId = duplicateInstrumentTrack(track.tab, track.trackId);
       setOpenExtraTrackIds((current) => [...current, trackId]);
+      setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
 
       const sourceLength = track.trackId
         ? extraTrackNoteLengths[track.trackId]
@@ -2331,6 +2526,9 @@ export function Composer() {
       }
 
       releaseInstrumentSounds(track.tab);
+      setArrangementTrackOrder((current) =>
+        current.filter((id) => id !== (track.key ?? track.id))
+      );
       if (activeTab === track.tab && (!activeTrackId || activeTrackId === track.trackId)) {
         const fallbackTrack = arrangementVisibleTracks.find(
           (item) => (item.key ?? item.id) !== (track.key ?? track.id)
@@ -2406,6 +2604,18 @@ export function Composer() {
     [pianoZoom, setCurrentStep, steps]
   );
 
+  const handleGoToLyricsBar = useCallback(
+    (index: number) => {
+      const targetStep = (lyricsStartBar + index - 1) * COLLAB_BAR_LENGTH;
+      setSelectedLyricsBar(index);
+      handleOpenComposerPage();
+      handleArrangementProgressSelect(
+        (targetStep / Math.max(1, steps - 1)) * 100
+      );
+    },
+    [handleArrangementProgressSelect, handleOpenComposerPage, lyricsStartBar, steps]
+  );
+
   const handleArrangementPointerSelect = useCallback(
     (clientX: number, timelineElement: HTMLElement) => {
       const bounds = timelineElement.getBoundingClientRect();
@@ -2460,55 +2670,8 @@ export function Composer() {
     [handleArrangementProgressSelect, showPianoToolFeedback, updateArrangementClipLayout]
   );
 
-  const handleArrangementClipResizeStart = useCallback(
-    (
-      event: ReactPointerEvent<HTMLSpanElement>,
-      clipKey: string,
-      layout: ArrangementClipLayout,
-      edge: 'start' | 'end'
-    ) => {
-      event.preventDefault();
-      event.stopPropagation();
-      const lane = event.currentTarget.closest<HTMLElement>('.composer-arrangement-lane');
-      if (!lane) return;
-
-      const laneWidth = Math.max(1, lane.getBoundingClientRect().width);
-      const pointerStart = event.clientX;
-      setSelectedArrangementClip(clipKey);
-
-      const handlePointerMove = (moveEvent: PointerEvent) => {
-        const delta = ((moveEvent.clientX - pointerStart) / laneWidth) * 100;
-        if (edge === 'start') {
-          const nextStart = Math.min(layout.start + layout.length - 4, layout.start + delta);
-          updateArrangementClipLayout(clipKey, {
-            start: nextStart,
-            length: layout.length - (nextStart - layout.start),
-          });
-          return;
-        }
-
-        updateArrangementClipLayout(clipKey, {
-          start: layout.start,
-          length: layout.length + delta,
-        });
-      };
-
-      const handlePointerUp = () => {
-        window.removeEventListener('pointermove', handlePointerMove);
-        window.removeEventListener('pointerup', handlePointerUp);
-        showPianoToolFeedback('구간 길이 조절 완료');
-      };
-
-      window.addEventListener('pointermove', handlePointerMove);
-      window.addEventListener('pointerup', handlePointerUp);
-    },
-    [showPianoToolFeedback, updateArrangementClipLayout]
-  );
-
   const handleArrangementMute = useCallback(
     (track: ArrangementTrackDefinition) => {
-      if (soloArrangementTrack) return;
-
       const instrument = track.tab as InstrumentKey;
       const isMuted = mutedArrangementTracks.has(track.id);
       const extraTrack = track.trackId
@@ -2538,7 +2701,6 @@ export function Composer() {
       mutedArrangementTracks,
       setExtraTrackVolume,
       setInstrumentVolume,
-      soloArrangementTrack,
       volumes,
     ]
   );
@@ -2569,42 +2731,6 @@ export function Composer() {
       });
     },
     [extraTracks, setExtraTrackVolume, setInstrumentVolume, volumes]
-  );
-
-  const handleArrangementSolo = useCallback(
-    (track: ArrangementTrackDefinition) => {
-      const shouldDisableSolo = soloArrangementTrack === track.id;
-      if (shouldDisableSolo) {
-        const snapshot = soloVolumeSnapshotRef.current;
-        if (snapshot) {
-          arrangementVisibleTracks.forEach((item) => {
-            setInstrumentVolume(item.tab as InstrumentKey, snapshot[item.id] ?? 80);
-          });
-        }
-        soloVolumeSnapshotRef.current = null;
-        setSoloArrangementTrack(null);
-        return;
-      }
-
-      const snapshot =
-        soloVolumeSnapshotRef.current ??
-        Object.fromEntries(
-          arrangementVisibleTracks.map((item) => [
-            item.id,
-            volumes[item.tab as InstrumentKey] ?? 80,
-          ])
-        );
-      soloVolumeSnapshotRef.current = snapshot;
-
-      arrangementVisibleTracks.forEach((item) => {
-        setInstrumentVolume(
-          item.tab as InstrumentKey,
-          item.id === track.id ? snapshot[item.id] ?? 80 : 0
-        );
-      });
-      setSoloArrangementTrack(track.id);
-    },
-    [arrangementVisibleTracks, setInstrumentVolume, soloArrangementTrack, volumes]
   );
 
   useEffect(() => {
@@ -2668,6 +2794,12 @@ export function Composer() {
 
   const handleStepLoopSelect = useCallback(
     (col: number) => {
+      if (col === 0) {
+        setLoopRange(null);
+        setCurrentStep(0);
+        return;
+      }
+
       const sameLoop = loopRange?.start === 0 && loopRange.end === col;
       setLoopRange(sameLoop ? null : { start: 0, end: col });
       setCurrentStep(0);
@@ -2726,6 +2858,8 @@ export function Composer() {
         tempoAutomation: useSongStore.getState().tempoAutomation,
         steps: useSongStore.getState().steps,
         noteLyrics: useSongStore.getState().noteLyrics,
+        barLyrics: useSongStore.getState().barLyrics,
+        lyricsStartBar: useSongStore.getState().lyricsStartBar,
         volumes: useSongStore.getState().volumes,
         melody: useSongStore.getState().melody,
         melodyLengths: useSongStore.getState().melodyLengths,
@@ -2781,6 +2915,7 @@ export function Composer() {
         barIndex,
         email: user.email,
         name: user.name,
+        color: COLLAB_SESSION_COLOR.accent,
         sessionId: COLLAB_SESSION_ID,
         lock: true,
       });
@@ -2830,6 +2965,7 @@ export function Composer() {
             operation,
             email: user.email,
             name: user.name,
+            color: COLLAB_SESSION_COLOR.accent,
             sessionId: COLLAB_SESSION_ID,
             baseRevision: lastAppliedRevisionRef.current,
           });
@@ -3161,6 +3297,7 @@ export function Composer() {
     void touchPresence(collabId, {
       email: user.email,
       name: user.name,
+      color: COLLAB_SESSION_COLOR.accent,
       focus,
     }).catch((error) => {
       console.error(error);
@@ -3170,6 +3307,7 @@ export function Composer() {
       void touchPresence(collabId, {
         email: user.email,
         name: user.name,
+        color: COLLAB_SESSION_COLOR.accent,
         focus,
       }).catch((error) => {
         console.error(error);
@@ -3587,6 +3725,16 @@ export function Composer() {
       playExtraTrackPreview(track.instrument, row, lengthSteps ?? 4);
     }
 
+    queueComposerOperation({
+      type: 'set-track-note',
+      instrument: track.instrument,
+      trackId: track.id,
+      row,
+      col,
+      nextValue,
+      barIndex,
+    });
+
     releaseComposerBarLock(track.instrument, barIndex);
   };
 
@@ -3606,6 +3754,17 @@ export function Composer() {
     }
 
     applyExtraTrackChord(track.id, chord, col, lengthSteps);
+    getChordRowsForNotes(getExtraTrackNotes(track.instrument), chord).forEach((row) => {
+      queueComposerOperation({
+        type: 'set-track-note',
+        instrument: track.instrument,
+        trackId: track.id,
+        row,
+        col,
+        nextValue: true,
+        barIndex,
+      });
+    });
     releaseComposerBarLock(track.instrument, barIndex);
   };
 
@@ -3647,15 +3806,6 @@ export function Composer() {
     });
   };
 
-  const selectPianoEditTool = (tool: PianoEditTool, label: string) => {
-    setPianoEditTool(tool);
-    if (tool !== 'select' && tool !== 'marquee') {
-      setPianoSelection(null);
-      setPianoMarqueeOrigin(null);
-    }
-    showPianoToolFeedback(label);
-  };
-
   const renderMelodyLikeSequencer = (
     instrument: PitchedTab,
     notes: readonly string[],
@@ -3672,7 +3822,7 @@ export function Composer() {
     const headerHeight = 24;
     const headerMargin = 8;
     const bodyTopPadding = 8;
-    const sidebarWidth = 68;
+    const sidebarWidth = 'var(--composer-track-panel-width)';
     const scrollLeft = pitchedRollScrollLeft[scrollKey] ?? 0;
     const scrollTop = pitchedRollScrollTop[scrollKey] ?? 0;
     const stepSpan = stepWidth + gridGap;
@@ -3711,15 +3861,13 @@ export function Composer() {
       '--piano-row-span': `calc(${rowHeight}px + ${gridGap}px)`,
       '--piano-row-count': `${notes.length}`,
       '--piano-sidebar-offset': `${bodyTopPadding + headerHeight + headerMargin}px`,
-      '--piano-sidebar-width': `${sidebarWidth}px`,
+      '--piano-sidebar-width': sidebarWidth,
     } as CSSProperties;
 
     return (
       <section
         className={`composer-roll-shell composer-roll-shell--melody is-tool-${pianoEditTool}`}
         key={`${scrollKey}-melody-like`}
-        onMouseUp={() => setPianoMarqueeOrigin(null)}
-        onMouseLeave={() => setPianoMarqueeOrigin(null)}
       >
         <div
           className={`piano-roll piano-roll--melody piano-roll--melody-detached piano-roll--${instrument}`}
@@ -3799,7 +3947,15 @@ export function Composer() {
                       loopRange && col >= loopRange.start && col <= loopRange.end
                         ? ' is-loop-active'
                         : ''
-                    }${loopRange?.end === col ? ' is-loop-end' : ''}`}
+                    }${loopRange?.end === col ? ' is-loop-end' : ''}${
+                      currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]?.mine === false
+                        ? ' is-locked'
+                        : ''
+                    }`}
+                    style={{
+                      '--collab-member-color':
+                        currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]?.color,
+                    } as CSSProperties}
                     onClick={() => handleStepLoopSelect(col)}
                     aria-label={`${col + 1}번 위치까지 반복`}
                     title={`${col + 1}번 위치까지 반복`}
@@ -3905,21 +4061,19 @@ export function Composer() {
                       const isNoteStart = Boolean(noteInfo && noteInfo.start === col);
                       const isNoteTail = Boolean(noteInfo && noteInfo.start !== col);
                       const active = noteInfo ? isNoteStart : grid[row]?.[col];
-                      const hasNote = Boolean(active || isNoteTail);
+                      const collabNoteColor = active
+                        ? collabNoteColors[
+                            getCollabNoteColorKey(instrument, row, col, options.noteColorTrackId)
+                          ]
+                        : undefined;
                       const isCurrent = col === currentStep;
-                      const isSelected = Boolean(
-                        pianoSelection &&
-                          pianoSelection.scrollKey === scrollKey &&
-                          row >= Math.min(pianoSelection.startRow, pianoSelection.endRow) &&
-                          row <= Math.max(pianoSelection.startRow, pianoSelection.endRow) &&
-                          col >= Math.min(pianoSelection.startCol, pianoSelection.endCol) &&
-                          col <= Math.max(pianoSelection.startCol, pianoSelection.endCol)
-                      );
                       const lock = currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)];
                       const isLocked = Boolean(lock && !lock.mine);
                       const cellStyle = {
                         '--cell-accent': colors[row % colors.length],
                         '--note-span-steps': `${noteInfo?.length ?? 1}`,
+                        '--collab-member-color': lock?.color,
+                        '--collab-note-color': collabNoteColor,
                         left: `${col * stepSpan}px`,
                         top: `${row * rowSpan}px`,
                         width: `${stepWidth}px`,
@@ -3937,63 +4091,11 @@ export function Composer() {
                             isNoteTail ? ' is-note-tail' : ''
                           }${
                             isLocked ? ' is-locked' : ''
-                          }${collabId && !canSyncCollab ? ' is-readonly' : ''}${
-                            isSelected ? ' is-tool-selected' : ''
-                          }`}
+                          }${collabNoteColor ? ' is-collab-authored' : ''}${collabId && !canSyncCollab ? ' is-readonly' : ''}`}
                           style={cellStyle}
                           disabled={isLocked || Boolean(collabId && !canSyncCollab)}
-                          onMouseDown={(event) => {
-                            if (pianoEditTool === 'zoom') {
-                              changePianoZoom(event.shiftKey ? -1 : 1);
-                              return;
-                            }
-
-                            if (pianoEditTool === 'select') {
-                              setPianoSelection({
-                                scrollKey,
-                                startRow: row,
-                                endRow: row,
-                                startCol: noteInfo?.start ?? col,
-                                endCol: noteInfo ? noteInfo.start + noteInfo.length - 1 : col,
-                              });
-                              return;
-                            }
-
-                            if (pianoEditTool === 'marquee') {
-                              setPianoMarqueeOrigin({ scrollKey, row, col });
-                              setPianoSelection({
-                                scrollKey,
-                                startRow: row,
-                                endRow: row,
-                                startCol: col,
-                                endCol: col,
-                              });
-                              return;
-                            }
-
-                            if (pianoEditTool === 'pencil' && hasNote) return;
-                            if (pianoEditTool === 'eraser' && !hasNote) return;
-                            if (hasNote) {
-                              setPianoSelection(null);
-                              setPianoMarqueeOrigin(null);
-                            }
+                          onMouseDown={() => {
                             void onToggle(row, noteInfo?.start ?? col, noteLengthSteps);
-                          }}
-                          onMouseMove={() => {
-                            if (
-                              pianoEditTool !== 'marquee' ||
-                              !pianoMarqueeOrigin ||
-                              pianoMarqueeOrigin.scrollKey !== scrollKey
-                            ) {
-                              return;
-                            }
-                            setPianoSelection({
-                              scrollKey,
-                              startRow: pianoMarqueeOrigin.row,
-                              endRow: row,
-                              startCol: pianoMarqueeOrigin.col,
-                              endCol: col,
-                            });
                           }}
                           onDragOver={onChordDrop ? (event) => event.preventDefault() : undefined}
                           onDrop={
@@ -4088,6 +4190,11 @@ export function Composer() {
                       const active = track.grid[row]?.[col];
                       const lock = currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)];
                       const isLocked = Boolean(lock && !lock.mine);
+                      const collabNoteColor = active
+                        ? collabNoteColors[
+                            getCollabNoteColorKey(track.instrument, row, col, track.id)
+                          ]
+                        : undefined;
 
                       return (
                         <button
@@ -4098,7 +4205,8 @@ export function Composer() {
                             active ? ' is-active' : ''
                           }${col === currentStep ? ' is-current' : ''}${getSubdivisionClassName(
                             col
-                          )}${lock?.mine ? ' is-own-locked' : isLocked ? ' is-locked' : ''}`}
+                          )}${collabNoteColor ? ' is-collab-authored' : ''}${lock?.mine ? ' is-own-locked' : isLocked ? ' is-locked' : ''}`}
+                          style={{ '--collab-note-color': collabNoteColor } as CSSProperties}
                           onClick={() => {
                             void handleExtraTrackCellToggle(track, row, col);
                           }}
@@ -4121,6 +4229,11 @@ export function Composer() {
       className={`composer-page composer-page--${activeTab}${
         isGuideOpen ? ' composer-page--guide-open' : ''
       }${isHelpOverlayEnabled ? ' is-help-enabled' : ''}${isPlaying ? ' is-playing' : ''}`}
+      style={{
+        '--arrangement-panel-height': `${
+          52 + Math.min(arrangementVisibleTracks.length, 7) * 58
+        }px`,
+      } as CSSProperties}
     >
       <SiteHeader activeSection="composer" />
       <input
@@ -4130,6 +4243,22 @@ export function Composer() {
         hidden
         onChange={handleSelectVideoOverlay}
       />
+
+      <footer
+        ref={footerRef}
+        className={`composer-footer composer-footer--top${getGuideHighlightClass('transport')}`}
+      >
+        <TransportBar
+          songTitle={
+            loadedLibraryProject?.title ?? collabProject?.title ?? notepadDraft.title
+          }
+          onSongTitleChange={(title) =>
+            setNotepadDraft((current) => ({ ...current, title }))
+          }
+          workMode={collabId ? 'collab' : 'personal'}
+          onPlayStarted={() => setPlayedTutorialOnce(true)}
+        />
+      </footer>
 
       <div className="composer-workbar">
         <div className="composer-project-meta" aria-label="작곡 도움말">
@@ -4376,56 +4505,6 @@ export function Composer() {
         </aside>
       ) : null}
 
-      {collabId ? (
-        <section className={`composer-collab-banner is-${connectionStatus}`}>
-          <div className="composer-collab-copy">
-            <strong>{collabProject?.title ?? '작업 프로젝트 불러오는 중'}</strong>
-            <span>{collabStatusLabel}</span>
-          </div>
-
-          <div className="composer-collab-side">
-            <div className="composer-collab-actions">
-            <span className="composer-collab-chip">
-              {canSyncCollab ? '공동 편집' : '읽기 전용'}
-            </span>
-            {activeEditorsLabel ? (
-              <span className="composer-collab-chip">{activeEditorsLabel}</span>
-            ) : null}
-            {visibleComposerLocks.map((lock) => (
-              <span
-                key={`${lock.instrument}-${lock.barIndex}-${lock.sessionId}`}
-                className="composer-collab-chip composer-collab-chip--lock"
-              >
-                {lock.name} - {composerInstrumentLabels[lock.instrument]} {lock.barIndex + 1}마디
-              </span>
-            ))}
-            {conflictNotice ? (
-              <span className="composer-collab-chip composer-collab-chip--warning">
-                {conflictNotice}
-              </span>
-            ) : null}
-            <button
-              type="button"
-              className="composer-collab-button"
-              onClick={() => navigate(collabProject ? `/collab/${collabProject.id}` : '/collab')}
-            >
-              작업방으로
-            </button>
-          </div>
-            {recentComposerHistory.length ? (
-              <div className="composer-collab-history">
-                {recentComposerHistory.map((entry) => (
-                  <span key={entry.id} className="composer-collab-history-item">
-                    <strong>{entry.authorName}</strong>
-                    <span>{entry.summary}</span>
-                  </span>
-                ))}
-              </div>
-            ) : null}
-          </div>
-        </section>
-      ) : null}
-
       <aside
         className={`composer-notepad${isNotepadOpen ? ' is-open' : ' is-collapsed'}`}
         aria-label="가사와 메모"
@@ -4512,13 +4591,184 @@ export function Composer() {
       </aside>
 
       <div
-        className={`composer-studio-layout${isArrangementCollapsed ? ' is-arrangement-collapsed' : ''}`}
+        className={`composer-studio-layout${isArrangementCollapsed ? ' is-arrangement-collapsed' : ''}${
+          collabId ? ' is-collab' : ''
+        }`}
         style={{
           ['--arrangement-panel-height' as string]: `${
             52 + Math.min(arrangementVisibleTracks.length, 7) * 58
           }px`,
         }}
       >
+        {collabId ? (
+          <>
+            <button
+              type="button"
+              className={`composer-collab-edge-button${isCollabPanelOpen ? ' is-open' : ''}`}
+              onClick={() => setIsCollabPanelOpen((current) => !current)}
+              aria-label={isCollabPanelOpen ? '협업 패널 닫기' : '협업 패널 열기'}
+              aria-expanded={isCollabPanelOpen}
+              title="협업 패널"
+            >
+              {isCollabPanelOpen ? '›' : '‹'}
+            </button>
+
+            <aside
+              className={`composer-collab-drawer${isCollabPanelOpen ? ' is-open' : ''}`}
+              aria-label="협업 도구"
+              aria-hidden={!isCollabPanelOpen}
+            >
+              <header className="composer-collab-drawer-head">
+                <div>
+                  <strong>협업</strong>
+                  <span className={`is-${connectionStatus}`}>{collabStatusLabel}</span>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => navigate(collabProject ? `/collab/${collabProject.id}` : '/collab')}
+                >
+                  작업방
+                </button>
+              </header>
+
+              <div className="composer-collab-drawer-tabs" role="tablist" aria-label="협업 패널 메뉴">
+                {([
+                  ['activity', '로그'],
+                  ['members', '팀원'],
+                  ['chat', '채팅'],
+                ] as const).map(([tab, label]) => (
+                  <button
+                    key={tab}
+                    type="button"
+                    className={collabPanelTab === tab ? 'is-active' : ''}
+                    onClick={() => setCollabPanelTab(tab)}
+                    role="tab"
+                    aria-selected={collabPanelTab === tab}
+                  >
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {collabPanelTab === 'activity' ? (
+                <div className="composer-collab-drawer-body composer-collab-log-list">
+                  {conflictNotice ? <p className="composer-collab-drawer-alert">{conflictNotice}</p> : null}
+                  {visibleComposerLocks.map((lock) => {
+                    const memberColor = lock.color || '#94a3b8';
+                    return (
+                      <article key={`${lock.instrument}-${lock.barIndex}-${lock.sessionId}`}>
+                        <i style={{ background: memberColor }} />
+                        <div>
+                          <strong>{lock.name}</strong>
+                          <p>{composerInstrumentLabels[lock.instrument]} {lock.barIndex + 1}마디 편집 중</p>
+                        </div>
+                        <time>현재</time>
+                      </article>
+                    );
+                  })}
+                  {recentComposerHistory.map((entry) => {
+                    const memberColor = entry.authorColor || '#94a3b8';
+                    return (
+                      <article key={entry.id}>
+                        <i style={{ background: memberColor }} />
+                        <div>
+                          <strong>{entry.authorName}</strong>
+                          <p>{entry.summary}</p>
+                        </div>
+                        <time>{new Date(entry.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time>
+                      </article>
+                    );
+                  })}
+                  {!visibleComposerLocks.length && !recentComposerHistory.length ? (
+                    <p className="composer-collab-drawer-empty">아직 기록된 작업이 없습니다.</p>
+                  ) : null}
+                </div>
+              ) : null}
+
+              {collabPanelTab === 'members' ? (
+                <div className="composer-collab-drawer-body composer-collab-member-list">
+                  {(collabProject?.members ?? []).map((member) => {
+                    const isCurrentUser = member.email === user?.email;
+                    const memberColor = isCurrentUser
+                      ? COLLAB_SESSION_COLOR.accent
+                      : collabPresenceColors.get(member.email) || '#94a3b8';
+                    return (
+                      <article key={member.email}>
+                        <span className="composer-collab-member-swatch" style={{ background: memberColor }} />
+                        <div>
+                          <strong>{member.name}{isCurrentUser ? ' (나)' : ''}</strong>
+                          <small>{member.role === 'owner' ? '방장' : member.role === 'viewer' ? '읽기 전용' : '편집자'}</small>
+                        </div>
+                        <span className={`composer-collab-presence${collabPresenceEmails.has(member.email) ? ' is-online' : ''}`}>
+                          {collabPresenceEmails.has(member.email) ? '접속 중' : '오프라인'}
+                        </span>
+                      </article>
+                    );
+                  })}
+                </div>
+              ) : null}
+
+              {collabPanelTab === 'chat' ? (
+                <div className="composer-collab-chat">
+                  <div className="composer-collab-drawer-body composer-collab-chat-list">
+                    {projectCollabMessages.map((message) => {
+                      const memberColor = message.authorColor || '#64748b';
+                      return (
+                        <article key={message.id} className={message.authorEmail === user?.email ? 'is-mine' : ''}>
+                          <div>
+                            <strong style={{ color: memberColor }}>{message.authorName}</strong>
+                            <time>{new Date(message.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time>
+                          </div>
+                          <p>{message.content}</p>
+                        </article>
+                      );
+                    })}
+                    {!projectCollabMessages.length ? (
+                      <p className="composer-collab-drawer-empty">아직 메시지가 없습니다.</p>
+                    ) : null}
+                  </div>
+                  <div className="composer-collab-chat-form">
+                    {collabMessageError ? <span>{collabMessageError}</span> : null}
+                    <div>
+                      <textarea
+                        value={collabMessageDraft}
+                        onChange={(event) => setCollabMessageDraft(event.target.value)}
+                        onKeyDown={(event) => {
+                          if (event.key === 'Enter' && !event.shiftKey) {
+                            event.preventDefault();
+                            void handleSendCollabMessage();
+                          }
+                        }}
+                        placeholder={canSyncCollab ? '메시지를 입력하세요.' : '읽기 전용입니다.'}
+                        rows={1}
+                        disabled={!canSyncCollab || isSendingCollabMessage}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => void handleSendCollabMessage()}
+                        disabled={!canSyncCollab || !collabMessageDraft.trim() || isSendingCollabMessage}
+                        aria-label="메시지 보내기"
+                      >
+                        {isSendingCollabMessage ? '전송 중' : '전송'}
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              ) : null}
+            </aside>
+          </>
+        ) : null}
+
+        <button
+          type="button"
+          className={`composer-lyrics-edge-button${isLyricsWorkspaceOpen ? ' is-open' : ''}`}
+          onClick={() => setIsLyricsWorkspaceOpen((current) => !current)}
+          aria-label={isLyricsWorkspaceOpen ? '가사 메모 닫기' : '가사 메모 열기'}
+          aria-expanded={isLyricsWorkspaceOpen}
+          title="가사 메모"
+        >
+          {isLyricsWorkspaceOpen ? '›' : '‹'}
+        </button>
         <aside className="composer-track-panel" aria-label="트랙 목록">
           <div className="composer-track-panel-head">
             <strong>트랙 ({arrangementVisibleTracks.length})</strong>
@@ -4555,12 +4805,11 @@ export function Composer() {
               arrangementVisibleTracks.length > 7 ? ' has-overflow' : ''
             }`}
           >
-            {arrangementVisibleTracks.map((track, index) => {
+            {arrangementVisibleTracks.map((track) => {
               const isActive =
                 activeTab === track.tab &&
                 (track.trackId ? activeTrackId === track.trackId : !activeTrackId);
               const isMuted = mutedArrangementTracks.has(track.id);
-              const isSolo = soloArrangementTrack === track.id;
               const trackVolume = track.trackId
                 ? extraTracks.find((item) => item.id === track.trackId)?.volume ?? 80
                 : volumes[track.tab as InstrumentKey] ?? 80;
@@ -4572,59 +4821,77 @@ export function Composer() {
                     isMuted ? ' is-muted' : ''
                   }`}
                 >
-                  <button
-                    type="button"
-                    className="composer-track-select"
-                    onClick={() => handleArrangementTrackSelect(track)}
-                    aria-pressed={isActive}
-                  >
-                    <span className="composer-track-number">{index + 1}</span>
-                    <span
-                      className={`composer-track-icon${isMuted ? ' is-muted' : ''}`}
-                      aria-hidden="true"
-                    >
-                      {track.icon}
-                    </span>
-                    <span className="composer-track-name">{track.label}</span>
-                  </button>
-                  <div className="composer-track-toggles">
+                  <div className="composer-track-main">
                     <button
                       type="button"
-                      className={isMuted ? 'is-active' : ''}
-                      onClick={() => handleArrangementMute(track)}
-                      aria-pressed={isMuted}
-                      aria-label={
-                        isMuted
-                          ? `${track.label} 음소거 해제. 이 트랙의 소리를 다시 켭니다.`
-                          : `${track.label} 음소거. 이 트랙의 소리만 끕니다.`
-                      }
-                      title={
-                        isMuted
-                          ? `${track.label} 음소거 해제 (M) · 이 트랙의 소리를 다시 켭니다.`
-                          : `${track.label} 음소거 (M) · 이 트랙의 소리만 끕니다.`
-                      }
-                      disabled={Boolean(soloArrangementTrack)}
+                      className="composer-track-select"
+                      onClick={() => handleArrangementTrackSelect(track)}
+                      aria-pressed={isActive}
+                      aria-label={`${track.label} 트랙 선택`}
                     >
-                      M
+                      <span
+                        className={`composer-track-icon${isMuted ? ' is-muted' : ''}`}
+                        aria-hidden="true"
+                      >
+                        <span className="composer-track-icon-glyph is-emoji">
+                          {track.icon}
+                        </span>
+                      </span>
                     </button>
-                    <button
-                      type="button"
-                      className={isSolo ? 'is-active' : ''}
-                      onClick={() => handleArrangementSolo(track)}
-                      aria-pressed={isSolo}
-                      aria-label={
-                        isSolo
-                          ? `${track.label} 솔로 해제. 모든 트랙을 원래 소리로 되돌립니다.`
-                          : `${track.label} 솔로 재생. 다른 트랙을 끄고 이 트랙만 듣습니다.`
-                      }
-                      title={
-                        isSolo
-                          ? `${track.label} 솔로 해제 (S) · 모든 트랙을 원래 소리로 되돌립니다.`
-                          : `${track.label} 솔로 재생 (S) · 다른 트랙을 끄고 이 트랙만 듣습니다.`
-                      }
+                    <div className="composer-track-details">
+                      <div className="composer-track-heading">
+                        <button
+                          type="button"
+                          className="composer-track-name-button"
+                          onClick={() => handleArrangementTrackSelect(track)}
+                          aria-pressed={isActive}
+                        >
+                          <span className="composer-track-name">{track.label}</span>
+                        </button>
+                        <div className="composer-track-toggles">
+                          <button
+                            type="button"
+                            className={isMuted ? 'is-active' : ''}
+                            onClick={() => handleArrangementMute(track)}
+                            aria-pressed={isMuted}
+                            aria-label={
+                              isMuted
+                                ? `${track.label} 음소거 해제. 이 트랙의 소리를 다시 켭니다.`
+                                : `${track.label} 음소거. 이 트랙의 소리만 끕니다.`
+                            }
+                            title={
+                              isMuted
+                                ? `${track.label} 음소거 해제 (M) · 이 트랙의 소리를 다시 켭니다.`
+                                : `${track.label} 음소거 (M) · 이 트랙의 소리만 끕니다.`
+                            }
+                          >
+                            M
+                          </button>
+                          <span
+                            className="composer-track-sound-icon"
+                            aria-hidden="true"
+                            title={isMuted || trackVolume === 0 ? '음소거됨' : '소리 켜짐'}
+                          >
+                            {isMuted || trackVolume === 0 ? '🔇' : '🔊'}
+                          </span>
+                        </div>
+                      </div>
+                    <label
+                      className="composer-track-inline-volume"
+                      style={{ ['--track-volume' as string]: `${trackVolume}%` }}
                     >
-                      S
-                    </button>
+                      <span className="sr-only">{`${track.label} 볼륨`}</span>
+                      <input
+                        type="range"
+                        min="0"
+                        max="100"
+                        value={trackVolume}
+                        onChange={(event) =>
+                          handleArrangementVolumeChange(track, Number(event.target.value))
+                        }
+                      />
+                    </label>
+                    </div>
                   </div>
                   <button
                     type="button"
@@ -4641,21 +4908,6 @@ export function Composer() {
                   </button>
                   {openTrackMenuId === (track.key ?? track.id) ? (
                     <div className="composer-track-context-menu" role="menu" aria-label={`${track.label} 작업`}>
-                      <div className="composer-track-volume-control">
-                        <span>
-                          볼륨 <strong>{trackVolume}</strong>
-                        </span>
-                        <input
-                          type="range"
-                          min="0"
-                          max="100"
-                          value={trackVolume}
-                          aria-label={`${track.label} 볼륨`}
-                          onChange={(event) =>
-                            handleArrangementVolumeChange(track, Number(event.target.value))
-                          }
-                        />
-                      </div>
                       <button
                         type="button"
                         onClick={() => {
@@ -4685,7 +4937,7 @@ export function Composer() {
             aria-label="편곡 타임라인"
             style={
               {
-                '--arrangement-label-count': `${arrangementTimelineBars.length}`,
+                '--arrangement-label-count': `${arrangementBarCount}`,
                 '--arrangement-major-span': `${Math.min(100, (4 / arrangementBarCount) * 100)}%`,
                 '--arrangement-minor-span': `${100 / arrangementBarCount}%`,
               } as CSSProperties
@@ -4702,7 +4954,13 @@ export function Composer() {
               }}
             >
               {arrangementTimelineBars.map((bar) => (
-                <button key={bar} type="button">
+                <button
+                  key={bar}
+                  type="button"
+                  style={{
+                    gridColumn: `${bar} / span ${Math.min(4, arrangementBarCount - bar + 1)}`,
+                  }}
+                >
                   {bar}
                 </button>
               ))}
@@ -4712,15 +4970,15 @@ export function Composer() {
                   aria-label="전체 화면"
                   title="전체 화면"
                   onClick={() => {
-                    const stage = document.querySelector<HTMLElement>('.composer-arrangement-stage');
-                    if (!stage) return;
+                    const page = document.querySelector<HTMLElement>('.composer-page');
+                    if (!page) return;
 
                     if (document.fullscreenElement) {
                       void document.exitFullscreen();
                       return;
                     }
 
-                    void stage.requestFullscreen();
+                    void page.requestFullscreen();
                   }}
                 >
                   ⛶
@@ -4733,13 +4991,13 @@ export function Composer() {
                 ['--arrangement-track-count' as string]: `${arrangementVisibleTracks.length}`,
               }}
             >
-              {arrangementVisibleTracks.map((track, index) => {
+              {arrangementVisibleTracks.map((track) => {
                 const trackKey = track.key ?? track.id;
-                const renderClip = (section: 'first' | 'second', clipNumber: number) => {
-                  const clipKey = `${trackKey}-${section}`;
+                const renderClip = () => {
+                  const clipKey = `${trackKey}-full`;
                   const layout =
                     arrangementClipLayouts[clipKey] ??
-                    getDefaultArrangementClipLayout(index, section);
+                    getDefaultArrangementClipLayout();
                   const trackData = getArrangementTrackData(track);
                   const preview = buildArrangementClipPreview(
                     trackData.grid,
@@ -4772,7 +5030,7 @@ export function Composer() {
                         const { bar } = lane
                           ? handleArrangementPointerSelect(event.clientX, lane)
                           : handleArrangementProgressSelect(layout.start);
-                        showPianoToolFeedback(`${track.label} ${String(clipNumber).padStart(2, '0')} · ${bar}마디`);
+                        showPianoToolFeedback(`${track.label} · ${bar}마디`);
                       }}
                       onDragStart={(event) => {
                         const lane = event.currentTarget.closest<HTMLElement>('.composer-arrangement-lane');
@@ -4791,22 +5049,6 @@ export function Composer() {
                       }}
                       onDragEnd={() => setDraggingArrangementClip(null)}
                     >
-                      <span
-                        className="composer-clip-resize is-start"
-                        onPointerDown={(event) =>
-                          handleArrangementClipResizeStart(event, clipKey, layout, 'start')
-                        }
-                        aria-hidden="true"
-                      />
-                      <strong>{track.label} {String(clipNumber).padStart(2, '0')}</strong>
-                      <span className="composer-clip-activity" aria-hidden="true">
-                        {preview.activityRanges.map((range, rangeIndex) => (
-                          <span
-                            key={`${clipKey}-activity-${rangeIndex}`}
-                            style={{ left: `${range.start}%`, width: `${range.width}%` }}
-                          />
-                        ))}
-                      </span>
                       <svg
                         className="composer-clip-pitch-line"
                         viewBox="0 0 100 24"
@@ -4821,13 +5063,6 @@ export function Composer() {
                           />
                         ))}
                       </svg>
-                      <span
-                        className="composer-clip-resize is-end"
-                        onPointerDown={(event) =>
-                          handleArrangementClipResizeStart(event, clipKey, layout, 'end')
-                        }
-                        aria-hidden="true"
-                      />
                     </button>
                   );
                 };
@@ -4850,8 +5085,7 @@ export function Composer() {
                       setSelectedArrangementClip(null);
                     }}
                   >
-                    {renderClip('first', 1)}
-                    {renderClip('second', 2)}
+                    {renderClip()}
                   </div>
                 );
               })}
@@ -4896,7 +5130,9 @@ export function Composer() {
             ) : null}
             <div className="composer-detail-tabs">
               <button type="button" className="is-active">
-                {(activeExtraTrack
+                {!activeExtraTrack && activeTab === 'lyrics'
+                  ? '작사'
+                  : (activeExtraTrack
                   ? activeExtraTrack.instrument === 'drums'
                   : activeTab === 'drums')
                   ? '드럼 패드'
@@ -4905,42 +5141,8 @@ export function Composer() {
             </div>
             {(activeExtraTrack
               ? activeExtraTrack.instrument !== 'drums'
-              : activeTab !== 'drums') ? (
+              : activeTab !== 'drums' && activeTab !== 'lyrics') ? (
               <div className="composer-detail-tools" aria-label="피아노롤 편집 도구">
-                <div className="composer-edit-tool-group">
-                  <button
-                    type="button"
-                    className={pianoEditTool === 'select' ? 'is-active' : ''}
-                    aria-label="선택 도구"
-                    aria-pressed={pianoEditTool === 'select'}
-                    title="선택"
-                    onClick={() => selectPianoEditTool('select', '선택 도구')}
-                  >↖</button>
-                  <button
-                    type="button"
-                    className={pianoEditTool === 'pencil' ? 'is-active' : ''}
-                    aria-label="연필 도구"
-                    aria-pressed={pianoEditTool === 'pencil'}
-                    title="노트 그리기"
-                    onClick={() => selectPianoEditTool('pencil', '노트 그리기')}
-                  >✎</button>
-                  <button
-                    type="button"
-                    className={pianoEditTool === 'eraser' ? 'is-active' : ''}
-                    aria-label="지우개 도구"
-                    aria-pressed={pianoEditTool === 'eraser'}
-                    title="노트 지우기"
-                    onClick={() => selectPianoEditTool('eraser', '노트 지우기')}
-                  >◇</button>
-                  <button
-                    type="button"
-                    className={pianoEditTool === 'zoom' ? 'is-active' : ''}
-                    aria-label="확대 도구"
-                    aria-pressed={pianoEditTool === 'zoom'}
-                    title="확대 (Shift+클릭: 축소)"
-                    onClick={() => selectPianoEditTool('zoom', '확대 도구 · Shift+클릭 시 축소')}
-                  >⌕</button>
-                </div>
                 <div className="composer-note-zoom">
                   <button
                     type="button"
@@ -4992,6 +5194,7 @@ export function Composer() {
               (chord, col) => handleExtraTrackChordDrop(activeExtraTrack, chord, col),
               {
                 scrollKey: activeExtraTrack.id,
+                noteColorTrackId: activeExtraTrack.id,
                 melodyLengths: activeExtraTrack.melodyLengths,
                 noteLengthSteps: extraTrackNoteLengths[activeExtraTrack.id] ?? 4,
                 onNoteLengthChange: (lengthSteps) =>
@@ -5025,6 +5228,7 @@ export function Composer() {
               <PianoRoll
                 editTool={pianoEditTool}
                 stepWidth={Math.round(64 * pianoZoom)}
+                sidebarWidth="var(--composer-track-panel-width)"
                 noteLengthSteps={primaryTrackNoteLengths.melody}
                 onNoteLengthChange={(stepsValue) =>
                   setPrimaryTrackNoteLengths((current) => ({
@@ -5036,6 +5240,7 @@ export function Composer() {
                 loopRange={loopRange}
                 onStepHeaderSelect={handleStepLoopSelect}
                 collabBarLocks={currentTabLockMap}
+                collabNoteColors={collabNoteColors}
                 canEditCollab={!collabId || canSyncCollab}
                 requestCollabBarLock={requestComposerBarLock}
                 releaseCollabBarLock={releaseComposerBarLock}
@@ -5051,65 +5256,119 @@ export function Composer() {
         )}
 
         {activeTab === 'lyrics' && isActivePrimaryTabOpen && (
-          <section className="composer-lyrics-tab-panel">
+          <section className="composer-lyrics-tab-panel composer-lyrics-tab-panel--workspace">
             <div className="composer-lyrics-tab-head">
-              <span>LYRICS</span>
               <strong>작사</strong>
-              <p>멜로디에 찍힌 음 순서대로 가사를 붙일 수 있습니다.</p>
+              <p>가사를 입력하고 마디 단위로 정리해보세요.</p>
             </div>
 
-            <div className="composer-lyrics-view-tabs">
-              {[
-                ['notes', '음별 입력'],
-                ['full', '전체 가사'],
-              ].map(([mode, label]) => (
-                <button
-                  key={mode}
-                  type="button"
-                  className={lyricsViewMode === mode ? 'is-active' : ''}
-                  onClick={() => setLyricsViewMode(mode as LyricsViewMode)}
-                >
-                  {label}
-                </button>
-              ))}
+            <div className="composer-lyrics-workspace-grid">
+              <section className="composer-lyrics-input-panel">
+                <div className="composer-lyrics-section-title">
+                  <strong>가사 입력</strong>
+                </div>
+                <textarea
+                  value={lyricsText}
+                  onChange={(event) => setBarLyrics(getLyricsBarLines(event.target.value))}
+                  placeholder="가사를 입력하세요. 줄바꿈마다 한 마디로 정리됩니다."
+                  aria-label="가사 입력"
+                />
+                <div className="composer-lyrics-input-actions">
+                  <button type="button" className="is-primary" onClick={handleDistributeLyrics}>
+                    마디별 자동 분배
+                  </button>
+                  <button type="button" onClick={handleFillEmptyLyricsBars}>빈 마디 채우기</button>
+                  <button type="button" onClick={handleUndoLyrics} disabled={!lyricsHistory.length}>
+                    되돌리기
+                  </button>
+                </div>
+                <div className="composer-lyrics-start-bar">
+                  <strong>시작 마디</strong>
+                  <div>
+                    <button
+                      type="button"
+                      onClick={() => setLyricsStartBar(Math.max(1, lyricsStartBar - 1))}
+                      aria-label="시작 마디 줄이기"
+                    >
+                      ‹
+                    </button>
+                    <span>{lyricsStartBar}마디</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        setLyricsStartBar(Math.min(arrangementBarCount, lyricsStartBar + 1))
+                      }
+                      aria-label="시작 마디 늘리기"
+                    >
+                      ›
+                    </button>
+                  </div>
+                </div>
+              </section>
+
+              <section className="composer-lyrics-bars-panel">
+                <div className="composer-lyrics-bars-head">
+                  <div>
+                    <strong>마디별 가사 구성</strong>
+                    <p>각 마디를 수정하거나 순서를 변경할 수 있어요.</p>
+                  </div>
+                  <div className="composer-lyrics-bars-actions">
+                    <span>선택한 마디</span>
+                    <button
+                      type="button"
+                      onClick={() =>
+                        void navigator.clipboard?.writeText(
+                          lyricsBarLines[selectedLyricsBar] ?? ''
+                        )
+                      }
+                    >
+                      복사
+                    </button>
+                    <button type="button" onClick={handleClearSelectedLyricsBar}>비우기</button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveSelectedLyricsBar(-1)}
+                      disabled={selectedLyricsBar === 0}
+                    >
+                      뒤로 이동
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleMoveSelectedLyricsBar(1)}
+                      disabled={selectedLyricsBar >= lyricsBarLines.length - 1}
+                    >
+                      앞으로 이동
+                    </button>
+                  </div>
+                </div>
+                <div className="composer-lyrics-bars-list">
+                  {lyricsBarLines.map((line, index) => (
+                    <label
+                      key={`${lyricsStartBar}-${index}`}
+                      className={`composer-lyrics-bar-row${
+                        selectedLyricsBar === index ? ' is-selected' : ''
+                      }`}
+                    >
+                      <strong>{lyricsStartBar + index}마디</strong>
+                      <input
+                        value={line}
+                        onFocus={() => handleSelectLyricsBar(index)}
+                        onChange={(event) => handleLyricsBarChange(index, event.target.value)}
+                        aria-label={`${lyricsStartBar + index}마디 가사`}
+                      />
+                      <button
+                        type="button"
+                        onClick={() => handleGoToLyricsBar(index)}
+                        aria-label={`${lyricsStartBar + index}마디로 이동`}
+                        title="해당 마디로 이동"
+                      >
+                        →
+                      </button>
+                    </label>
+                  ))}
+                </div>
+              </section>
             </div>
-
-            {melodyLyricNotes.length && lyricsViewMode === 'notes' ? (
-              <div className="composer-lyrics-note-list">
-                {melodyLyricNotes.map((item, index) => (
-                  <label key={`${item.row}-${item.col}`} className="composer-lyrics-note-row">
-                    <span className="composer-lyrics-note-index">{index + 1}</span>
-                    <span className="composer-lyrics-note-meta">
-                      {item.note} · {item.col + 1} step · {item.length}칸
-                    </span>
-                    <input
-                      style={{ ['--lyrics-note-span' as string]: `${Math.max(1, item.length)}` }}
-                      value={item.lyric}
-                      onChange={(event) => setMelodyLyric(item.row, item.col, event.target.value)}
-                      placeholder="가사"
-                      maxLength={18}
-                    />
-                  </label>
-                ))}
-              </div>
-            ) : null}
-
-            {melodyLyricNotes.length && lyricsViewMode === 'full' ? (
-              <div className="composer-lyrics-full-view">
-                {melodyLyricNotes
-                  .map((item) => item.lyric)
-                  .filter(Boolean)
-                  .join(' ') || '아직 입력된 가사가 없습니다.'}
-              </div>
-            ) : null}
-
-            {!melodyLyricNotes.length ? (
-              <div className="composer-lyrics-empty">
-                멜로디 탭에서 음을 먼저 찍으면 여기에서 가사를 입력할 수 있습니다.
-              </div>
-            ) : (
-              null
-            )}
           </section>
         )}
 
@@ -5257,6 +5516,9 @@ export function Composer() {
                           {Array.from({ length: steps }).map((_, col) => {
                             const active = drums[row]?.[col];
                             const isCurrent = col === currentStep;
+                            const collabNoteColor = active
+                              ? collabNoteColors[getCollabNoteColorKey('drums', row, col)]
+                              : undefined;
 
                             return (
                               <button
@@ -5267,13 +5529,14 @@ export function Composer() {
                                   active ? ' is-active' : ''
                                 }${isCurrent ? ' is-current' : ''}${getSubdivisionClassName(
                                   col
-                                )}${getDrumTutorialCellClass(row, col)}${
+                                )}${getDrumTutorialCellClass(row, col)}${collabNoteColor ? ' is-collab-authored' : ''}${
                                   currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]?.mine
                                     ? ' is-own-locked'
                                     : currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]
                                       ? ' is-locked'
                                       : ''
                                 }`}
+                                style={{ '--collab-note-color': collabNoteColor } as CSSProperties}
                                 onClick={() => {
                                   void handleDrumCellToggle(row, col);
                                 }}
@@ -5307,6 +5570,27 @@ export function Composer() {
         </section>
       </div>
 
+      {isLyricsWorkspaceOpen ? (
+        <section className="composer-lyrics-workspace" aria-label="가사 메모">
+          <header className="composer-lyrics-workspace-head">
+            <div>
+              <h1>가사 메모</h1>
+              <p>떠오르는 가사를 자유롭게 적어두세요.</p>
+            </div>
+          </header>
+          <textarea
+            className="composer-lyrics-memo-editor"
+            value={lyricsText}
+            onChange={(event) => setBarLyrics(getLyricsBarLines(event.target.value))}
+            placeholder="가사를 메모하세요."
+            aria-label="가사 메모 입력"
+          />
+          <div className="composer-lyrics-memo-footer">
+            <span>{lyricsBarLines.filter((line) => line.trim()).length}개 마디</span>
+          </div>
+        </section>
+      ) : null}
+
       {activeHelpPanel ? (
         <div
           className={`composer-help-overlay is-${activeHelpZone}`}
@@ -5333,12 +5617,6 @@ export function Composer() {
         </div>
       ) : null}
 
-      <footer
-        ref={footerRef}
-        className={`composer-footer${getGuideHighlightClass('transport')}`}
-      >
-        <TransportBar onPlayStarted={() => setPlayedTutorialOnce(true)} />
-      </footer>
     </div>
   );
 }

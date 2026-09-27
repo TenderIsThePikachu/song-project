@@ -71,7 +71,7 @@ export const useMessageStore = create<MessageStoreState>((set) => ({
       messagesUnsubscribe = subscribeToMessagesRealtime(payload.ownerEmail, (newSnapshot) => {
         applySnapshot(payload.ownerEmail, newSnapshot);
       });
-    } catch (error) {
+    } catch {
       set({ inboxStatus: 'error', inboxError: '메시지 데이터를 불러오지 못했습니다.' });
     }
   },

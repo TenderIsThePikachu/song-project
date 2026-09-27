@@ -25,7 +25,7 @@ const NAV_ITEMS: Array<{
   label: string;
   route: string;
 }> = [
-  { key: 'composer', label: '작곡', route: '/composer' },
+  { key: 'composer', label: '작곡', route: '/composer?tab=melody' },
   { key: 'collab', label: '협업', route: '/collab' },
   { key: 'community', label: '커뮤니티', route: '/community' },
   { key: 'shorts', label: '숏폼', route: '/community/shorts' },
