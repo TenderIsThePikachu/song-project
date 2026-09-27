@@ -74,7 +74,7 @@ import {
   type ComposerTabKey,
   type MelodyInstrument,
 } from '../store/uiStore.ts';
-import { getCollabMemberColor } from '../utils/collabMemberColor.ts';
+import { getCollabMemberColor, isCollabMemberColor } from '../utils/collabMemberColor.ts';
 import './Composer.css';
 
 type ComposerTab = ComposerTabKey;
@@ -730,6 +730,7 @@ export function Composer() {
   const updateComposerSnapshot = useCollabStore((state) => state.updateComposerSnapshot);
   const applyComposerOperation = useCollabStore((state) => state.applyComposerOperation);
   const setComposerLock = useCollabStore((state) => state.setComposerLock);
+  const setCollabMemberColor = useCollabStore((state) => state.setMemberColor);
   const touchPresence = useCollabStore((state) => state.touchPresence);
   const leavePresence = useCollabStore((state) => state.leavePresence);
   const presenceByProject = useCollabStore((state) => state.presenceByProject);
@@ -825,6 +826,35 @@ export function Composer() {
   const [collabSyncTick, setCollabSyncTick] = useState(0);
   const [collabPresenceNow, setCollabPresenceNow] = useState(() => Date.now());
   const [collabSessionColor, setCollabSessionColor] = useState(COLLAB_SESSION_COLOR.accent);
+
+  useEffect(() => {
+    if (!collabId || !user || !collabMember) return;
+
+    const storageKey = `collab-member-color:${collabId}:${user.email.toLowerCase()}`;
+    const storedColor = window.localStorage.getItem(storageKey);
+    const persistentColor = isCollabMemberColor(collabMember.color)
+      ? collabMember.color
+      : isCollabMemberColor(storedColor)
+        ? storedColor
+        : getCollabMemberColor(`${collabId}:${user.email}`).accent;
+
+    setCollabSessionColor(persistentColor);
+    window.localStorage.setItem(storageKey, persistentColor);
+
+    if (collabMember.color !== persistentColor) {
+      void setCollabMemberColor(collabId, user.email, persistentColor).catch(console.error);
+    }
+  }, [collabId, collabMember, setCollabMemberColor, user]);
+
+  const handleCollabColorChange = useCallback((color: string) => {
+    setCollabSessionColor(color);
+    if (!collabId || !user) return;
+
+    const storageKey = `collab-member-color:${collabId}:${user.email.toLowerCase()}`;
+    window.localStorage.setItem(storageKey, color);
+    void setCollabMemberColor(collabId, user.email, color).catch(console.error);
+  }, [collabId, setCollabMemberColor, user]);
+
   const tutorialCompleted = Boolean(user?.email && tutorialCompletedByEmail);
   const isGuideOpen = tutorialRequested && !tutorialCompleted;
   const guideStepIndex = clampGuideStepIndex(
@@ -990,6 +1020,12 @@ export function Composer() {
   const drumShellRef = useRef<HTMLElement | null>(null);
   const bassShellRef = useRef<HTMLElement | null>(null);
   const footerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (activeTab === 'lyrics' || !mainViewportRef.current) return;
+    mainViewportRef.current.scrollTop = 0;
+  }, [activeTab, activeTrackId, collabId]);
+
   const openTabs = useMemo(() => {
     if (tutorialRequested) {
       return [...tabOrder];
@@ -1782,8 +1818,13 @@ export function Composer() {
     return '작업방 연결을 준비하고 있습니다.';
   }, [canSyncCollab, collabId, connectionError, connectionStatus]);
   const activeComposerLocks = useMemo(
-    () => (collabId ? composerLocksByProject[collabId] ?? [] : []),
-    [collabId, composerLocksByProject]
+    () =>
+      collabId
+        ? (composerLocksByProject[collabId] ?? []).filter(
+            (lock) => lock.expiresAt > collabPresenceNow
+          )
+        : [],
+    [collabId, collabPresenceNow, composerLocksByProject]
   );
   const currentTabLockMap = useMemo(() => {
     const currentCollabInstrument = getCollabInstrumentForTab(activeTab);
@@ -1804,6 +1845,16 @@ export function Composer() {
       {}
     );
   }, [activeComposerLocks, activeTab]);
+  const activeRemoteLock = useMemo(() => {
+    const lockEntry = Object.entries(currentTabLockMap).find(([, lock]) => !lock.mine);
+    if (!lockEntry) return null;
+
+    return {
+      barIndex: Number(lockEntry[0]),
+      instrument: getCollabInstrumentForTab(activeTab),
+      ...lockEntry[1],
+    };
+  }, [activeTab, currentTabLockMap]);
   const visibleComposerLocks = useMemo(
     () =>
       activeComposerLocks
@@ -1849,6 +1900,7 @@ export function Composer() {
     () =>
       (collabProject?.members ?? []).map((member) => {
         const isCurrent = member.email === user?.email;
+        const presenceColor = collabPresenceColors.get(member.email);
         const fallbackColor = getCollabMemberColor(
           `${collabProject?.id ?? collabId}:${member.joinedAt}:${member.name}`
         ).accent;
@@ -1857,7 +1909,11 @@ export function Composer() {
           name: member.name,
           color: isCurrent
             ? collabSessionColor
-            : collabPresenceColors.get(member.email) || fallbackColor,
+            : isCollabMemberColor(member.color)
+              ? member.color
+              : isCollabMemberColor(presenceColor)
+                ? presenceColor
+                : fallbackColor,
           isOnline: isCurrent || collabPresenceEmails.has(member.email),
           isCurrent,
         };
@@ -4428,7 +4484,7 @@ export function Composer() {
           workMode={collabId ? 'collab' : 'personal'}
           collabMembers={transportCollabMembers}
           collabColor={collabSessionColor}
-          onCollabColorChange={setCollabSessionColor}
+          onCollabColorChange={handleCollabColorChange}
           onPlayStarted={() => setPlayedTutorialOnce(true)}
         />
       </footer>
@@ -4773,6 +4829,15 @@ export function Composer() {
           }px`,
         }}
       >
+        {activeRemoteLock ? (
+          <div className="composer-collab-lock-notice" role="status" aria-live="polite">
+            <i style={{ background: activeRemoteLock.color }} aria-hidden="true" />
+            <strong>{activeRemoteLock.name}</strong>님이{' '}
+            {composerInstrumentLabels[activeRemoteLock.instrument]}{' '}
+            {activeRemoteLock.barIndex + 1}마디 작업 중입니다.
+          </div>
+        ) : null}
+
         {collabId ? (
           <>
             <button
@@ -4865,9 +4930,14 @@ export function Composer() {
                     const fallbackColor = getCollabMemberColor(
                       `${collabProject?.id ?? collabId}:${member.joinedAt}:${member.name}`
                     ).accent;
+                    const presenceColor = collabPresenceColors.get(member.email);
                     const memberColor = isCurrentUser
                       ? collabSessionColor
-                      : collabPresenceColors.get(member.email) || fallbackColor;
+                      : isCollabMemberColor(member.color)
+                        ? member.color
+                        : isCollabMemberColor(presenceColor)
+                          ? presenceColor
+                          : fallbackColor;
                     return (
                       <article key={member.email}>
                         <span

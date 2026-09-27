@@ -234,7 +234,11 @@ export default function MessagesPage() {
     }
 
     return [...threads]
-      .filter((thread) => thread.ownerEmail === user.email)
+      .filter(
+        (thread) =>
+          thread.ownerEmail === user.email ||
+          (thread.members ?? []).some((member) => member.email === user.email)
+      )
       .sort((left, right) => right.lastMessageAt - left.lastMessageAt);
   }, [threads, user]);
 
@@ -310,6 +314,8 @@ export default function MessagesPage() {
     );
 
     setActiveSection('messages');
+    setSearchQuery('');
+    setFormError('');
 
     if (existingThread) {
       setSelectedThreadId(existingThread.id);

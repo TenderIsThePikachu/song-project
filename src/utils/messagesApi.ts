@@ -9,6 +9,20 @@ export type MessageSnapshot = {
   messagesByThread: Record<string, DirectMessage[]>;
 };
 
+function normalizeThreadForViewer(thread: MessageThread, viewerEmail: string): MessageThread {
+  if (thread.type !== 'direct') return thread;
+
+  const otherMember = thread.members?.find((member) => member.email !== viewerEmail);
+  if (!otherMember) return thread;
+
+  return {
+    ...thread,
+    title: otherMember.name,
+    participantName: otherMember.name,
+    participantEmail: otherMember.email,
+  };
+}
+
 // ============================================================================
 // 🔥 파이어베이스 실시간 채팅 & 친구 API
 // ============================================================================
@@ -22,7 +36,12 @@ export async function fetchMessagesBootstrap(payload: { ownerEmail: string; owne
   
   // 2. 내가 속한 채팅방 가져오기
   const threadsSnap = await getDocs(query(collection(db, 'messages_threads'), where('memberEmails', 'array-contains', payload.ownerEmail)));
-  snap.threads = threadsSnap.docs.map(d => ({ id: d.id, ...d.data() } as MessageThread));
+  snap.threads = threadsSnap.docs.map((document) =>
+    normalizeThreadForViewer(
+      { id: document.id, ...document.data() } as MessageThread,
+      payload.ownerEmail
+    )
+  );
   
   // 3. 채팅방별 메시지 가져오기
   for (const t of snap.threads) {
@@ -176,7 +195,12 @@ export function subscribeToMessagesRealtime(ownerEmail: string, onUpdate: (snaps
 
   // 채팅방 및 메시지 실시간 구독
   const unsubThreads = onSnapshot(query(collection(db, 'messages_threads'), where('memberEmails', 'array-contains', ownerEmail)), (snap) => {
-    const threads = snap.docs.map(d => ({ id: d.id, ...d.data() } as MessageThread));
+    const threads = snap.docs.map((document) =>
+      normalizeThreadForViewer(
+        { id: document.id, ...document.data() } as MessageThread,
+        ownerEmail
+      )
+    );
     state.threads = threads;
     messageUnsubscribers.forEach(unsub => unsub());
     messageUnsubscribers = [];

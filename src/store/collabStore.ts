@@ -28,7 +28,7 @@ export type CollabStatus = 'planning' | 'working' | 'feedback';
 export type CollabRole = 'owner' | 'editor' | 'viewer';
 export type CollabConnectionStatus = 'idle' | 'connecting' | 'connected' | 'error';
 
-export type CollabMember = { email: string; name: string; role: CollabRole; joinedAt: number; };
+export type CollabMember = { email: string; name: string; role: CollabRole; joinedAt: number; color?: string; };
 export type CollabProject = {
   id: string; title: string; summary: string; genre: string; bpm: number; steps: number;
   status: CollabStatus; createdAt: number; updatedAt: number; ownerEmail: string; ownerName: string;
@@ -78,6 +78,7 @@ type CollabState = {
   initializeRealtime: () => Promise<void>;
   createFromComposerProject: (payload: CreateCollabFromComposerPayload) => Promise<string>;
   joinProject: (projectId: string, payload: { email: string; name: string }) => Promise<void>;
+  setMemberColor: (projectId: string, email: string, color: string) => Promise<void>;
   addMessage: (projectId: string, payload: { email: string; name: string; color?: string; content: string }) => Promise<void>;
   addTask: (projectId: string, payload: { content: string; assigneeName: string }) => Promise<void>;
   toggleTask: (projectId: string, taskId: string) => Promise<void>;
@@ -290,7 +291,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
       id: projectId, title: payload.title, summary: payload.summary, genre: payload.genre, bpm: payload.bpm, steps: payload.steps,
       status: 'planning', createdAt: Date.now(), updatedAt: Date.now(), ownerEmail: payload.ownerEmail, ownerName: payload.ownerName,
       sourceProjectId: payload.sourceProjectId, snapshotRevision: 1, snapshotUpdatedByEmail: payload.ownerEmail, snapshotUpdatedBySessionId: payload.sessionId || COLLAB_SESSION_ID,
-      members: [{ email: payload.ownerEmail, name: payload.ownerName, role: 'owner', joinedAt: Date.now() }], tags: [], noteColors: {},
+      members: [{ email: payload.ownerEmail, name: payload.ownerName, role: 'owner', joinedAt: Date.now(), color: COLLAB_SESSION_COLOR.accent }], tags: [], noteColors: {},
       snapshot: sanitizeForFirestore(payload.snapshot)
     };
     await setDoc(doc(db, 'collab_projects', projectId), newProject);
@@ -299,8 +300,23 @@ export const useCollabStore = create<CollabState>((set, get) => ({
 
   joinProject: async (projectId, payload) => {
     await updateDoc(doc(db, 'collab_projects', projectId), {
-      members: arrayUnion({ email: payload.email, name: payload.name, role: 'editor', joinedAt: Date.now() })
+      members: arrayUnion({ email: payload.email, name: payload.name, role: 'editor', joinedAt: Date.now(), color: createRandomCollabMemberColor().accent })
     });
+  },
+
+  setMemberColor: async (projectId, email, color) => {
+    const project = get().projects.find((item) => item.id === projectId);
+    if (!project) return;
+
+    const members = project.members.map((member) =>
+      member.email === email ? { ...member, color } : member
+    );
+    set((state) => ({
+      projects: state.projects.map((item) =>
+        item.id === projectId ? { ...item, members } : item
+      ),
+    }));
+    await updateDoc(doc(db, 'collab_projects', projectId), { members });
   },
 
   addMessage: async (projectId, payload) => {

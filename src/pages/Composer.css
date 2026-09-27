@@ -3175,6 +3175,152 @@
   }
 }
 
+/* Keep composer overlays above the editor and use one quiet scrollbar treatment. */
+body:has(.composer-page) .site-header {
+  z-index: 600;
+  overflow: visible;
+}
+
+body:has(.composer-page) .site-header .topbar-account-menu {
+  z-index: 610;
+}
+
+.composer-collab-lock-notice {
+  position: absolute;
+  z-index: 230;
+  top: 64px;
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  max-width: min(420px, calc(100% - 32px));
+  min-height: 38px;
+  padding: 8px 14px;
+  border: 1px solid #d5dee8;
+  border-radius: 8px;
+  background: rgba(255, 255, 255, .96);
+  color: #526177;
+  box-shadow: 0 10px 28px rgba(31, 48, 72, .16);
+  font-size: 12px;
+  line-height: 1.35;
+  pointer-events: none;
+  transform: translateX(-50%);
+}
+
+.composer-collab-lock-notice i {
+  flex: 0 0 9px;
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+}
+
+.composer-collab-lock-notice strong {
+  overflow: hidden;
+  max-width: 120px;
+  color: #18263c;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.composer-page :is(
+  .composer-main,
+  .composer-drums-wrap,
+  .composer-arrangement-lanes,
+  .composer-collab-drawer-body,
+  .composer-track-list,
+  .composer-track-add-menu,
+  .piano-roll,
+  .piano-roll-melody-scroller
+) {
+  scrollbar-color: rgba(159, 173, 191, .82) transparent !important;
+  scrollbar-width: thin !important;
+}
+
+.composer-page :is(
+  .composer-main,
+  .composer-drums-wrap,
+  .composer-arrangement-lanes,
+  .composer-collab-drawer-body,
+  .composer-track-list,
+  .composer-track-add-menu,
+  .piano-roll,
+  .piano-roll-melody-scroller
+)::-webkit-scrollbar {
+  width: 7px !important;
+  height: 7px !important;
+}
+
+.composer-page :is(
+  .composer-main,
+  .composer-drums-wrap,
+  .composer-arrangement-lanes,
+  .composer-collab-drawer-body,
+  .composer-track-list,
+  .composer-track-add-menu,
+  .piano-roll,
+  .piano-roll-melody-scroller
+)::-webkit-scrollbar-track,
+.composer-page :is(
+  .composer-main,
+  .composer-drums-wrap,
+  .composer-arrangement-lanes,
+  .composer-collab-drawer-body,
+  .composer-track-list,
+  .composer-track-add-menu,
+  .piano-roll,
+  .piano-roll-melody-scroller
+)::-webkit-scrollbar-corner {
+  border: 0 !important;
+  background: transparent !important;
+}
+
+.composer-page :is(
+  .composer-main,
+  .composer-drums-wrap,
+  .composer-arrangement-lanes,
+  .composer-collab-drawer-body,
+  .composer-track-list,
+  .composer-track-add-menu,
+  .piano-roll,
+  .piano-roll-melody-scroller
+)::-webkit-scrollbar-thumb {
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid transparent !important;
+  border-radius: 999px;
+  background: rgba(159, 173, 191, .82) !important;
+  background-clip: padding-box !important;
+}
+
+.composer-page :is(
+  .composer-main,
+  .composer-drums-wrap,
+  .composer-arrangement-lanes,
+  .composer-collab-drawer-body,
+  .composer-track-list,
+  .composer-track-add-menu,
+  .piano-roll,
+  .piano-roll-melody-scroller
+)::-webkit-scrollbar-thumb:hover {
+  background: rgba(126, 143, 165, .92) !important;
+  background-clip: padding-box !important;
+}
+
+.composer-page :is(
+  .composer-main,
+  .composer-drums-wrap,
+  .composer-arrangement-lanes,
+  .composer-collab-drawer-body,
+  .composer-track-list,
+  .composer-track-add-menu,
+  .piano-roll,
+  .piano-roll-melody-scroller
+)::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
+}
+
 /* Keep the detail piano roll in the same visual system as the arrangement. */
 .composer-main {
   --editor-accent: #39d2aa;
@@ -3573,10 +3719,6 @@
   border-color: #5bd6b8;
   background: #effcf8;
   color: #07866a;
-}
-
-.composer-studio-layout.is-collab > .composer-lyrics-edge-button {
-  display: none;
 }
 
 .composer-collab-edge-button {
@@ -4480,6 +4622,10 @@
   background: #15171c;
 }
 
+.composer-track-panel:has(.composer-track-add-menu) {
+  z-index: 260;
+}
+
 .composer-track-panel-head {
   display: flex;
   align-items: center;
@@ -4517,7 +4663,7 @@
 
 .composer-track-add-menu {
   position: absolute;
-  z-index: 50;
+  z-index: 270;
   top: 42px;
   left: 0;
   width: 220px;
@@ -5316,7 +5462,21 @@
   grid-column: 1 / -1;
   grid-row: 3;
   min-height: 0;
+  overflow: clip;
+  overscroll-behavior: none;
   padding-top: 0;
+}
+
+.composer-arrangement-stage > .composer-main--lyrics {
+  overflow-y: auto;
+  overscroll-behavior-y: contain;
+}
+
+.composer-roll-shell .piano-roll-step-header--bass {
+  position: sticky;
+  z-index: 30;
+  top: 0;
+  background-color: #171a20;
 }
 
 .composer-footer {

@@ -13,6 +13,7 @@ import { useSongStore, buildSongProjectSnapshot } from '../store/songStore.ts';
 import { useAuthStore } from '../store/authStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import { fetchAiMusic } from '../utils/ai';
+import { COLLAB_MEMBER_COLOR_OPTIONS } from '../utils/collabMemberColor.ts';
 import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
 import './TransportBar.css';
 
@@ -242,16 +243,6 @@ type TransportBarProps = {
   collabColor?: string;
   onCollabColorChange?: (color: string) => void;
 };
-
-const COLLAB_COLOR_OPTIONS = [
-  '#3b82f6',
-  '#8b5cf6',
-  '#ec4899',
-  '#d69a2d',
-  '#06b6d4',
-  '#84cc16',
-  '#f97316',
-];
 
 const UndoIcon = () => (
   <svg
@@ -865,6 +856,8 @@ export const TransportBar = ({
           <span className="transport-work-mode-dot" aria-hidden="true" />
           {workMode === 'collab' ? (
             <>
+              <span className="transport-collab-mode-label">협업 작업</span>
+              <span className="transport-collab-mode-separator" aria-hidden="true">·</span>
               <span className="transport-collab-mini-avatar" style={{ background: collabColor }}>
                 {currentCollabMember?.name.trim().slice(0, 1).toUpperCase() || '?'}
               </span>
@@ -898,7 +891,7 @@ export const TransportBar = ({
               >
                 <span>{onlineCollaboratorCount + 1}</span>
               </button>
-              {COLLAB_COLOR_OPTIONS.map((color) => (
+              {COLLAB_MEMBER_COLOR_OPTIONS.map((color) => (
                 <button
                   key={color}
                   type="button"

@@ -5,28 +5,29 @@ export type CollabMemberColor = {
 };
 
 const COLLAB_MEMBER_COLORS: CollabMemberColor[] = [
-  { accent: '#14b8a6', soft: '#ccfbf1', ink: '#0f766e' },
   { accent: '#3b82f6', soft: '#dbeafe', ink: '#1d4ed8' },
   { accent: '#8b5cf6', soft: '#ede9fe', ink: '#6d28d9' },
   { accent: '#ec4899', soft: '#fce7f3', ink: '#be185d' },
-  { accent: '#f59e0b', soft: '#fef3c7', ink: '#b45309' },
+  { accent: '#d69a2d', soft: '#fef3c7', ink: '#92400e' },
   { accent: '#06b6d4', soft: '#cffafe', ink: '#0e7490' },
   { accent: '#84cc16', soft: '#ecfccb', ink: '#4d7c0f' },
   { accent: '#f97316', soft: '#ffedd5', ink: '#c2410c' },
 ];
 
+export const COLLAB_MEMBER_COLOR_OPTIONS = COLLAB_MEMBER_COLORS.map((color) => color.accent);
+
 export function createRandomCollabMemberColor(): CollabMemberColor {
   const randomValues = new Uint32Array(1);
   globalThis.crypto?.getRandomValues?.(randomValues);
-  const hue = globalThis.crypto
-    ? randomValues[0] % 360
-    : Math.floor(Math.random() * 360);
+  const colorIndex = globalThis.crypto
+    ? randomValues[0] % COLLAB_MEMBER_COLORS.length
+    : Math.floor(Math.random() * COLLAB_MEMBER_COLORS.length);
 
-  return {
-    accent: `hsl(${hue} 68% 48%)`,
-    soft: `hsl(${hue} 72% 93%)`,
-    ink: `hsl(${hue} 70% 32%)`,
-  };
+  return COLLAB_MEMBER_COLORS[colorIndex];
+}
+
+export function isCollabMemberColor(color?: string | null): color is string {
+  return Boolean(color && COLLAB_MEMBER_COLOR_OPTIONS.includes(color));
 }
 
 export function getCollabMemberColor(identity: string): CollabMemberColor {

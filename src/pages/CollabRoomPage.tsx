@@ -5,14 +5,17 @@ import { useAuthStore } from '../store/authStore';
 import {
   COLLAB_PRESENCE_PING_INTERVAL_MS,
   COLLAB_PRESENCE_TIMEOUT_MS,
-  COLLAB_SESSION_COLOR,
   useCollabStore,
   type CollabStatus,
 } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
 import { useSongStore } from '../store/songStore';
 import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
-import { getCollabMemberColor, getCollabMemberInitial } from '../utils/collabMemberColor';
+import {
+  getCollabMemberColor,
+  getCollabMemberInitial,
+  isCollabMemberColor,
+} from '../utils/collabMemberColor';
 import './CollabPage.css';
 import './CollabRoomPage.css';
 
@@ -71,6 +74,7 @@ export default function CollabRoomPage() {
   const connectionError = useCollabStore((state) => state.connectionError);
   const initializeRealtime = useCollabStore((state) => state.initializeRealtime);
   const joinProject = useCollabStore((state) => state.joinProject);
+  const setCollabMemberColor = useCollabStore((state) => state.setMemberColor);
   const addMessage = useCollabStore((state) => state.addMessage);
   const addTask = useCollabStore((state) => state.addTask);
   const toggleTask = useCollabStore((state) => state.toggleTask);
@@ -120,6 +124,31 @@ export default function CollabRoomPage() {
 
   const isMember = user ? project?.members.some((member) => member.email === user.email) ?? false : false;
   const canEdit = isMember;
+  const currentMember = user
+    ? project?.members.find((member) => member.email === user.email) ?? null
+    : null;
+  const memberColorStorageKey = projectId && user
+    ? `collab-member-color:${projectId}:${user.email.toLowerCase()}`
+    : null;
+  const storedMemberColor = memberColorStorageKey
+    ? window.localStorage.getItem(memberColorStorageKey)
+    : null;
+  const roomMemberColor = isCollabMemberColor(currentMember?.color)
+    ? currentMember.color
+    : isCollabMemberColor(storedMemberColor)
+      ? storedMemberColor
+      : getCollabMemberColor(`${projectId}:${user?.email ?? ''}`).accent;
+
+  useEffect(() => {
+    if (!projectId || !user || !currentMember) return;
+
+    const storageKey = `collab-member-color:${projectId}:${user.email.toLowerCase()}`;
+    window.localStorage.setItem(storageKey, roomMemberColor);
+
+    if (currentMember.color !== roomMemberColor) {
+      void setCollabMemberColor(projectId, user.email, roomMemberColor).catch(console.error);
+    }
+  }, [currentMember, projectId, roomMemberColor, setCollabMemberColor, user]);
 
   const activePresenceMembers = useMemo(() => {
     const entries = presenceByProject[projectId ?? ''] ?? [];
@@ -136,7 +165,11 @@ export default function CollabRoomPage() {
         if (previous && previous.lastSeenAt >= presence.lastSeenAt) return;
         grouped.set(presence.email, {
           name: presence.name,
-          color: presence.color || fallbackColor,
+          color: isCollabMemberColor(member?.color)
+            ? member.color
+            : isCollabMemberColor(presence.color)
+              ? presence.color
+              : fallbackColor,
           lastSeenAt: presence.lastSeenAt,
         });
       });
@@ -155,7 +188,7 @@ export default function CollabRoomPage() {
   useEffect(() => {
     if (!projectId || !user || !isMember) return;
 
-    const payload = { email: user.email, name: user.name, color: COLLAB_SESSION_COLOR.accent };
+    const payload = { email: user.email, name: user.name, color: roomMemberColor };
     void touchPresence(projectId, payload).catch(console.error);
 
     const timer = window.setInterval(() => {
@@ -166,7 +199,7 @@ export default function CollabRoomPage() {
       window.clearInterval(timer);
       void leavePresence(projectId).catch(console.error);
     };
-  }, [isMember, leavePresence, projectId, touchPresence, user]);
+  }, [isMember, leavePresence, projectId, roomMemberColor, touchPresence, user]);
 
   if (!project) {
     return (
@@ -217,6 +250,7 @@ export default function CollabRoomPage() {
       await addMessage(project.id, {
         email: user.email,
         name: user.name,
+        color: roomMemberColor,
         content,
       });
     } catch (error) {
@@ -419,9 +453,14 @@ export default function CollabRoomPage() {
                   const fallbackColor = getCollabMemberColor(
                     `${project.id}:${member.joinedAt}:${member.name}`
                   ).accent;
-                  const memberColor = activePresenceMembers.find(
+                  const activeMemberColor = activePresenceMembers.find(
                     (activeMember) => activeMember.email === member.email
-                  )?.color || fallbackColor;
+                  )?.color;
+                  const memberColor = isCollabMemberColor(member.color)
+                    ? member.color
+                    : isCollabMemberColor(activeMemberColor)
+                      ? activeMemberColor
+                      : fallbackColor;
                   return (
                     <div
                       key={`${project.id}-${member.email}`}
