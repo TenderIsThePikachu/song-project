@@ -397,30 +397,59 @@
   max-height: min(430px, calc(100vh - 236px));
   gap: 0;
   padding: 8px;
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-color: rgba(159, 173, 191, 0.82) transparent;
+  scrollbar-width: thin;
 }
 
 .notification-bell-list::-webkit-scrollbar {
   width: 7px;
+  height: 7px;
 }
 
-.notification-bell-list::-webkit-scrollbar-track {
+.notification-bell-list::-webkit-scrollbar-track,
+.notification-bell-list::-webkit-scrollbar-corner {
+  border: 0;
   background: transparent;
 }
 
 .notification-bell-list::-webkit-scrollbar-thumb {
-  border: 2px solid transparent;
+  min-width: 32px;
+  min-height: 32px;
+  border: 1px solid transparent;
   border-radius: 999px;
-  background: rgba(99, 230, 190, 0.34);
+  background: rgba(159, 173, 191, 0.82);
   background-clip: padding-box;
+}
+
+.notification-bell-list::-webkit-scrollbar-thumb:hover {
+  background: rgba(126, 143, 165, 0.92);
+  background-clip: padding-box;
+}
+
+.notification-bell-list::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .notification-bell-item {
   position: relative;
+  min-width: 0;
+  overflow: hidden;
   padding: 13px 14px 13px 16px;
   border: 1px solid transparent;
   border-radius: 14px;
   background: transparent;
   transition: border-color 0.18s ease, background 0.18s ease, transform 0.18s ease;
+}
+
+.notification-bell-item p {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 
 .notification-bell-item + .notification-bell-item {
