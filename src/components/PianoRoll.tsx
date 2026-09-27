@@ -75,6 +75,7 @@ const PIANO_BODY_TOP_PADDING = 8;
 const MELODY_CONTROL_BAR_HEIGHT = 28;
 const PIANO_STEPS_PER_BAR = 16;
 const SHOW_LEGACY_EDITOR_ASSIST_CONTROLS = false;
+const EMPTY_COLLAB_NOTE_COLORS: Record<string, string> = {};
 
 const MELODY_NOTE_LENGTH_OPTIONS = [
   { label: '1/16', steps: 1 },
@@ -181,7 +182,7 @@ export const PianoRoll = ({
   loopRange = null,
   onStepHeaderSelect,
   collabBarLocks = {},
-  collabNoteColors = {},
+  collabNoteColors = EMPTY_COLLAB_NOTE_COLORS,
   canEditCollab = true,
   requestCollabBarLock,
   releaseCollabBarLock,

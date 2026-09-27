@@ -51,6 +51,7 @@ import {
 import { useAuthStore } from '../store/authStore.ts';
 import {
   COLLAB_PRESENCE_PING_INTERVAL_MS,
+  COLLAB_PRESENCE_TIMEOUT_MS,
   CollabRequestError,
   COLLAB_SESSION_COLOR,
   COLLAB_SESSION_ID,
@@ -73,9 +74,69 @@ import {
   type ComposerTabKey,
   type MelodyInstrument,
 } from '../store/uiStore.ts';
+import { getCollabMemberColor } from '../utils/collabMemberColor.ts';
 import './Composer.css';
 
 type ComposerTab = ComposerTabKey;
+const EMPTY_COLLAB_NOTE_COLORS: Record<string, string> = {};
+type OptimisticCollabNoteColors = Record<string, string | null>;
+
+function getComposerOperationColorChanges(
+  operation: CollabComposerOperation,
+  color: string
+): OptimisticCollabNoteColors {
+  const changes: OptimisticCollabNoteColors = {};
+  const setColor = (
+    instrument: CollabComposerInstrument,
+    row: number,
+    col: number,
+    nextColor: string | null,
+    trackId?: string
+  ) => {
+    changes[getCollabNoteColorKey(instrument, row, col, trackId)] = nextColor;
+  };
+
+  switch (operation.type) {
+    case 'set-melody-note':
+      setColor('melody', operation.row, operation.col, operation.length > 0 ? color : null);
+      break;
+    case 'apply-chord':
+      operation.rows.forEach((row) =>
+        setColor(operation.isBass ? 'bass' : 'melody', row, operation.col, color)
+      );
+      break;
+    case 'set-track-note':
+      setColor(
+        operation.instrument,
+        operation.row,
+        operation.col,
+        operation.nextValue ? color : null,
+        operation.trackId
+      );
+      break;
+    case 'set-track-chord':
+      operation.rows.forEach((row) =>
+        setColor(operation.instrument, row, operation.col, color, operation.trackId)
+      );
+      break;
+    case 'toggle-violin-step':
+    case 'toggle-saxophone-step':
+    case 'toggle-guitar-step':
+    case 'toggle-drum-step':
+    case 'toggle-bass-step': {
+      const instrument = operation.type
+        .replace('toggle-', '')
+        .replace('-step', '') as CollabComposerInstrument;
+      setColor(instrument, operation.row, operation.col, operation.nextValue ? color : null);
+      break;
+    }
+    default:
+      break;
+  }
+
+  return changes;
+}
+
 type TabPickerOption = ComposerTab | 'airInstrument' | 'videoOverlay';
 type TabPickerGroup = {
   title: string;
@@ -687,7 +748,41 @@ export function Composer() {
     () => (collabId ? projects.find((project) => project.id === collabId) ?? null : null),
     [collabId, projects]
   );
-  const collabNoteColors = collabProject?.noteColors ?? {};
+  const serverCollabNoteColors = collabProject?.noteColors ?? EMPTY_COLLAB_NOTE_COLORS;
+  const [optimisticCollabNoteColors, setOptimisticCollabNoteColors] =
+    useState<OptimisticCollabNoteColors>({});
+  const collabNoteColors = useMemo(() => {
+    const merged = { ...serverCollabNoteColors };
+    Object.entries(optimisticCollabNoteColors).forEach(([key, color]) => {
+      if (color) {
+        merged[key] = color;
+      } else {
+        delete merged[key];
+      }
+    });
+    return merged;
+  }, [optimisticCollabNoteColors, serverCollabNoteColors]);
+
+  useEffect(() => {
+    setOptimisticCollabNoteColors((current) => {
+      let changed = false;
+      const pending = { ...current };
+      Object.entries(current).forEach(([key, color]) => {
+        const isConfirmed = color
+          ? serverCollabNoteColors[key] === color
+          : !(key in serverCollabNoteColors);
+        if (isConfirmed) {
+          delete pending[key];
+          changed = true;
+        }
+      });
+      return changed ? pending : current;
+    });
+  }, [serverCollabNoteColors]);
+
+  useEffect(() => {
+    setOptimisticCollabNoteColors({});
+  }, [collabId]);
   const loadedLibraryProject = useMemo(
     () => (projectId ? libraryProjects.find((project) => project.id === projectId) ?? null : null),
     [libraryProjects, projectId]
@@ -704,11 +799,14 @@ export function Composer() {
   const lastSentSignatureRef = useRef('');
   const hasLoadedCollabRef = useRef(false);
   const isApplyingRemoteRef = useRef(false);
+  const preserveActiveTabOnProjectSyncRef = useRef(false);
   const syncTimeoutRef = useRef<number | null>(null);
   const conflictTimeoutRef = useRef<number | null>(null);
   const pendingOperationSignatureRef = useRef<string | null>(null);
   const operationQueueRef = useRef<Promise<void>>(Promise.resolve());
   const heldBarLocksRef = useRef(new Set<string>());
+  const lockWriteQueueRef = useRef(new Map<string, Promise<void>>());
+  const collabMessageInputRef = useRef<HTMLTextAreaElement | null>(null);
   const loadedProjectIdRef = useRef<string | null>(null);
   const followScrollFrameRef = useRef<number | null>(null);
   const livePlayheadRef = useRef({ step: 0, bpm: 120, receivedAt: 0 });
@@ -725,6 +823,8 @@ export function Composer() {
   const liveDrumScrollersRef = useRef<HTMLElement[]>([]);
   const [conflictNotice, setConflictNotice] = useState('');
   const [collabSyncTick, setCollabSyncTick] = useState(0);
+  const [collabPresenceNow, setCollabPresenceNow] = useState(() => Date.now());
+  const [collabSessionColor, setCollabSessionColor] = useState(COLLAB_SESSION_COLOR.accent);
   const tutorialCompleted = Boolean(user?.email && tutorialCompletedByEmail);
   const isGuideOpen = tutorialRequested && !tutorialCompleted;
   const guideStepIndex = clampGuideStepIndex(
@@ -773,7 +873,6 @@ export function Composer() {
   >({});
   const [selectedArrangementClip, setSelectedArrangementClip] = useState<string | null>(null);
   const [draggingArrangementClip, setDraggingArrangementClip] = useState<string | null>(null);
-  const mutedVolumeSnapshotRef = useRef<Record<string, number>>({});
   const pianoToolFeedbackTimerRef = useRef<number | null>(null);
   const [extraTrackNoteLengths, setExtraTrackNoteLengths] = useState<Record<string, MelodyNoteLengthSteps>>({});
   const [primaryTrackNoteLengths, setPrimaryTrackNoteLengths] = useState<
@@ -1726,20 +1825,58 @@ export function Composer() {
         : [],
     [collabId, collabMessages]
   );
+  const activeCollabPresence = useMemo(() => {
+    const latestByEmail = new Map<string, (typeof presenceByProject)[string][number]>();
+    (collabId ? presenceByProject[collabId] ?? [] : [])
+      .filter((entry) => collabPresenceNow - entry.lastSeenAt <= COLLAB_PRESENCE_TIMEOUT_MS)
+      .forEach((entry) => {
+        const previous = latestByEmail.get(entry.email);
+        if (!previous || entry.lastSeenAt > previous.lastSeenAt) {
+          latestByEmail.set(entry.email, entry);
+        }
+      });
+    return latestByEmail;
+  }, [collabId, collabPresenceNow, presenceByProject]);
   const collabPresenceEmails = useMemo(
-    () => new Set(collabId ? (presenceByProject[collabId] ?? []).map((entry) => entry.email) : []),
-    [collabId, presenceByProject]
+    () => new Set(activeCollabPresence.keys()),
+    [activeCollabPresence]
   );
   const collabPresenceColors = useMemo(
-    () =>
-      new Map(
-        (collabId ? presenceByProject[collabId] ?? [] : []).map((entry) => [
-          entry.email,
-          entry.color || '#94a3b8',
-        ])
-      ),
-    [collabId, presenceByProject]
+    () => new Map(Array.from(activeCollabPresence, ([email, entry]) => [email, entry.color])),
+    [activeCollabPresence]
   );
+  const transportCollabMembers = useMemo(
+    () =>
+      (collabProject?.members ?? []).map((member) => {
+        const isCurrent = member.email === user?.email;
+        const fallbackColor = getCollabMemberColor(
+          `${collabProject?.id ?? collabId}:${member.joinedAt}:${member.name}`
+        ).accent;
+        return {
+          email: member.email,
+          name: member.name,
+          color: isCurrent
+            ? collabSessionColor
+            : collabPresenceColors.get(member.email) || fallbackColor,
+          isOnline: isCurrent || collabPresenceEmails.has(member.email),
+          isCurrent,
+        };
+      }),
+    [
+      collabId,
+      collabPresenceColors,
+      collabPresenceEmails,
+      collabProject,
+      collabSessionColor,
+      user?.email,
+    ]
+  );
+
+  useEffect(() => {
+    if (!collabId) return undefined;
+    const timer = window.setInterval(() => setCollabPresenceNow(Date.now()), 4_000);
+    return () => window.clearInterval(timer);
+  }, [collabId]);
   const activeGuideStep = COMPOSER_GUIDE_STEPS[guideStepIndex];
   const matchedChordTargets = useMemo(
     () => countMatchedChordTargets(melody, COMPOSER_TUTORIAL_CHORD_TARGETS),
@@ -2264,23 +2401,25 @@ export function Composer() {
 
     setIsSendingCollabMessage(true);
     setCollabMessageError('');
+    setCollabMessageDraft('');
     try {
       await addCollabMessage(collabId, {
         email: user.email,
         name: user.name,
-        color: COLLAB_SESSION_COLOR.accent,
+        color: collabSessionColor,
         content,
       });
-      setCollabMessageDraft('');
     } catch (error) {
       console.error(error);
       setCollabMessageError(error instanceof Error ? error.message : '메시지를 보내지 못했습니다.');
+      setCollabMessageDraft((current) => current || content);
     } finally {
       setIsSendingCollabMessage(false);
+      window.requestAnimationFrame(() => collabMessageInputRef.current?.focus());
     }
-  }, [addCollabMessage, collabId, collabMessageDraft, isSendingCollabMessage, user]);
+  }, [addCollabMessage, collabId, collabMessageDraft, collabSessionColor, isSendingCollabMessage, user]);
 
-  const syncTabsToLoadedProject = useCallback(() => {
+  const syncTabsToLoadedProject = useCallback((preserveActiveTab = false) => {
     const state = useSongStore.getState();
     const hasMelodyOnlyResult = hasOnlyMelodyTrackData(state);
     const primaryTabs = tabOrder.filter((tab) => {
@@ -2308,6 +2447,28 @@ export function Composer() {
       ? (primaryTabs.includes('melody') ? ['melody'] : [])
       : primaryTabs;
 
+    if (preserveActiveTab) {
+      setOpenTabsState((current) => [
+        ...current,
+        ...nextPrimaryTabs.filter((tab) => !current.includes(tab)),
+      ]);
+      setOpenExtraTrackIds((current) => [
+        ...current.filter((id) => extraTrackIds.includes(id)),
+        ...extraTrackIds.filter((id) => !current.includes(id)),
+      ]);
+      setArrangementTrackOrder((current) => {
+        const availableIds = [
+          ...nextPrimaryTabs.filter((tab) => tab !== 'lyrics').map((tab) => `primary-${tab}`),
+          ...extraTrackIds.map((id) => `extra-${id}`),
+        ];
+        return [
+          ...current.filter((id) => availableIds.includes(id)),
+          ...availableIds.filter((id) => !current.includes(id)),
+        ];
+      });
+      return;
+    }
+
     setOpenTabsState(nextPrimaryTabs);
     setOpenExtraTrackIds(extraTrackIds);
     setArrangementTrackOrder([
@@ -2331,7 +2492,9 @@ export function Composer() {
       return;
     }
 
-    syncTabsToLoadedProject();
+    const preserveActiveTab = preserveActiveTabOnProjectSyncRef.current;
+    preserveActiveTabOnProjectSyncRef.current = false;
+    syncTabsToLoadedProject(preserveActiveTab);
   }, [projectLoadRevision, syncTabsToLoadedProject]);
 
   useEffect(() => {
@@ -2670,54 +2833,12 @@ export function Composer() {
     [handleArrangementProgressSelect, showPianoToolFeedback, updateArrangementClipLayout]
   );
 
-  const handleArrangementMute = useCallback(
-    (track: ArrangementTrackDefinition) => {
-      const instrument = track.tab as InstrumentKey;
-      const isMuted = mutedArrangementTracks.has(track.id);
-      const extraTrack = track.trackId
-        ? extraTracks.find((item) => item.id === track.trackId)
-        : null;
-      const currentVolume = extraTrack?.volume ?? volumes[instrument] ?? 80;
-      if (isMuted) {
-        const restoredVolume = mutedVolumeSnapshotRef.current[track.id] ?? 80;
-        if (track.trackId) setExtraTrackVolume(track.trackId, restoredVolume);
-        else setInstrumentVolume(instrument, restoredVolume);
-      } else {
-        mutedVolumeSnapshotRef.current[track.id] = currentVolume;
-        if (track.trackId) setExtraTrackVolume(track.trackId, 0);
-        else setInstrumentVolume(instrument, 0);
-        releaseInstrumentSounds(track.tab);
-      }
-
-      setMutedArrangementTracks((current) => {
-        const next = new Set(current);
-        if (isMuted) next.delete(track.id);
-        else next.add(track.id);
-        return next;
-      });
-    },
-    [
-      extraTracks,
-      mutedArrangementTracks,
-      setExtraTrackVolume,
-      setInstrumentVolume,
-      volumes,
-    ]
-  );
-
   const handleArrangementVolumeChange = useCallback(
     (track: ArrangementTrackDefinition, nextVolume: number) => {
       const instrument = track.tab as InstrumentKey;
-      const extraTrack = track.trackId
-        ? extraTracks.find((item) => item.id === track.trackId)
-        : null;
-      const currentVolume = extraTrack?.volume ?? volumes[instrument] ?? 80;
 
-      if (nextVolume === 0 && currentVolume > 0) {
-        mutedVolumeSnapshotRef.current[track.id] = currentVolume;
+      if (nextVolume === 0) {
         releaseInstrumentSounds(track.tab);
-      } else if (nextVolume > 0) {
-        mutedVolumeSnapshotRef.current[track.id] = nextVolume;
       }
 
       if (track.trackId) setExtraTrackVolume(track.trackId, nextVolume);
@@ -2730,7 +2851,7 @@ export function Composer() {
         return next;
       });
     },
-    [extraTracks, setExtraTrackVolume, setInstrumentVolume, volumes]
+    [setExtraTrackVolume, setInstrumentVolume]
   );
 
   useEffect(() => {
@@ -2880,6 +3001,27 @@ export function Composer() {
   const getLockKey = (instrument: CollabComposerInstrument, barIndex: number) =>
     `${instrument}:${barIndex}`;
 
+  const queueComposerLockWrite = (
+    key: string,
+    payload: Parameters<typeof setComposerLock>[1]
+  ) => {
+    const previousWrite = lockWriteQueueRef.current.get(key) ?? Promise.resolve();
+    const nextWrite = previousWrite
+      .catch(() => undefined)
+      .then(() => setComposerLock(collabId!, payload));
+
+    lockWriteQueueRef.current.set(key, nextWrite);
+    void nextWrite
+      .finally(() => {
+        if (lockWriteQueueRef.current.get(key) === nextWrite) {
+          lockWriteQueueRef.current.delete(key);
+        }
+      })
+      .catch(() => undefined);
+
+    return nextWrite;
+  };
+
   const requestComposerBarLock = async (
     instrument: CollabComposerInstrument,
     barIndex: number
@@ -2909,24 +3051,22 @@ export function Composer() {
       return false;
     }
 
-    try {
-      await setComposerLock(collabId, {
-        instrument,
-        barIndex,
-        email: user.email,
-        name: user.name,
-        color: COLLAB_SESSION_COLOR.accent,
-        sessionId: COLLAB_SESSION_ID,
-        lock: true,
-      });
-      heldBarLocksRef.current.add(key);
-      return true;
-    } catch (error) {
+    heldBarLocksRef.current.add(key);
+    void queueComposerLockWrite(key, {
+      instrument,
+      barIndex,
+      email: user.email,
+      name: user.name,
+      color: collabSessionColor,
+      sessionId: COLLAB_SESSION_ID,
+      lock: true,
+    }).catch((error) => {
+      heldBarLocksRef.current.delete(key);
       if (error instanceof Error) {
         showCollabNotice(error.message);
       }
-      return false;
-    }
+    });
+    return true;
   };
 
   const releaseComposerBarLock = (instrument: CollabComposerInstrument, barIndex: number) => {
@@ -2940,7 +3080,7 @@ export function Composer() {
     }
 
     heldBarLocksRef.current.delete(key);
-    void setComposerLock(collabId, {
+    void queueComposerLockWrite(key, {
       instrument,
       barIndex,
       sessionId: COLLAB_SESSION_ID,
@@ -2955,6 +3095,17 @@ export function Composer() {
       return;
     }
 
+    const optimisticColorChanges = getComposerOperationColorChanges(
+      operation,
+      collabSessionColor
+    );
+    if (Object.keys(optimisticColorChanges).length > 0) {
+      setOptimisticCollabNoteColors((current) => ({
+        ...current,
+        ...optimisticColorChanges,
+      }));
+    }
+
     pendingOperationSignatureRef.current = getProjectSignatureFromStore();
 
     operationQueueRef.current = operationQueueRef.current
@@ -2965,7 +3116,7 @@ export function Composer() {
             operation,
             email: user.email,
             name: user.name,
-            color: COLLAB_SESSION_COLOR.accent,
+            color: collabSessionColor,
             sessionId: COLLAB_SESSION_ID,
             baseRevision: lastAppliedRevisionRef.current,
           });
@@ -2974,6 +3125,15 @@ export function Composer() {
         } catch (error) {
           console.error(error);
           pendingOperationSignatureRef.current = null;
+          setOptimisticCollabNoteColors((current) => {
+            const next = { ...current };
+            Object.entries(optimisticColorChanges).forEach(([key, color]) => {
+              if (next[key] === color) {
+                delete next[key];
+              }
+            });
+            return next;
+          });
 
           if (error instanceof CollabRequestError && error.statusCode === 409) {
             showCollabNotice(error.message);
@@ -3179,6 +3339,7 @@ export function Composer() {
     }
 
     isApplyingRemoteRef.current = true;
+    preserveActiveTabOnProjectSyncRef.current = true;
     applyRemoteProject(collabProject.snapshot);
     window.setTimeout(() => {
       isApplyingRemoteRef.current = false;
@@ -3274,14 +3435,20 @@ export function Composer() {
 
       heldLocks.forEach((entry) => {
         const [instrument, barIndexValue] = entry.split(':');
-        void setComposerLock(collabId, {
-          instrument: instrument as CollabComposerInstrument,
-          barIndex: Number(barIndexValue),
-          sessionId: COLLAB_SESSION_ID,
-          lock: false,
-        }).catch((error) => {
-          console.error(error);
-        });
+        const pendingWrite = lockWriteQueueRef.current.get(entry) ?? Promise.resolve();
+        void pendingWrite
+          .catch(() => undefined)
+          .then(() =>
+            setComposerLock(collabId, {
+              instrument: instrument as CollabComposerInstrument,
+              barIndex: Number(barIndexValue),
+              sessionId: COLLAB_SESSION_ID,
+              lock: false,
+            })
+          )
+          .catch((error) => {
+            console.error(error);
+          });
       });
     },
     [collabId, setComposerLock]
@@ -3297,7 +3464,7 @@ export function Composer() {
     void touchPresence(collabId, {
       email: user.email,
       name: user.name,
-      color: COLLAB_SESSION_COLOR.accent,
+      color: collabSessionColor,
       focus,
     }).catch((error) => {
       console.error(error);
@@ -3307,7 +3474,7 @@ export function Composer() {
       void touchPresence(collabId, {
         email: user.email,
         name: user.name,
-        color: COLLAB_SESSION_COLOR.accent,
+        color: collabSessionColor,
         focus,
       }).catch((error) => {
         console.error(error);
@@ -3320,7 +3487,7 @@ export function Composer() {
         console.error(error);
       });
     };
-  }, [activeTab, collabId, leavePresence, touchPresence, user]);
+  }, [activeTab, collabId, collabSessionColor, leavePresence, touchPresence, user]);
 
   const handleMixerChange = (tab: ComposerTab, volume: number) => {
     if (tab === 'lyrics') {
@@ -3551,7 +3718,6 @@ export function Composer() {
             lengths: state.violinLengths,
             toggle: toggleViolin,
             preview: playViolinPreview,
-            operationType: 'toggle-violin-step' as const,
           }
         : instrument === 'saxophone'
           ? {
@@ -3560,7 +3726,6 @@ export function Composer() {
               lengths: state.saxophoneLengths,
               toggle: toggleSaxophone,
               preview: playSaxophonePreview,
-              operationType: 'toggle-saxophone-step' as const,
             }
           : {
               notes: GUITAR_TRACK_LABELS,
@@ -3568,24 +3733,28 @@ export function Composer() {
               lengths: state.guitarLengths,
               toggle: toggleGuitar,
               preview: playGuitarPreview,
-              operationType: 'toggle-guitar-step' as const,
             };
 
-    getChordRowsForNotes(config.notes, chord).forEach((row) => {
+    const addedRows = getChordRowsForNotes(config.notes, chord).filter((row) => {
       if (!shouldAddTimedNote(config.grid, config.lengths, row, col)) {
-        return;
+        return false;
       }
 
       config.toggle(row, col, lengthSteps);
       void config.preview(row, lengthSteps);
+      return true;
+    });
+
+    if (addedRows.length > 0) {
       queueComposerOperation({
-        type: config.operationType,
-        row,
+        type: 'set-track-chord',
+        instrument,
+        chord,
+        rows: addedRows,
         col,
-        nextValue: true,
         barIndex,
       });
-    });
+    }
 
     releaseComposerBarLock(instrument, barIndex);
   };
@@ -3754,17 +3923,18 @@ export function Composer() {
     }
 
     applyExtraTrackChord(track.id, chord, col, lengthSteps);
-    getChordRowsForNotes(getExtraTrackNotes(track.instrument), chord).forEach((row) => {
+    const rows = getChordRowsForNotes(getExtraTrackNotes(track.instrument), chord);
+    if (rows.length > 0) {
       queueComposerOperation({
-        type: 'set-track-note',
+        type: 'set-track-chord',
         instrument: track.instrument,
         trackId: track.id,
-        row,
+        chord,
+        rows,
         col,
-        nextValue: true,
         barIndex,
       });
-    });
+    }
     releaseComposerBarLock(track.instrument, barIndex);
   };
 
@@ -4256,6 +4426,9 @@ export function Composer() {
             setNotepadDraft((current) => ({ ...current, title }))
           }
           workMode={collabId ? 'collab' : 'personal'}
+          collabMembers={transportCollabMembers}
+          collabColor={collabSessionColor}
+          onCollabColorChange={setCollabSessionColor}
           onPlayStarted={() => setPlayedTutorialOnce(true)}
         />
       </footer>
@@ -4689,12 +4862,24 @@ export function Composer() {
                 <div className="composer-collab-drawer-body composer-collab-member-list">
                   {(collabProject?.members ?? []).map((member) => {
                     const isCurrentUser = member.email === user?.email;
+                    const fallbackColor = getCollabMemberColor(
+                      `${collabProject?.id ?? collabId}:${member.joinedAt}:${member.name}`
+                    ).accent;
                     const memberColor = isCurrentUser
-                      ? COLLAB_SESSION_COLOR.accent
-                      : collabPresenceColors.get(member.email) || '#94a3b8';
+                      ? collabSessionColor
+                      : collabPresenceColors.get(member.email) || fallbackColor;
                     return (
                       <article key={member.email}>
-                        <span className="composer-collab-member-swatch" style={{ background: memberColor }} />
+                        <span
+                          className="composer-collab-member-swatch"
+                          style={{
+                            background: `color-mix(in srgb, ${memberColor} 18%, #ffffff)`,
+                            color: memberColor,
+                          }}
+                          aria-hidden="true"
+                        >
+                          {member.name.trim().slice(0, 1).toUpperCase() || '?'}
+                        </span>
                         <div>
                           <strong>{member.name}{isCurrentUser ? ' (나)' : ''}</strong>
                           <small>{member.role === 'owner' ? '방장' : member.role === 'viewer' ? '읽기 전용' : '편집자'}</small>
@@ -4731,6 +4916,7 @@ export function Composer() {
                     {collabMessageError ? <span>{collabMessageError}</span> : null}
                     <div>
                       <textarea
+                        ref={collabMessageInputRef}
                         value={collabMessageDraft}
                         onChange={(event) => setCollabMessageDraft(event.target.value)}
                         onKeyDown={(event) => {
@@ -4741,7 +4927,7 @@ export function Composer() {
                         }}
                         placeholder={canSyncCollab ? '메시지를 입력하세요.' : '읽기 전용입니다.'}
                         rows={1}
-                        disabled={!canSyncCollab || isSendingCollabMessage}
+                        disabled={!canSyncCollab}
                       />
                       <button
                         type="button"
@@ -4848,33 +5034,13 @@ export function Composer() {
                         >
                           <span className="composer-track-name">{track.label}</span>
                         </button>
-                        <div className="composer-track-toggles">
-                          <button
-                            type="button"
-                            className={isMuted ? 'is-active' : ''}
-                            onClick={() => handleArrangementMute(track)}
-                            aria-pressed={isMuted}
-                            aria-label={
-                              isMuted
-                                ? `${track.label} 음소거 해제. 이 트랙의 소리를 다시 켭니다.`
-                                : `${track.label} 음소거. 이 트랙의 소리만 끕니다.`
-                            }
-                            title={
-                              isMuted
-                                ? `${track.label} 음소거 해제 (M) · 이 트랙의 소리를 다시 켭니다.`
-                                : `${track.label} 음소거 (M) · 이 트랙의 소리만 끕니다.`
-                            }
-                          >
-                            M
-                          </button>
-                          <span
-                            className="composer-track-sound-icon"
-                            aria-hidden="true"
-                            title={isMuted || trackVolume === 0 ? '음소거됨' : '소리 켜짐'}
-                          >
-                            {isMuted || trackVolume === 0 ? '🔇' : '🔊'}
-                          </span>
-                        </div>
+                        <span
+                          className="composer-track-sound-icon"
+                          aria-hidden="true"
+                          title={isMuted || trackVolume === 0 ? '음소거됨' : '소리 켜짐'}
+                        >
+                          {isMuted || trackVolume === 0 ? '🔇' : '🔊'}
+                        </span>
                       </div>
                     <label
                       className="composer-track-inline-volume"

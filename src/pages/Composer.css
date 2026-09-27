@@ -3730,23 +3730,36 @@
   min-height: 0;
   overflow-y: auto;
   padding: 10px;
-  scrollbar-color: rgba(116, 133, 155, .55) transparent;
+  scrollbar-color: #aeb9c8 #f4f7f9;
   scrollbar-width: thin;
+  scrollbar-gutter: stable;
 }
 
 .composer-collab-drawer-body::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
 }
 
 .composer-collab-drawer-body::-webkit-scrollbar-track {
-  background: transparent;
+  background: #f4f7f9;
 }
 
 .composer-collab-drawer-body::-webkit-scrollbar-thumb {
-  border: 1px solid transparent;
+  min-height: 34px;
+  border: 2px solid #f4f7f9;
   border-radius: 999px;
-  background: rgba(116, 133, 155, .55);
+  background: #aeb9c8;
   background-clip: padding-box;
+}
+
+.composer-collab-drawer-body::-webkit-scrollbar-thumb:hover {
+  background: #65cdb1;
+  background-clip: padding-box;
+}
+
+.composer-collab-drawer-body::-webkit-scrollbar-button {
+  display: none;
+  width: 0;
+  height: 0;
 }
 
 .composer-collab-log-list article {
@@ -3823,11 +3836,17 @@
 }
 
 .composer-collab-member-swatch {
+  display: grid;
   width: 24px;
   height: 24px;
+  place-items: center;
   border: 3px solid rgba(255, 255, 255, .9);
   border-radius: 50%;
   box-shadow: 0 0 0 1px rgba(31, 48, 72, .12);
+  font-size: 10px;
+  font-weight: 900;
+  line-height: 1;
+  box-sizing: content-box;
 }
 
 .composer-collab-member-list small {
@@ -4727,8 +4746,9 @@
 }
 
 .composer-track-name-button {
+  flex: 1 1 auto;
   min-width: 0;
-  max-width: calc(100% - 52px);
+  max-width: none;
   padding: 0;
   border: 0;
   background: transparent;
@@ -4737,31 +4757,14 @@
   text-align: left;
 }
 
-.composer-track-toggles {
-  display: flex;
-  align-items: center;
-  flex: 0 0 auto;
-  gap: 4px;
-}
-
-.composer-track-toggles button {
-  width: 21px;
-  height: 18px;
-  border: 1px solid #343a45;
-  border-radius: 6px;
-  background: #22262e;
-  color: #9ca6b5;
-  font-size: 10px;
-  font-weight: 900;
-  cursor: pointer;
-}
-
 .composer-track-sound-icon {
   display: inline-flex;
   align-items: center;
   justify-content: center;
   width: 21px;
   height: 18px;
+  flex: 0 0 21px;
+  margin-left: auto;
   font-size: 12px;
   line-height: 1;
 }
@@ -4891,17 +4894,6 @@
 .composer-track-context-menu button.is-danger:hover {
   background: rgba(255, 102, 116, .12);
   color: #ffb2b9;
-}
-
-.composer-track-toggles button.is-active {
-  border-color: var(--track-color);
-  background: color-mix(in srgb, var(--track-color) 25%, #20242b 75%);
-  color: #ffffff;
-}
-
-.composer-track-toggles button:disabled {
-  opacity: .38;
-  cursor: not-allowed;
 }
 
 .composer-arrangement-stage {

@@ -12,7 +12,7 @@ import {
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
 import { useSongStore } from '../store/songStore';
 import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
-import { getCollabMemberInitial } from '../utils/collabMemberColor';
+import { getCollabMemberColor, getCollabMemberInitial } from '../utils/collabMemberColor';
 import './CollabPage.css';
 import './CollabRoomPage.css';
 
@@ -123,19 +123,26 @@ export default function CollabRoomPage() {
 
   const activePresenceMembers = useMemo(() => {
     const entries = presenceByProject[projectId ?? ''] ?? [];
-    const grouped = new Map<string, { name: string; color: string }>();
+    const grouped = new Map<string, { name: string; color: string; lastSeenAt: number }>();
 
     entries
       .filter((presence) => presenceNow - presence.lastSeenAt <= COLLAB_PRESENCE_TIMEOUT_MS)
       .forEach((presence) => {
+        const member = project?.members.find((item) => item.email === presence.email);
+        const fallbackColor = getCollabMemberColor(
+          `${projectId}:${member?.joinedAt ?? presence.lastSeenAt}:${presence.name}`
+        ).accent;
+        const previous = grouped.get(presence.email);
+        if (previous && previous.lastSeenAt >= presence.lastSeenAt) return;
         grouped.set(presence.email, {
           name: presence.name,
-          color: presence.color || '#94a3b8',
+          color: presence.color || fallbackColor,
+          lastSeenAt: presence.lastSeenAt,
         });
       });
 
     return Array.from(grouped, ([email, presence]) => ({ email, ...presence }));
-  }, [presenceByProject, presenceNow, projectId]);
+  }, [presenceByProject, presenceNow, project, projectId]);
 
   useEffect(() => {
     const timer = window.setInterval(() => {
@@ -409,9 +416,12 @@ export default function CollabRoomPage() {
               <div className="collab-member-list">
                 {project.members.map((member) => {
                   const isOnline = activePresenceMembers.some((activeMember) => activeMember.email === member.email);
+                  const fallbackColor = getCollabMemberColor(
+                    `${project.id}:${member.joinedAt}:${member.name}`
+                  ).accent;
                   const memberColor = activePresenceMembers.find(
                     (activeMember) => activeMember.email === member.email
-                  )?.color || '#94a3b8';
+                  )?.color || fallbackColor;
                   return (
                     <div
                       key={`${project.id}-${member.email}`}

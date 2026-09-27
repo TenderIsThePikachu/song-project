@@ -1190,35 +1190,209 @@
   background: rgba(255, 255, 255, .06);
 }
 
-.transport-work-mode {
+.transport-work-mode-shell {
   position: absolute;
   top: 50%;
   left: 50%;
+  z-index: 20;
+  transform: translate(-50%, -50%);
+}
+
+.transport-work-mode {
   display: inline-flex;
   align-items: center;
   gap: 7px;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid transparent;
+  border-radius: 999px;
+  background: transparent;
   color: #9ca3af;
+  font: inherit;
   font-size: 11px;
   font-weight: 800;
-  pointer-events: none;
-  transform: translate(-50%, -50%);
   white-space: nowrap;
 }
 
-.transport-work-mode > span {
+.transport-work-mode-dot {
   width: 7px;
   height: 7px;
+  flex: 0 0 7px;
   border-radius: 50%;
   background: #7b8492;
 }
 
 .transport-work-mode.is-collab {
+  border-color: rgba(37, 201, 154, .45);
+  background: rgba(37, 201, 154, .1);
   color: #5ee0bb;
+  cursor: pointer;
 }
 
-.transport-work-mode.is-collab > span {
+.transport-work-mode.is-collab .transport-work-mode-dot {
   background: #25c99a;
   box-shadow: 0 0 0 3px rgba(37, 201, 154, .14);
+}
+
+.transport-collab-mini-avatar {
+  display: grid;
+  width: 20px;
+  height: 20px;
+  flex: 0 0 20px;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 9px;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.transport-collab-online-count {
+  display: grid;
+  width: 18px;
+  height: 18px;
+  margin-left: -12px;
+  place-items: center;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  background: #17b98c;
+  color: #ffffff;
+  font-size: 8px;
+  line-height: 1;
+  box-sizing: border-box;
+}
+
+.transport-work-mode strong {
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.transport-collab-caret {
+  color: currentColor;
+  font-size: 11px;
+  transform: rotate(180deg);
+  transition: transform .16s ease;
+}
+
+.transport-work-mode.is-open .transport-collab-caret {
+  transform: rotate(0);
+}
+
+.transport-collab-menu {
+  position: absolute;
+  top: calc(100% + 9px);
+  left: 50%;
+  width: 292px;
+  padding: 14px;
+  border: 1px solid #d7e1e8;
+  border-radius: 10px;
+  background: #ffffff;
+  color: #18253a;
+  box-shadow: 0 14px 34px rgba(22, 39, 61, .2);
+  transform: translateX(-50%);
+  box-sizing: border-box;
+}
+
+.transport-collab-menu-user {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.transport-collab-menu-user > span {
+  display: grid;
+  width: 32px;
+  height: 32px;
+  place-items: center;
+  border-radius: 50%;
+  color: #ffffff;
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.transport-collab-menu-user strong {
+  font-size: 13px;
+  font-weight: 900;
+}
+
+.transport-collab-palette {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  padding: 12px 0 13px;
+  border-bottom: 1px solid #e4e9ee;
+}
+
+.transport-collab-palette button {
+  width: 28px;
+  height: 28px;
+  flex: 0 0 28px;
+  padding: 0;
+  border: 2px solid #ffffff;
+  border-radius: 50%;
+  outline: 0;
+  background: var(--collab-swatch-color);
+  box-shadow: 0 0 0 1px transparent;
+  cursor: pointer;
+}
+
+.transport-collab-palette button:hover,
+.transport-collab-palette button.is-selected {
+  box-shadow: 0 0 0 2px var(--collab-swatch-color);
+}
+
+.transport-collab-palette button.is-current {
+  display: grid;
+  place-items: center;
+  color: #ffffff;
+  font-size: 10px;
+  font-weight: 900;
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--collab-swatch-color) 70%, #ffffff);
+  cursor: default;
+}
+
+.transport-collab-member-heading {
+  padding: 11px 0 5px;
+  color: #607087;
+  font-size: 10px;
+  font-weight: 800;
+}
+
+.transport-collab-member-list {
+  display: grid;
+  gap: 7px;
+}
+
+.transport-collab-member-list > div {
+  display: grid;
+  grid-template-columns: 9px minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 20px;
+}
+
+.transport-collab-member-list i {
+  width: 9px;
+  height: 9px;
+  border-radius: 3px;
+}
+
+.transport-collab-member-list span {
+  overflow: hidden;
+  font-size: 11px;
+  font-weight: 750;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.transport-collab-member-list small {
+  color: #8b97a8;
+  font-size: 9px;
+}
+
+.transport-collab-member-list > div:has(small:last-child) small {
+  white-space: nowrap;
 }
 
 .transport-dialog--save .transport-save-dialog-field > input,

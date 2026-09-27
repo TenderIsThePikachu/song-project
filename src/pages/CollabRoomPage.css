@@ -679,7 +679,7 @@
   border-bottom: 1px solid #e5eaf0;
 }
 
-.collab-member-avatar {
+.collab-member-card > .collab-member-avatar {
   position: relative;
   display: grid;
   width: 43px;
@@ -690,6 +690,8 @@
   color: var(--member-ink, #138b6b);
   font-size: 14px;
   font-weight: 850;
+  line-height: 1;
+  box-sizing: border-box;
 }
 
 .collab-member-avatar.has-initial::before,
@@ -725,7 +727,7 @@
 }
 
 .collab-member-card strong,
-.collab-member-card span {
+.collab-member-card div > span {
   display: block;
 }
 

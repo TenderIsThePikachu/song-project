@@ -64,6 +64,7 @@ export type CollabComposerOperation =
   | { type: 'toggle-drum-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
   | { type: 'toggle-bass-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
   | { type: 'set-track-note'; instrument: CollabComposerInstrument; trackId?: string; row: number; col: number; nextValue: boolean; barIndex: number; }
+  | { type: 'set-track-chord'; instrument: CollabComposerInstrument; trackId?: string; chord: string; rows: number[]; col: number; barIndex: number; }
   | { type: 'apply-chord'; chord: string; col: number; isBass: boolean; rows: number[]; barIndex: number; }
   | { type: 'set-volume'; instrument: CollabComposerInstrument; volume: number; };
 
@@ -134,6 +135,14 @@ function getOperationNoteColorChanges(operation: CollabComposerOperation, color:
         color: operation.nextValue ? color : null,
       });
       break;
+    case 'set-track-chord':
+      operation.rows.forEach((row) => {
+        changes.push({
+          key: getCollabNoteColorKey(operation.instrument, row, operation.col, operation.trackId),
+          color,
+        });
+      });
+      break;
     case 'toggle-violin-step':
     case 'toggle-saxophone-step':
     case 'toggle-guitar-step':
@@ -159,20 +168,13 @@ function getOperationSummary(operation: CollabComposerOperation) {
       return `${operation.barIndex + 1}마디 멜로디 음을 수정했습니다.`;
     case 'apply-chord':
       return `${operation.barIndex + 1}마디에 ${operation.chord} 코드를 적용했습니다.`;
+    case 'set-track-chord':
+      return `${operation.barIndex + 1}마디에 ${operation.chord} 코드를 적용했습니다.`;
     case 'set-volume':
       return `${operation.instrument} 볼륨을 조정했습니다.`;
     default:
       return `${operation.barIndex + 1}마디 ${operation.type.replaceAll('-', ' ')} 작업을 수정했습니다.`;
   }
-}
-
-async function addComposerHistoryEntry(entry: Omit<CollabComposerHistoryEntry, 'id' | 'createdAt'>) {
-  const historyRef = doc(collection(db, 'collab_history'));
-  await setDoc(historyRef, {
-    id: historyRef.id,
-    createdAt: Date.now(),
-    ...entry,
-  });
 }
 
 // ============================================================================
@@ -332,14 +334,20 @@ export const useCollabStore = create<CollabState>((set, get) => ({
 
   updateComposerSnapshot: async (projectId, payload) => {
     const revision = (payload.baseRevision ?? 0) + 1;
-    await updateDoc(doc(db, 'collab_projects', projectId), {
+    const updatedAt = Date.now();
+    const projectRef = doc(db, 'collab_projects', projectId);
+    const historyRef = doc(collection(db, 'collab_history'));
+    const batch = writeBatch(db);
+    batch.update(projectRef, {
       snapshot: sanitizeForFirestore(payload.snapshot),
       snapshotRevision: increment(1),
       snapshotUpdatedByEmail: payload.email,
       snapshotUpdatedBySessionId: payload.sessionId || COLLAB_SESSION_ID,
-      updatedAt: Date.now()
+      updatedAt,
     });
-    await addComposerHistoryEntry({
+    batch.set(historyRef, {
+      id: historyRef.id,
+      createdAt: updatedAt,
       projectId,
       instrument: 'transport',
       barIndex: null,
@@ -349,6 +357,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
       summary: '작곡 화면 변경사항을 저장했습니다.',
       revision,
     });
+    await batch.commit();
     return revision;
   },
 
@@ -367,21 +376,28 @@ export const useCollabStore = create<CollabState>((set, get) => ({
           delete noteColors[change.key];
         }
       });
-      await updateDoc(doc(db, 'collab_projects', projectId), {
+      const updatedAt = Date.now();
+      const projectRef = doc(db, 'collab_projects', projectId);
+      const historyRef = doc(collection(db, 'collab_history'));
+      const batch = writeBatch(db);
+      batch.update(projectRef, {
         snapshot: sanitizeForFirestore(currentSnapshot),
         noteColors,
         snapshotRevision: increment(1),
         snapshotUpdatedByEmail: payload.email,
-        updatedAt: Date.now()
+        snapshotUpdatedBySessionId: payload.sessionId || COLLAB_SESSION_ID,
+        updatedAt,
       });
-      await addComposerHistoryEntry({
+      batch.set(historyRef, {
+        id: historyRef.id,
+        createdAt: updatedAt,
         projectId,
         instrument:
           payload.operation.type === 'apply-chord'
             ? payload.operation.isBass
               ? 'bass'
               : 'melody'
-            : payload.operation.type === 'set-track-note'
+            : payload.operation.type === 'set-track-note' || payload.operation.type === 'set-track-chord'
               ? payload.operation.instrument
             : payload.operation.type === 'set-volume'
               ? payload.operation.instrument
@@ -404,6 +420,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
         summary: getOperationSummary(payload.operation),
         revision,
       });
+      await batch.commit();
     }
     return revision;
   },

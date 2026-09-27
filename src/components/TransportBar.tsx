@@ -13,7 +13,6 @@ import { useSongStore, buildSongProjectSnapshot } from '../store/songStore.ts';
 import { useAuthStore } from '../store/authStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import { fetchAiMusic } from '../utils/ai';
-import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
 import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
 import './TransportBar.css';
 
@@ -233,7 +232,26 @@ type TransportBarProps = {
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
   workMode?: 'personal' | 'collab';
+  collabMembers?: Array<{
+    email: string;
+    name: string;
+    color: string;
+    isOnline: boolean;
+    isCurrent: boolean;
+  }>;
+  collabColor?: string;
+  onCollabColorChange?: (color: string) => void;
 };
+
+const COLLAB_COLOR_OPTIONS = [
+  '#3b82f6',
+  '#8b5cf6',
+  '#ec4899',
+  '#d69a2d',
+  '#06b6d4',
+  '#84cc16',
+  '#f97316',
+];
 
 const UndoIcon = () => (
   <svg
@@ -323,6 +341,9 @@ export const TransportBar = ({
   songTitle = '',
   onSongTitleChange,
   workMode = 'personal',
+  collabMembers = [],
+  collabColor = '#14b8a6',
+  onCollabColorChange,
 }: TransportBarProps = {}) => {
   const navigate = useNavigate();
   const location = useLocation();
@@ -352,6 +373,7 @@ export const TransportBar = ({
   const [aiCompletionToast, setAiCompletionToast] = useState<'compose' | null>(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
+  const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
 
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
@@ -383,6 +405,7 @@ export const TransportBar = ({
   const [isUploadingShareCover, setIsUploadingShareCover] = useState(false);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const collabMenuRef = useRef<HTMLDivElement | null>(null);
   const backingTrackAudioRef = useRef<HTMLAudioElement | null>(null);
   const backingTrackUrlRef = useRef('');
   const backingTrackTimerRef = useRef<number | null>(null);
@@ -393,6 +416,21 @@ export const TransportBar = ({
   const [backingTrackSourceBpm] = useState(bpm);
 
   const currentBar = Math.floor(currentStep / BAR_LENGTH) + 1;
+  const currentCollabMember = collabMembers.find((member) => member.isCurrent);
+  const onlineCollaboratorCount = collabMembers.filter(
+    (member) => member.isOnline && !member.isCurrent
+  ).length;
+
+  useEffect(() => {
+    if (!isCollabMenuOpen) return undefined;
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!collabMenuRef.current?.contains(event.target as Node)) {
+        setIsCollabMenuOpen(false);
+      }
+    };
+    window.addEventListener('mousedown', handleOutsideClick);
+    return () => window.removeEventListener('mousedown', handleOutsideClick);
+  }, [isCollabMenuOpen]);
   const totalBars = Math.max(1, Math.ceil(steps / BAR_LENGTH));
 
   useEffect(() => {
@@ -814,12 +852,77 @@ export const TransportBar = ({
         aria-label="곡 제목"
         maxLength={100}
       />
-      <div
-        className={`transport-work-mode is-${workMode}`}
-        aria-label={workMode === 'collab' ? '협업 작업 중' : '개인 작업 중'}
-      >
-        <span aria-hidden="true" />
-        {workMode === 'collab' ? '협업 작업' : '개인 작업'}
+      <div ref={collabMenuRef} className="transport-work-mode-shell">
+        <button
+          type="button"
+          className={`transport-work-mode is-${workMode}${isCollabMenuOpen ? ' is-open' : ''}`}
+          aria-label={workMode === 'collab' ? '협업 작업자 및 색상 보기' : '개인 작업 중'}
+          aria-expanded={workMode === 'collab' ? isCollabMenuOpen : undefined}
+          onClick={() => {
+            if (workMode === 'collab') setIsCollabMenuOpen((open) => !open);
+          }}
+        >
+          <span className="transport-work-mode-dot" aria-hidden="true" />
+          {workMode === 'collab' ? (
+            <>
+              <span className="transport-collab-mini-avatar" style={{ background: collabColor }}>
+                {currentCollabMember?.name.trim().slice(0, 1).toUpperCase() || '?'}
+              </span>
+              <span className="transport-collab-online-count">{onlineCollaboratorCount + 1}</span>
+              <strong>
+                {currentCollabMember?.name || '나'}
+                {onlineCollaboratorCount > 0 ? ` 외 ${onlineCollaboratorCount}명 작업 중` : ' 작업 중'}
+              </strong>
+              <span className="transport-collab-caret" aria-hidden="true">⌃</span>
+            </>
+          ) : (
+            <strong>개인 작업</strong>
+          )}
+        </button>
+
+        {workMode === 'collab' && isCollabMenuOpen ? (
+          <div className="transport-collab-menu" role="dialog" aria-label="협업 작업자와 노트 색상">
+            <div className="transport-collab-menu-user">
+              <span style={{ background: collabColor }}>
+                {currentCollabMember?.name.trim().slice(0, 1).toUpperCase() || '?'}
+              </span>
+              <strong>{currentCollabMember?.name || '나'}</strong>
+            </div>
+
+            <div className="transport-collab-palette" aria-label="내 노트 색상">
+              <button
+                type="button"
+                className="is-current"
+                style={{ '--collab-swatch-color': collabColor } as React.CSSProperties}
+                aria-label="현재 내 노트 색상"
+              >
+                <span>{onlineCollaboratorCount + 1}</span>
+              </button>
+              {COLLAB_COLOR_OPTIONS.map((color) => (
+                <button
+                  key={color}
+                  type="button"
+                  className={collabColor === color ? 'is-selected' : ''}
+                  style={{ '--collab-swatch-color': color } as React.CSSProperties}
+                  onClick={() => onCollabColorChange?.(color)}
+                  aria-label={`${color} 노트 색상 선택`}
+                  aria-pressed={collabColor === color}
+                />
+              ))}
+            </div>
+
+            <div className="transport-collab-member-heading">이 방 멤버 {collabMembers.length}</div>
+            <div className="transport-collab-member-list">
+              {collabMembers.map((member) => (
+                <div key={member.email}>
+                  <i style={{ background: member.color }} />
+                  <span>{member.name}{member.isCurrent ? ' (나)' : ''}</span>
+                  <small>{member.isOnline ? '접속 중' : '자리 비움'}</small>
+                </div>
+              ))}
+            </div>
+          </div>
+        ) : null}
       </div>
       <div className="transport-primary">
         <button
@@ -906,13 +1009,6 @@ export const TransportBar = ({
         >
           <ResetIcon />
           <span>초기화</span>
-        </button>
-        <button
-          type="button"
-          className="transport-button"
-          onClick={() => navigate(getRecruitUrlFromSketch(saveTitle.trim() || shareTitle.trim() || '내 곡 스케치'))}
-        >
-          파트 모음
         </button>
         <button type="button" className="transport-button" onClick={() => openDialog('save')}>
           저장하기
