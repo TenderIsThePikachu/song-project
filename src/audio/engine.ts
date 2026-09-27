@@ -40,8 +40,8 @@ import {
 
 let loopId: number | null = null;
 let playbackStep = 0;
-const PLAYBACK_START_DELAY_SECONDS = 0.08;
 const AUDIO_LOOK_AHEAD_SECONDS = 0.12;
+const PLAYBACK_START_DELAY_SECONDS = 0.1;
 let cachedVolumeKey = "";
 let cachedExtraTrackVolumeKey = "";
 let cachedActiveInstrumentKey = "";

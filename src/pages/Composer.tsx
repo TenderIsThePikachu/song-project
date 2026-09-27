@@ -1546,9 +1546,9 @@ export function Composer() {
       liveArrangementPlayheadsRef.current = [];
       liveScrollerPairsRef.current = [];
       liveDrumScrollersRef.current = [];
-      liveStepElementsRef.current.forEach((element) => {
-        element.classList.remove('is-current-live');
-      });
+      document
+        .querySelectorAll<HTMLElement>('.composer-page .is-current-live')
+        .forEach((element) => element.classList.remove('is-current-live'));
       liveStepElementsRef.current = [];
       liveStepElementCacheRef.current.clear();
 
@@ -1592,9 +1592,9 @@ export function Composer() {
       const didVisualStepChange = liveVisualStepRef.current !== visualStep;
 
       if (didVisualStepChange) {
-        liveStepElementsRef.current.forEach((element) => {
-          element.classList.remove('is-current-live');
-        });
+        document
+          .querySelectorAll<HTMLElement>('.composer-page .is-current-live')
+          .forEach((element) => element.classList.remove('is-current-live'));
         const cachedLiveElements = liveStepElementCacheRef.current.get(visualStep);
         const nextLiveElements =
           cachedLiveElements ??
@@ -3216,6 +3216,23 @@ export function Composer() {
 
     return () => cancelIdle(idleId);
   }, []);
+
+  useEffect(() => {
+    if (isPlaying) {
+      return;
+    }
+
+    const scheduleIdle = window.requestIdleCallback ?? ((callback: IdleRequestCallback) =>
+      window.setTimeout(() => callback({ didTimeout: false, timeRemaining: () => 8 }), 180));
+    const cancelIdle = window.cancelIdleCallback ?? window.clearTimeout;
+    const idleId = scheduleIdle(() => {
+      void preloadPlaybackEngine().catch((error) => {
+        console.warn('Playback preload refresh skipped:', error);
+      });
+    });
+
+    return () => cancelIdle(idleId);
+  }, [bass, drums, extraTracks, guitar, isPlaying, melody, saxophone, violin]);
 
   useEffect(() => {
     if (!isGuideOpen || !activeGuideStep?.tab || activeTab === activeGuideStep.tab) {

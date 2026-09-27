@@ -599,12 +599,10 @@ export const TransportBar = ({
       Tone.Transport.bpm.value = bpm;
       Tone.Transport.stop();
       Tone.Transport.position = 0;
+      Tone.Transport.start(`+${getPlaybackStartDelaySeconds()}`);
+      startBackingTrack(startStep);
       setPlaying(true);
       onPlayStarted?.();
-      window.requestAnimationFrame(() => {
-        Tone.Transport.start(`+${getPlaybackStartDelaySeconds()}`);
-        startBackingTrack(startStep);
-      });
     } catch (error) {
       console.error('Playback start failed:', error);
       Tone.Transport.stop();

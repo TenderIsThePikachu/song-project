@@ -77,6 +77,8 @@ export default function CollabPage() {
   const messages = useCollabStore((state) => state.messages);
   const tasks = useCollabStore((state) => state.tasks);
   const joinProject = useCollabStore((state) => state.joinProject);
+  const renameProject = useCollabStore((state) => state.renameProject);
+  const deleteProject = useCollabStore((state) => state.deleteProject);
   const createFromComposerProject = useCollabStore((state) => state.createFromComposerProject);
   const initializeRealtime = useCollabStore((state) => state.initializeRealtime);
   const connectionStatus = useCollabStore((state) => state.connectionStatus);
@@ -84,6 +86,11 @@ export default function CollabPage() {
   const composerProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
   const [actionError, setActionError] = useState('');
+  const [openMenuProjectId, setOpenMenuProjectId] = useState<string | null>(null);
+  const [renameTarget, setRenameTarget] = useState<CollabProject | null>(null);
+  const [renameTitle, setRenameTitle] = useState('');
+  const [deleteTarget, setDeleteTarget] = useState<CollabProject | null>(null);
+  const [isManagingProject, setIsManagingProject] = useState(false);
 
   useEffect(() => {
     void initializeRealtime().catch(console.error);
@@ -129,16 +136,6 @@ export default function CollabPage() {
   }, [projects]);
 
   const openTaskCount = useMemo(() => tasks.filter((task) => !task.completed).length, [tasks]);
-
-  const latestMessageByProject = useMemo(() => {
-    const map = new Map<string, string>();
-    [...messages]
-      .sort((left, right) => right.createdAt - left.createdAt)
-      .forEach((message) => {
-        if (!map.has(message.projectId)) map.set(message.projectId, message.content);
-      });
-    return map;
-  }, [messages]);
 
   const openTasksByProject = useMemo(() => {
     const map = new Map<string, number>();
@@ -219,6 +216,42 @@ export default function CollabPage() {
       return;
     }
     navigate(user ? '/library' : '/login');
+  };
+
+  const openRenameDialog = (project: CollabProject) => {
+    setOpenMenuProjectId(null);
+    setRenameTarget(project);
+    setRenameTitle(project.title);
+  };
+
+  const handleRenameProject = async () => {
+    if (!user || !renameTarget || !renameTitle.trim()) return;
+
+    try {
+      setIsManagingProject(true);
+      setActionError('');
+      await renameProject(renameTarget.id, user.email, renameTitle);
+      setRenameTarget(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '작업실 이름을 변경하지 못했습니다.');
+    } finally {
+      setIsManagingProject(false);
+    }
+  };
+
+  const handleDeleteProject = async () => {
+    if (!user || !deleteTarget) return;
+
+    try {
+      setIsManagingProject(true);
+      setActionError('');
+      await deleteProject(deleteTarget.id, user.email);
+      setDeleteTarget(null);
+    } catch (error) {
+      setActionError(error instanceof Error ? error.message : '작업실을 삭제하지 못했습니다.');
+    } finally {
+      setIsManagingProject(false);
+    }
   };
 
   return (
@@ -305,11 +338,13 @@ export default function CollabPage() {
             <div className="collab-project-list">
               {sortedProjects.length ? sortedProjects.map((project, index) => {
                 const isMember = user ? project.members.some((member) => member.email === user.email) : false;
+                const isOwner = user
+                  ? project.ownerEmail.trim().toLowerCase() === user.email.trim().toLowerCase()
+                  : false;
                 const projectTasks = tasks.filter((task) => task.projectId === project.id);
                 const completedTasks = projectTasks.filter((task) => task.completed).length;
                 const fallbackProgress = project.status === 'feedback' ? 80 : project.status === 'working' ? 60 : 20;
                 const progress = projectTasks.length ? Math.round((completedTasks / projectTasks.length) * 100) : fallbackProgress;
-                const lastMessage = latestMessageByProject.get(project.id);
 
                 return (
                   <article className="collab-project-card" key={project.id}>
@@ -317,7 +352,7 @@ export default function CollabPage() {
                       <img className="collab-project-cover" src={COLLAB_COVERS[index % COLLAB_COVERS.length]} alt="" />
                       <span className="collab-project-copy">
                         <strong>{project.title}</strong>
-                        <small>{project.summary || lastMessage || '함께 완성해가는 협업 프로젝트입니다.'}</small>
+                        <small>{project.summary || `방장 ${project.ownerName}`}</small>
                         <span className="collab-project-meta">
                           <i>{project.genre || '장르 미정'}</i><i>{project.bpm} BPM</i><i>{project.steps} steps</i><i>{project.members.length}명 참여</i>
                         </span>
@@ -332,7 +367,39 @@ export default function CollabPage() {
                           {project.members.slice(0, 3).map((member, memberIndex) => <i key={member.email} className={`is-${memberIndex + 1}`}>{getInitial(member.name)}</i>)}
                           {project.members.length > 3 ? <i className="is-more">+{project.members.length - 3}</i> : null}
                         </span>
-                        <button type="button" className="collab-more-button" aria-label={`${project.title} 메뉴`}>⋮</button>
+                        {isOwner ? (
+                          <div className="collab-project-menu-wrap">
+                            <button
+                              type="button"
+                              className="collab-more-button"
+                              aria-label={`${project.title} 관리 메뉴`}
+                              aria-expanded={openMenuProjectId === project.id}
+                              onClick={() =>
+                                setOpenMenuProjectId((current) => current === project.id ? null : project.id)
+                              }
+                            >
+                              ⋮
+                            </button>
+                            {openMenuProjectId === project.id ? (
+                              <div className="collab-project-menu" role="menu">
+                                <button type="button" role="menuitem" onClick={() => openRenameDialog(project)}>
+                                  이름 변경
+                                </button>
+                                <button
+                                  type="button"
+                                  role="menuitem"
+                                  className="is-danger"
+                                  onClick={() => {
+                                    setOpenMenuProjectId(null);
+                                    setDeleteTarget(project);
+                                  }}
+                                >
+                                  작업실 삭제
+                                </button>
+                              </div>
+                            ) : null}
+                          </div>
+                        ) : null}
                       </div>
                     </div>
 
@@ -377,6 +444,62 @@ export default function CollabPage() {
           </aside>
         </div>
       </main>
+
+      {renameTarget ? (
+        <div className="collab-manage-overlay" role="presentation" onMouseDown={() => setRenameTarget(null)}>
+          <form
+            className="collab-manage-dialog"
+            onSubmit={(event) => {
+              event.preventDefault();
+              void handleRenameProject();
+            }}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div>
+              <strong>작업실 이름 변경</strong>
+              <p>팀원에게 표시할 새로운 작업실 이름을 입력하세요.</p>
+            </div>
+            <label>
+              <span>작업실 이름</span>
+              <input
+                autoFocus
+                maxLength={60}
+                value={renameTitle}
+                onChange={(event) => setRenameTitle(event.target.value)}
+              />
+            </label>
+            <div className="collab-manage-actions">
+              <button type="button" onClick={() => setRenameTarget(null)} disabled={isManagingProject}>취소</button>
+              <button type="submit" className="is-primary" disabled={isManagingProject || !renameTitle.trim()}>
+                {isManagingProject ? '변경 중...' : '변경하기'}
+              </button>
+            </div>
+          </form>
+        </div>
+      ) : null}
+
+      {deleteTarget ? (
+        <div className="collab-manage-overlay" role="presentation" onMouseDown={() => setDeleteTarget(null)}>
+          <div
+            className="collab-manage-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="collab-delete-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div>
+              <strong id="collab-delete-title">작업실을 삭제할까요?</strong>
+              <p><b>{deleteTarget.title}</b>의 작업 내용, 채팅, 할 일과 로그가 모두 삭제됩니다.</p>
+            </div>
+            <div className="collab-manage-actions">
+              <button type="button" onClick={() => setDeleteTarget(null)} disabled={isManagingProject}>취소</button>
+              <button type="button" className="is-danger" onClick={() => void handleDeleteProject()} disabled={isManagingProject}>
+                {isManagingProject ? '삭제 중...' : '작업실 삭제'}
+              </button>
+            </div>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import { useSongStore, buildSongProjectSnapshot } from './songStore';
 import { db } from '../firebase'; 
 import { createRandomCollabMemberColor } from '../utils/collabMemberColor';
 import { 
-  collection, doc, setDoc, updateDoc, deleteDoc, onSnapshot, increment, arrayUnion, query, orderBy, limit, writeBatch
+  collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, increment, arrayUnion, query, where, orderBy, limit, writeBatch
 } from 'firebase/firestore';
 
 // ============================================================================
@@ -88,8 +88,8 @@ type CollabState = {
   setComposerLock: (projectId: string, payload: ComposerLockPayload) => Promise<void>;
   touchPresence: (projectId: string, payload: { email: string; name: string; color?: string; focus?: string }) => Promise<void>;
   leavePresence: (projectId: string) => Promise<void>;
-
-  deleteProject: (projectId: string) => Promise<void>;
+  renameProject: (projectId: string, userEmail: string, title: string) => Promise<void>;
+  deleteProject: (projectId: string, userEmail: string) => Promise<void>;
 };
 
 export const COLLAB_PRESENCE_TIMEOUT_MS = 20_000;
@@ -466,8 +466,55 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     await deleteDoc(doc(db, 'collab_presence', presenceId));
   },
 
-  deleteProject: async (projectId) => {
-    await deleteDoc(doc(db, 'collab_projects', projectId));
+  renameProject: async (projectId, userEmail, title) => {
+    const nextTitle = title.trim();
+    if (!nextTitle) {
+      throw new CollabRequestError('작업실 이름을 입력해주세요.', 400);
+    }
+
+    const projectRef = doc(db, 'collab_projects', projectId);
+    const projectSnapshot = await getDoc(projectRef);
+    if (!projectSnapshot.exists()) {
+      throw new CollabRequestError('작업실을 찾을 수 없습니다.', 404);
+    }
+
+    const project = projectSnapshot.data() as CollabProject;
+    if (project.ownerEmail.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      throw new CollabRequestError('작업실을 만든 사람만 이름을 변경할 수 있습니다.', 403);
+    }
+
+    await updateDoc(projectRef, { title: nextTitle, updatedAt: Date.now() });
+  },
+
+  deleteProject: async (projectId, userEmail) => {
+    const projectRef = doc(db, 'collab_projects', projectId);
+    const projectSnapshot = await getDoc(projectRef);
+    if (!projectSnapshot.exists()) {
+      throw new CollabRequestError('작업실을 찾을 수 없습니다.', 404);
+    }
+
+    const project = projectSnapshot.data() as CollabProject;
+    if (project.ownerEmail.trim().toLowerCase() !== userEmail.trim().toLowerCase()) {
+      throw new CollabRequestError('작업실을 만든 사람만 삭제할 수 있습니다.', 403);
+    }
+
+    const relatedCollections = [
+      'collab_messages',
+      'collab_tasks',
+      'collab_presence',
+      'collab_locks',
+      'collab_history',
+    ];
+    const relatedSnapshots = await Promise.all(
+      relatedCollections.map((collectionName) =>
+        getDocs(query(collection(db, collectionName), where('projectId', '==', projectId)))
+      )
+    );
+
+    await Promise.all(
+      relatedSnapshots.flatMap((snapshot) => snapshot.docs.map((document) => deleteDoc(document.ref)))
+    );
+    await deleteDoc(projectRef);
   },
   
 }));
