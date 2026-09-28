@@ -1,4 +1,4 @@
-import { getStoredSessionToken } from './authSession';
+import { clearStoredSessionToken, getStoredSessionToken } from './authSession';
 import { APP_SERVER_URL } from './serverApi';
 
 export type AuthApiUser = {
@@ -72,7 +72,7 @@ export async function connectFirebaseUserToServer(payload: {
   password: string;
   name: string;
   mode: 'login' | 'signup';
-}) {
+}): Promise<AuthSessionResponse> {
   const login = () => loginWithServer({ email: payload.email, password: payload.password });
   const signup = () =>
     signupWithServer({
@@ -86,8 +86,21 @@ export async function connectFirebaseUserToServer(payload: {
   } catch (primaryError) {
     try {
       return await (payload.mode === 'signup' ? login() : signup());
-    } catch {
-      throw primaryError;
+    } catch (secondaryError) {
+      clearStoredSessionToken();
+      console.warn('App server session unavailable; continuing with Firebase auth.', {
+        primaryError,
+        secondaryError,
+      });
+      return {
+        user: {
+          id: `firebase:${payload.email.toLowerCase()}`,
+          email: payload.email,
+          name: payload.name,
+          createdAt: Date.now(),
+        },
+        sessionToken: '',
+      };
     }
   }
 }
