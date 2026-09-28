@@ -9,7 +9,6 @@ import {
   type CollabStatus,
 } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
-import { useSongStore } from '../store/songStore';
 import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
 import {
   getCollabMemberColor,
@@ -84,7 +83,6 @@ export default function CollabRoomPage() {
   const leavePresence = useCollabStore((state) => state.leavePresence);
   const composerProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
-  const loadProject = useSongStore((state) => state.loadProject);
 
   const [messageDraft, setMessageDraft] = useState('');
   const [taskDraft, setTaskDraft] = useState('');
@@ -236,7 +234,6 @@ export default function CollabRoomPage() {
     const snapshot = project.snapshot ?? linkedProject?.project;
     if (!snapshot) return;
 
-    loadProject(snapshot);
     navigate(`/composer?collab=${project.id}`);
   };
 

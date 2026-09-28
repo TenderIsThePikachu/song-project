@@ -5315,13 +5315,9 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   pointer-events: none;
 }
 
-.composer-clip-pitch-line polyline {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 1.8;
-  opacity: 1;
+.composer-clip-note-block {
+  fill: currentColor;
+  opacity: .92;
 }
 
 .composer-arrangement-playhead {
@@ -5939,4 +5935,56 @@ body:has(.composer-page) .app-root {
 
 .composer-studio-layout.is-lyrics-mode .composer-collab-edge-button {
   top: 50%;
+}
+
+/* Keep both lyrics scroll areas identical to the light editor scrollbar. */
+.composer-studio-layout.is-lyrics-mode .composer-main--lyrics,
+.composer-page .composer-lyrics-bars-list,
+.composer-page .composer-lyrics-input-panel > textarea {
+  scrollbar-color: #a3b0c1 #f7f9fb !important;
+  scrollbar-width: thin !important;
+  scrollbar-gutter: stable;
+}
+
+.composer-studio-layout.is-lyrics-mode .composer-main--lyrics::-webkit-scrollbar,
+.composer-page .composer-lyrics-bars-list::-webkit-scrollbar,
+.composer-page .composer-lyrics-input-panel > textarea::-webkit-scrollbar {
+  width: 7px !important;
+  height: 7px !important;
+}
+
+.composer-studio-layout.is-lyrics-mode .composer-main--lyrics::-webkit-scrollbar-track,
+.composer-studio-layout.is-lyrics-mode .composer-main--lyrics::-webkit-scrollbar-corner,
+.composer-page .composer-lyrics-bars-list::-webkit-scrollbar-track,
+.composer-page .composer-lyrics-bars-list::-webkit-scrollbar-corner,
+.composer-page .composer-lyrics-input-panel > textarea::-webkit-scrollbar-track,
+.composer-page .composer-lyrics-input-panel > textarea::-webkit-scrollbar-corner {
+  border: 0 !important;
+  border-radius: 999px;
+  background: #f7f9fb !important;
+}
+
+.composer-studio-layout.is-lyrics-mode .composer-main--lyrics::-webkit-scrollbar-thumb,
+.composer-page .composer-lyrics-bars-list::-webkit-scrollbar-thumb,
+.composer-page .composer-lyrics-input-panel > textarea::-webkit-scrollbar-thumb {
+  min-height: 36px;
+  border: 1px solid #f7f9fb !important;
+  border-radius: 999px;
+  background: #a3b0c1 !important;
+  background-clip: padding-box !important;
+}
+
+.composer-studio-layout.is-lyrics-mode .composer-main--lyrics::-webkit-scrollbar-thumb:hover,
+.composer-page .composer-lyrics-bars-list::-webkit-scrollbar-thumb:hover,
+.composer-page .composer-lyrics-input-panel > textarea::-webkit-scrollbar-thumb:hover {
+  background: #8797aa !important;
+  background-clip: padding-box !important;
+}
+
+.composer-studio-layout.is-lyrics-mode .composer-main--lyrics::-webkit-scrollbar-button,
+.composer-page .composer-lyrics-bars-list::-webkit-scrollbar-button,
+.composer-page .composer-lyrics-input-panel > textarea::-webkit-scrollbar-button {
+  display: none !important;
+  width: 0 !important;
+  height: 0 !important;
 }

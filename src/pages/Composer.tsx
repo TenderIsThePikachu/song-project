@@ -66,6 +66,7 @@ import {
   buildSongProjectSnapshot,
   type ExtraInstrumentTrack,
   type InstrumentKey,
+  type SongProject,
   useSongStore,
 } from '../store/songStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
@@ -163,7 +164,7 @@ type ArrangementClipLayout = {
 };
 type ArrangementClipPreview = {
   hasAudio: boolean;
-  pitchSegments: string[];
+  noteBlocks: Array<{ x: number; y: number; width: number; height: number }>;
 };
 
 const COMPOSER_NOTEPAD_STORAGE_KEY = 'song-maker-composer-notepad';
@@ -528,54 +529,34 @@ function buildArrangementClipPreview(
   const safeStart = Math.max(0, Math.floor(startStep));
   const safeEnd = Math.max(safeStart + 1, Math.ceil(endStep));
   const span = safeEnd - safeStart;
-  const pitches: Array<number | null> = [];
+  const blockHeight = Math.max(1.15, Math.min(4, 18 / Math.max(1, grid.length)));
+  const noteBlocks: ArrangementClipPreview['noteBlocks'] = [];
 
-  for (let col = safeStart; col < safeEnd; col += 1) {
-    const activeRows: number[] = [];
-    grid.forEach((rowValues, row) => {
-      let active = Boolean(rowValues[col]);
-      if (!active && lengths?.[row]) {
-        for (let noteStart = 0; noteStart < col; noteStart += 1) {
-          if (
-            rowValues[noteStart] &&
-            noteStart + Math.max(1, lengths[row]?.[noteStart] ?? 1) > col
-          ) {
-            active = true;
-            break;
-          }
-        }
-      }
-      if (active) activeRows.push(row);
+  grid.forEach((rowValues, row) => {
+    rowValues.forEach((isActive, noteStart) => {
+      if (!isActive) return;
+
+      const noteLength = Math.max(1, lengths?.[row]?.[noteStart] ?? 1);
+      const noteEnd = noteStart + noteLength;
+      if (noteEnd <= safeStart || noteStart >= safeEnd) return;
+
+      const clippedStart = Math.max(safeStart, noteStart);
+      const clippedEnd = Math.min(safeEnd, noteEnd);
+      const x = ((clippedStart - safeStart) / span) * 100;
+      const width = Math.max(0.18, ((clippedEnd - clippedStart) / span) * 100);
+      const centerY = grid.length > 1 ? 2 + (row / (grid.length - 1)) * 20 : 12;
+      noteBlocks.push({
+        x,
+        y: Math.max(1, centerY - blockHeight / 2),
+        width,
+        height: blockHeight,
+      });
     });
-
-    pitches.push(
-      activeRows.length
-        ? activeRows.reduce((sum, row) => sum + row, 0) / activeRows.length
-        : null
-    );
-  }
-
-  const pitchSegments: string[] = [];
-  let segment: string[] = [];
-  pitches.forEach((pitch, index) => {
-    if (pitch === null) {
-      if (segment.length) pitchSegments.push(segment.join(' '));
-      segment = [];
-      return;
-    }
-
-    const x = ((index + 0.5) / span) * 100;
-    const y = grid.length > 1 ? 3 + (pitch / (grid.length - 1)) * 18 : 12;
-    if (!segment.length) {
-      segment.push(`${Math.max(0, x - 0.4).toFixed(2)},${y.toFixed(2)}`);
-    }
-    segment.push(`${x.toFixed(2)},${y.toFixed(2)}`);
   });
-  if (segment.length) pitchSegments.push(segment.join(' '));
 
   return {
-    hasAudio: pitches.some((pitch) => pitch !== null),
-    pitchSegments,
+    hasAudio: noteBlocks.length > 0,
+    noteBlocks,
   };
 }
 
@@ -588,6 +569,18 @@ function getArrangementTrackTone(tab: InstrumentComposerTab): ArrangementTrackDe
 }
 
 const COMPOSER_TAB_STORAGE_KEY = 'song-maker-composer-tabs';
+const PERSONAL_COMPOSER_BACKUP_KEY = 'song-maker-personal-composer-backup';
+
+type PersonalComposerBackup = {
+  project: SongProject;
+  activeTab: ComposerTab;
+  tabs: {
+    openTabs: ComposerTab[];
+    openExtraTrackIds: string[];
+    arrangementTrackOrder: string[];
+    activeTrackId: string | null;
+  };
+};
 
 function isComposerTab(value: unknown): value is ComposerTab {
   return typeof value === 'string' && (tabOrder as readonly string[]).includes(value);
@@ -3499,6 +3492,52 @@ export function Composer() {
     user?.email,
   ]);
 
+  const restorePersonalComposerBackup = useCallback(() => {
+    const rawBackup = window.sessionStorage.getItem(PERSONAL_COMPOSER_BACKUP_KEY);
+    if (!rawBackup) return false;
+
+    try {
+      const backup = JSON.parse(rawBackup) as PersonalComposerBackup;
+      if (!backup.project || !backup.tabs || !isComposerTab(backup.activeTab)) {
+        return false;
+      }
+
+      loadProject(backup.project);
+      setOpenTabsState(backup.tabs.openTabs);
+      setOpenExtraTrackIds(backup.tabs.openExtraTrackIds);
+      setArrangementTrackOrder(backup.tabs.arrangementTrackOrder);
+      setActiveTrackId(backup.tabs.activeTrackId);
+      setActiveTab(backup.activeTab);
+      window.localStorage.setItem(COMPOSER_TAB_STORAGE_KEY, JSON.stringify(backup.tabs));
+      return true;
+    } catch (error) {
+      console.error('Failed to restore the personal composer backup:', error);
+      return false;
+    } finally {
+      window.sessionStorage.removeItem(PERSONAL_COMPOSER_BACKUP_KEY);
+    }
+  }, [loadProject, setActiveTab]);
+
+  useEffect(() => {
+    if (!collabId) {
+      restorePersonalComposerBackup();
+      return undefined;
+    }
+
+    if (!window.sessionStorage.getItem(PERSONAL_COMPOSER_BACKUP_KEY)) {
+      const backup: PersonalComposerBackup = {
+        project: buildSongProjectSnapshot(useSongStore.getState()),
+        activeTab: useUIStore.getState().activeTab,
+        tabs: readComposerTabDraft(),
+      };
+      window.sessionStorage.setItem(PERSONAL_COMPOSER_BACKUP_KEY, JSON.stringify(backup));
+    }
+
+    return () => {
+      restorePersonalComposerBackup();
+    };
+  }, [collabId, restorePersonalComposerBackup]);
+
   useEffect(() => {
     if (!collabId) {
       hasLoadedCollabRef.current = false;
@@ -5480,11 +5519,15 @@ export function Composer() {
                         preserveAspectRatio="none"
                         aria-hidden="true"
                       >
-                        {preview.pitchSegments.map((points, segmentIndex) => (
-                          <polyline
-                            key={`${clipKey}-pitch-${segmentIndex}`}
-                            points={points}
-                            vectorEffect="non-scaling-stroke"
+                        {preview.noteBlocks.map((note, noteIndex) => (
+                          <rect
+                            key={`${clipKey}-note-${noteIndex}`}
+                            className="composer-clip-note-block"
+                            x={note.x}
+                            y={note.y}
+                            width={note.width}
+                            height={note.height}
+                            rx={Math.min(0.45, note.height / 2)}
                           />
                         ))}
                       </svg>
