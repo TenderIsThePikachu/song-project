@@ -862,6 +862,122 @@ html[data-theme] .collab-room-page .collab-owner-mark {
   cursor: pointer;
 }
 
+.collab-history-more:hover {
+  border-color: #9ddfcd;
+  background: #f3fcf9;
+  color: #168d70;
+}
+
+.collab-history-modal-backdrop {
+  position: fixed;
+  z-index: 1200;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  padding: 24px;
+  background: rgba(15, 25, 43, 0.48);
+  backdrop-filter: blur(3px);
+}
+
+.collab-history-modal {
+  width: min(620px, 100%);
+  max-height: min(720px, calc(100vh - 48px));
+  overflow: hidden;
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  box-shadow: 0 24px 64px rgba(16, 31, 52, 0.24);
+}
+
+.collab-history-modal-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 20px;
+  padding: 22px 24px 18px;
+  border-bottom: 1px solid #e7edf1;
+}
+
+.collab-history-modal-head h2,
+.collab-history-modal-head p {
+  margin: 0;
+}
+
+.collab-history-modal-head h2 {
+  color: #17243d;
+  font-size: 20px;
+}
+
+.collab-history-modal-head p {
+  margin-top: 5px;
+  color: #7f8ba0;
+  font-size: 12px;
+}
+
+.collab-history-modal-close {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #dce5eb;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #53617d;
+  font: inherit;
+  font-size: 24px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.collab-history-modal-close:hover {
+  border-color: #9ddfcd;
+  color: #168d70;
+}
+
+.collab-history-modal-list {
+  max-height: calc(min(720px, 100vh - 48px) - 92px);
+  overflow-y: auto;
+  padding: 20px 24px 10px;
+  scrollbar-color: #aebdca transparent;
+  scrollbar-width: thin;
+}
+
+.collab-history-modal-list::-webkit-scrollbar {
+  width: 8px;
+}
+
+.collab-history-modal-list::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.collab-history-modal-list::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 8px;
+  background: #aebdca;
+  background-clip: padding-box;
+}
+
+.collab-history-modal-list .collab-history-card {
+  padding-bottom: 18px;
+}
+
+html[data-theme="dark"] .collab-history-modal {
+  border-color: #344158;
+  background: #192237;
+}
+
+html[data-theme="dark"] .collab-history-modal-head {
+  border-bottom-color: #344158;
+}
+
+html[data-theme="dark"] .collab-history-modal-head h2 {
+  color: #f2f6fb;
+}
+
+html[data-theme="dark"] .collab-history-modal-close {
+  border-color: #43506a;
+  background: #202b42;
+  color: #d6deeb;
+}
+
 .collab-history-card:last-child {
   padding-bottom: 0;
 }

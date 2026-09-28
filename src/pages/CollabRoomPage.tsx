@@ -88,6 +88,7 @@ export default function CollabRoomPage() {
   const [taskDraft, setTaskDraft] = useState('');
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [roomError, setRoomError] = useState('');
+  const [isHistoryOpen, setIsHistoryOpen] = useState(false);
 
   useEffect(() => {
     void initializeRealtime().catch(console.error);
@@ -116,9 +117,20 @@ export default function CollabRoomPage() {
   );
 
   const projectHistory = useMemo(
-    () => projectId ? (composerHistoryByProject[projectId] ?? []).slice(0, 8) : [],
+    () => projectId ? (composerHistoryByProject[projectId] ?? []) : [],
     [composerHistoryByProject, projectId]
   );
+
+  useEffect(() => {
+    if (!isHistoryOpen) return;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsHistoryOpen(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isHistoryOpen]);
 
   const isMember = user ? project?.members.some((member) => member.email === user.email) ?? false : false;
   const canEdit = isMember;
@@ -521,7 +533,14 @@ export default function CollabRoomPage() {
             <article className="collab-room-panel collab-history-panel">
               <div className="collab-room-panel-head">
                 <strong><i className="collab-heading-glyph is-clock"><RoomIcon name="clock" /></i> 작업 히스토리</strong>
-                <button type="button" className="collab-history-more">전체보기</button>
+                <button
+                  type="button"
+                  className="collab-history-more"
+                  onClick={() => setIsHistoryOpen(true)}
+                  aria-haspopup="dialog"
+                >
+                  전체보기
+                </button>
               </div>
 
               <div className="collab-history-list">
@@ -544,6 +563,54 @@ export default function CollabRoomPage() {
           </aside>
         </section>
       </main>
+
+      {isHistoryOpen ? (
+        <div
+          className="collab-history-modal-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsHistoryOpen(false);
+          }}
+        >
+          <section
+            className="collab-history-modal"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="collab-history-modal-title"
+          >
+            <header className="collab-history-modal-head">
+              <div>
+                <h2 id="collab-history-modal-title">작업 히스토리</h2>
+                <p>전체 {projectHistory.length}개의 작업 기록</p>
+              </div>
+              <button
+                type="button"
+                className="collab-history-modal-close"
+                onClick={() => setIsHistoryOpen(false)}
+                aria-label="작업 히스토리 닫기"
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="collab-history-modal-list">
+              {projectHistory.length ? (
+                projectHistory.map((entry) => (
+                  <article key={entry.id} className="collab-history-card">
+                    <i aria-hidden="true" />
+                    <div>
+                      <strong>{entry.summary}</strong>
+                      <span>{`${entry.authorName} · ${formatDateTime(entry.createdAt)}`}</span>
+                    </div>
+                    <em>{entry.instrument}</em>
+                  </article>
+                ))
+              ) : (
+                <div className="collab-room-empty">아직 저장된 작업 히스토리가 없습니다.</div>
+              )}
+            </div>
+          </section>
+        </div>
+      ) : null}
     </div>
   );
 }
