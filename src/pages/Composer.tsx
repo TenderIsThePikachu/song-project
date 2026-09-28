@@ -164,7 +164,7 @@ type ArrangementClipLayout = {
 };
 type ArrangementClipPreview = {
   hasAudio: boolean;
-  noteBlocks: Array<{ x: number; y: number; width: number; height: number }>;
+  pitchSegments: string[];
 };
 
 const COMPOSER_NOTEPAD_STORAGE_KEY = 'song-maker-composer-notepad';
@@ -529,34 +529,69 @@ function buildArrangementClipPreview(
   const safeStart = Math.max(0, Math.floor(startStep));
   const safeEnd = Math.max(safeStart + 1, Math.ceil(endStep));
   const span = safeEnd - safeStart;
-  const blockHeight = Math.max(1.15, Math.min(4, 18 / Math.max(1, grid.length)));
-  const noteBlocks: ArrangementClipPreview['noteBlocks'] = [];
+  const pitches: Array<number | null> = [];
 
-  grid.forEach((rowValues, row) => {
-    rowValues.forEach((isActive, noteStart) => {
-      if (!isActive) return;
-
-      const noteLength = Math.max(1, lengths?.[row]?.[noteStart] ?? 1);
-      const noteEnd = noteStart + noteLength;
-      if (noteEnd <= safeStart || noteStart >= safeEnd) return;
-
-      const clippedStart = Math.max(safeStart, noteStart);
-      const clippedEnd = Math.min(safeEnd, noteEnd);
-      const x = ((clippedStart - safeStart) / span) * 100;
-      const width = Math.max(0.18, ((clippedEnd - clippedStart) / span) * 100);
-      const centerY = grid.length > 1 ? 2 + (row / (grid.length - 1)) * 20 : 12;
-      noteBlocks.push({
-        x,
-        y: Math.max(1, centerY - blockHeight / 2),
-        width,
-        height: blockHeight,
-      });
+  for (let col = safeStart; col < safeEnd; col += 1) {
+    const activeRows: number[] = [];
+    grid.forEach((rowValues, row) => {
+      let active = Boolean(rowValues[col]);
+      if (!active && lengths?.[row]) {
+        for (let noteStart = 0; noteStart < col; noteStart += 1) {
+          if (
+            rowValues[noteStart] &&
+            noteStart + Math.max(1, lengths[row]?.[noteStart] ?? 1) > col
+          ) {
+            active = true;
+            break;
+          }
+        }
+      }
+      if (active) activeRows.push(row);
     });
+
+    pitches.push(
+      activeRows.length
+        ? activeRows.reduce((sum, row) => sum + row, 0) / activeRows.length
+        : null
+    );
+  }
+
+  const sampleSize = Math.max(1, Math.ceil(span / 160));
+  const previewPitches: Array<{ pitch: number | null; center: number }> = [];
+  for (let start = 0; start < pitches.length; start += sampleSize) {
+    const end = Math.min(pitches.length, start + sampleSize);
+    const activePitches = pitches
+      .slice(start, end)
+      .filter((pitch): pitch is number => pitch !== null);
+    previewPitches.push({
+      pitch: activePitches.length
+        ? activePitches.reduce((sum, pitch) => sum + pitch, 0) / activePitches.length
+        : null,
+      center: start + (end - start) / 2,
+    });
+  }
+
+  const pitchSegments: string[] = [];
+  let segment: string[] = [];
+  previewPitches.forEach(({ pitch, center }) => {
+    if (pitch === null) {
+      if (segment.length) pitchSegments.push(segment.join(' '));
+      segment = [];
+      return;
+    }
+
+    const x = (center / span) * 100;
+    const y = grid.length > 1 ? 3 + (pitch / (grid.length - 1)) * 18 : 12;
+    if (!segment.length) {
+      segment.push(`${Math.max(0, x - 0.4).toFixed(2)},${y.toFixed(2)}`);
+    }
+    segment.push(`${x.toFixed(2)},${y.toFixed(2)}`);
   });
+  if (segment.length) pitchSegments.push(segment.join(' '));
 
   return {
-    hasAudio: noteBlocks.length > 0,
-    noteBlocks,
+    hasAudio: pitches.some((pitch) => pitch !== null),
+    pitchSegments,
   };
 }
 
@@ -1569,9 +1604,9 @@ export function Composer() {
       liveArrangementPlayheadsRef.current = [];
       liveScrollerPairsRef.current = [];
       liveDrumScrollersRef.current = [];
-      document
-        .querySelectorAll<HTMLElement>('.composer-page .is-current-live')
-        .forEach((element) => element.classList.remove('is-current-live'));
+      liveStepElementsRef.current.forEach((element) => {
+        element.classList.remove('is-current-live');
+      });
       liveStepElementsRef.current = [];
       liveStepElementCacheRef.current.clear();
 
@@ -1615,9 +1650,9 @@ export function Composer() {
       const didVisualStepChange = liveVisualStepRef.current !== visualStep;
 
       if (didVisualStepChange) {
-        document
-          .querySelectorAll<HTMLElement>('.composer-page .is-current-live')
-          .forEach((element) => element.classList.remove('is-current-live'));
+        liveStepElementsRef.current.forEach((element) => {
+          element.classList.remove('is-current-live');
+        });
         const cachedLiveElements = liveStepElementCacheRef.current.get(visualStep);
         const nextLiveElements =
           cachedLiveElements ??
@@ -1689,16 +1724,15 @@ export function Composer() {
         liveArrangementPlayheadsRef.current.some((element) => !element.isConnected) ||
         liveScrollerPairsRef.current.some(({ scroller }) => !scroller.isConnected) ||
         liveDrumScrollersRef.current.some((element) => !element.isConnected);
-      const hasDrumEditor = Boolean(document.querySelector('.composer-sequencer-playhead'));
+      const hasCachedPlaybackDom = Boolean(
+        livePianoPlayheadsRef.current.length ||
+          liveSequencerPlayheadsRef.current.length ||
+          liveArrangementPlayheadsRef.current.length ||
+          liveScrollerPairsRef.current.length ||
+          liveDrumScrollersRef.current.length
+      );
 
-      if (
-        playbackDomChanged ||
-        (hasDrumEditor && !liveSequencerPlayheadsRef.current.length) ||
-        (hasDrumEditor && !liveDrumScrollersRef.current.length) ||
-        (!livePianoPlayheadsRef.current.length &&
-          !liveScrollerPairsRef.current.length &&
-          !liveArrangementPlayheadsRef.current.length)
-      ) {
+      if (playbackDomChanged || !hasCachedPlaybackDom) {
         livePianoPlayheadsRef.current = [
           ...document.querySelectorAll<HTMLElement>('.piano-roll-playhead'),
         ];
@@ -4387,9 +4421,7 @@ export function Composer() {
                     key={`${scrollKey}-header-${col}`}
                     type="button"
                     data-playhead-step={col}
-                    className={`piano-roll-step-number${
-                      col === currentStep ? ' is-current' : ''
-                    }${getSubdivisionClassName(col)}${
+                    className={`piano-roll-step-number${getSubdivisionClassName(col)}${
                       loopRange && col >= loopRange.start && col <= loopRange.end
                         ? ' is-loop-active'
                         : ''
@@ -4600,9 +4632,7 @@ export function Composer() {
                     key={`${track.id}-drum-header-${col}`}
                     type="button"
                     data-playhead-step={col}
-                    className={`composer-drum-step-number${
-                      col === currentStep ? ' is-current' : ''
-                    }${getSubdivisionClassName(col)}${
+                    className={`composer-drum-step-number${getSubdivisionClassName(col)}${
                       loopRange && col >= loopRange.start && col <= loopRange.end
                         ? ' is-loop-active'
                         : ''
@@ -5519,15 +5549,11 @@ export function Composer() {
                         preserveAspectRatio="none"
                         aria-hidden="true"
                       >
-                        {preview.noteBlocks.map((note, noteIndex) => (
-                          <rect
-                            key={`${clipKey}-note-${noteIndex}`}
-                            className="composer-clip-note-block"
-                            x={note.x}
-                            y={note.y}
-                            width={note.width}
-                            height={note.height}
-                            rx={Math.min(0.45, note.height / 2)}
+                        {preview.pitchSegments.map((points, segmentIndex) => (
+                          <polyline
+                            key={`${clipKey}-pitch-${segmentIndex}`}
+                            points={points}
+                            vectorEffect="non-scaling-stroke"
                           />
                         ))}
                       </svg>
@@ -5949,9 +5975,7 @@ export function Composer() {
                           key={`drum-header-${col}`}
                           type="button"
                           data-playhead-step={col}
-                          className={`composer-drum-step-number${
-                            col === currentStep ? ' is-current' : ''
-                          }${getSubdivisionClassName(col)}${
+                          className={`composer-drum-step-number${getSubdivisionClassName(col)}${
                             loopRange && col >= loopRange.start && col <= loopRange.end
                               ? ' is-loop-active'
                               : ''

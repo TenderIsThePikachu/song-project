@@ -5315,9 +5315,13 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   pointer-events: none;
 }
 
-.composer-clip-note-block {
-  fill: currentColor;
-  opacity: .92;
+.composer-clip-pitch-line polyline {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.8;
+  opacity: 1;
 }
 
 .composer-arrangement-playhead {

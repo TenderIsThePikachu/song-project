@@ -420,8 +420,11 @@ export const TransportBar = ({
   const [backingTrackName] = useState('');
   const [backingTrackVolume] = useState(0.7);
   const [backingTrackSourceBpm] = useState(bpm);
+  const [playbackBar, setPlaybackBar] = useState(
+    () => Math.floor(currentStep / BAR_LENGTH) + 1
+  );
 
-  const currentBar = Math.floor(currentStep / BAR_LENGTH) + 1;
+  const currentBar = isPlaying ? playbackBar : Math.floor(currentStep / BAR_LENGTH) + 1;
   const currentCollabMember = collabMembers.find((member) => member.isCurrent);
   const onlineCollaboratorCount = collabMembers.filter(
     (member) => member.isOnline && !member.isCurrent
@@ -521,7 +524,7 @@ export const TransportBar = ({
       previousPlaybackStepRef.current = step;
 
       if (step % BAR_LENGTH === 0) {
-        setCurrentStep(step);
+        setPlaybackBar(Math.floor(step / BAR_LENGTH) + 1);
       }
 
       if (!backingTrackName) return;
@@ -609,6 +612,7 @@ export const TransportBar = ({
         ? Math.min(loopEnd, Math.max(loopStart, currentStep))
         : Math.min(steps - 1, Math.max(0, currentStep));
       setCurrentStep(startStep);
+      setPlaybackBar(Math.floor(startStep / BAR_LENGTH) + 1);
       previousPlaybackStepRef.current = startStep;
       await preparePlaybackEngine(startStep);
       Tone.Transport.bpm.value = bpm;

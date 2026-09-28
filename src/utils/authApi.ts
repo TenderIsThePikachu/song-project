@@ -1,4 +1,5 @@
 import { getStoredSessionToken } from './authSession';
+import { APP_SERVER_URL } from './serverApi';
 
 export type AuthApiUser = {
   id: string;
@@ -13,17 +14,7 @@ export type AuthSessionResponse = {
   sessionToken: string;
 };
 
-const DEFAULT_AUTH_SERVER_URL =
-  typeof window !== 'undefined'
-    ? import.meta.env.DEV
-      ? `${window.location.protocol}//${window.location.hostname}:8788`
-      : window.location.origin
-    : 'http://localhost:8788';
-
-const AUTH_SERVER_URL =
-  (import.meta.env.VITE_AUTH_SERVER_URL as string | undefined) ??
-  (import.meta.env.VITE_COLLAB_SERVER_URL as string | undefined) ??
-  DEFAULT_AUTH_SERVER_URL;
+const AUTH_SERVER_URL = APP_SERVER_URL;
 
 async function fetchAuthJson<T>(path: string, init?: RequestInit) {
   let response: Response;
@@ -49,7 +40,17 @@ async function fetchAuthJson<T>(path: string, init?: RequestInit) {
     throw new Error(payload?.error || '인증 요청에 실패했습니다.');
   }
 
-  return (await response.json()) as T;
+  const contentType = response.headers.get('content-type') ?? '';
+  const responseText = await response.text();
+  if (!contentType.includes('application/json') || responseText.trimStart().startsWith('<')) {
+    throw new Error('인증 서버 주소가 올바르지 않습니다. 백엔드 서버 연결을 확인해 주세요.');
+  }
+
+  try {
+    return JSON.parse(responseText) as T;
+  } catch {
+    throw new Error('인증 서버 응답 형식이 올바르지 않습니다.');
+  }
 }
 
 export function signupWithServer(payload: { email: string; password: string; name: string }) {
