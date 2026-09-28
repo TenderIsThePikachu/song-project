@@ -3551,14 +3551,14 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 }
 
 .composer-roll-shell .piano-roll-key.is-melody.is-sharp {
-  width: 62%;
+  width: 100%;
   min-width: 0;
   max-width: none;
   justify-self: start;
   justify-content: flex-end;
   margin: 0;
   padding-right: 6px;
-  border-radius: 0 4px 4px 0;
+  border-radius: 0;
   background: #252b34;
   color: #e9eef5;
   box-shadow:
