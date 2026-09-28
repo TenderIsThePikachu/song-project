@@ -50,6 +50,8 @@ export default function PostWrite() {
   const [content, setContent] = useState(() => editingPost?.content ?? '');
   const [tagInput, setTagInput] = useState(() => (editingPost?.tags ?? []).join(', '));
   const [attachments, setAttachments] = useState<AttachmentPreview[]>([]);
+  const [isSubmitting, setIsSubmitting] = useState(false);
+  const [submitError, setSubmitError] = useState<string | null>(null);
 
   const previewTags = getPreviewTags(tagInput);
   const popularPosts = [...(posts.length ? posts : DUMMY_POSTS)]
@@ -99,6 +101,8 @@ export default function PostWrite() {
   const handleSubmit = async (event: FormEvent<HTMLFormElement>) => {
     event.preventDefault();
 
+    if (isSubmitting) return;
+
     if (!user) {
       navigate('/login');
       return;
@@ -112,29 +116,40 @@ export default function PostWrite() {
       return;
     }
 
-    if (editingPost) {
-      await updatePost({
-        postId: editingPost.id,
+    setSubmitError(null);
+    setIsSubmitting(true);
+
+    try {
+      if (editingPost) {
+        await updatePost({
+          postId: editingPost.id,
+          title: trimmedTitle,
+          content: trimmedContent,
+          category,
+          tags,
+          userEmail: user.email,
+        });
+        navigate(`/community/${editingPost.id}`);
+        return;
+      }
+
+      const createdPostId = await createPost({
         title: trimmedTitle,
         content: trimmedContent,
         category,
         tags,
-        userEmail: user.email,
+        authorName: user.name,
+        authorEmail: user.email,
       });
-      navigate(`/community/${editingPost.id}`);
-      return;
+
+      navigate(`/community/${createdPostId}`);
+    } catch (error) {
+      setSubmitError(
+        error instanceof Error ? error.message : '게시글을 등록하지 못했습니다. 다시 시도해주세요.'
+      );
+    } finally {
+      setIsSubmitting(false);
     }
-
-    const createdPostId = await createPost({
-      title: trimmedTitle,
-      content: trimmedContent,
-      category,
-      tags,
-      authorName: user.name,
-      authorEmail: user.email,
-    });
-
-    navigate(`/community/${createdPostId}`);
   };
 
   if (
@@ -315,6 +330,9 @@ export default function PostWrite() {
             </div>
 
             <div className="community-write-actions">
+              {submitError ? (
+                <p className="community-write-submit-error" role="alert">{submitError}</p>
+              ) : null}
               <button
                 type="button"
                 className="community-write-cancel-button"
@@ -325,9 +343,9 @@ export default function PostWrite() {
               <button
                 type="submit"
                 className="community-write-submit-button"
-                disabled={!isReadyToSubmit}
+                disabled={!isReadyToSubmit || isSubmitting}
               >
-                {editingPost ? '게시글 수정' : '게시글 등록'}
+                {isSubmitting ? '저장 중...' : editingPost ? '게시글 수정' : '게시글 등록'}
               </button>
             </div>
           </section>

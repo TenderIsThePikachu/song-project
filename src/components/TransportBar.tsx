@@ -230,6 +230,8 @@ function persistRecord(key: string, record: unknown) {
 
 type TransportBarProps = {
   onPlayStarted?: () => void;
+  onLyricsClick?: () => void;
+  lyricsActive?: boolean;
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
   workMode?: 'personal' | 'collab';
@@ -292,6 +294,18 @@ const FirstBarIcon = () => (
   </svg>
 );
 
+const LyricsIcon = () => (
+  <svg
+    className="transport-lyrics-icon"
+    viewBox="0 0 20 20"
+    aria-hidden="true"
+    focusable="false"
+  >
+    <path d="M12.8 3.2 16.8 7.2 7.1 16.9 3 17l.1-4.1 9.7-9.7Z" />
+    <path d="m10.9 5.1 4 4M3.2 13.1l3.7 3.7" />
+  </svg>
+);
+
 type AiModalIconName = 'document' | 'settings' | 'bulb';
 
 const AiModalIcon = ({ name }: { name: AiModalIconName }) => {
@@ -329,6 +343,8 @@ const AiModalIcon = ({ name }: { name: AiModalIconName }) => {
 
 export const TransportBar = ({
   onPlayStarted,
+  onLyricsClick,
+  lyricsActive = false,
   songTitle = '',
   onSongTitleChange,
   workMode = 'personal',
@@ -348,7 +364,6 @@ export const TransportBar = ({
   const volumes = useSongStore((state) => state.volumes);
   const loopRange = useSongStore((state) => state.loopRange);
   const setLoopRange = useSongStore((state) => state.setLoopRange);
-  const toggleLoopCurrentBar = useSongStore((state) => state.toggleLoopCurrentBar);
   const undo = useSongStore((state) => state.undo);
   const redo = useSongStore((state) => state.redo);
   const clear = useSongStore((state) => state.clear);
@@ -964,12 +979,14 @@ export const TransportBar = ({
           </strong>
           <button
             type="button"
-            className={`transport-status-chip${loopRange ? ' is-active' : ''}`}
-            onClick={toggleLoopCurrentBar}
-            aria-pressed={Boolean(loopRange)}
-            title="현재 마디 반복 켜기/끄기"
+            className={`transport-status-chip${lyricsActive ? ' is-active' : ''}`}
+            onClick={onLyricsClick}
+            aria-pressed={lyricsActive}
+            aria-label={lyricsActive ? '작사 화면 닫기' : '작사 화면 열기'}
+            title={lyricsActive ? '작사 화면 닫기' : '작사 화면 열기'}
           >
-            {loopRange ? `${loopRange.start + 1}-${loopRange.end + 1}` : `${currentBar}-${currentBar}`} 반복
+            <LyricsIcon />
+            <span>작사</span>
           </button>
         </div>
       </div>

@@ -199,6 +199,27 @@
   font-weight: 700;
 }
 
+.site-header .topbar-account-menu {
+  top: calc(100% + 8px);
+  right: 0;
+  min-width: 148px;
+  padding: 6px;
+  gap: 4px;
+  border-radius: 14px;
+  box-sizing: border-box;
+}
+
+.site-header .topbar-account-menu-button {
+  min-height: 38px;
+  padding: 0 12px;
+  border-radius: 10px;
+  font-family: Pretendard, 'Pretendard Variable', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
+  font-size: 14px;
+  font-weight: 600;
+  line-height: 1;
+  letter-spacing: 0;
+}
+
 .site-header .notification-bell,
 .site-header .notification-bell-trigger {
   width: 34px;
@@ -269,6 +290,15 @@
 
   .site-header-account .topbar-account-name {
     display: none;
+  }
+
+  .site-header .topbar-account-menu {
+    right: -4px;
+    min-width: 132px;
+  }
+
+  .site-header .topbar-account-menu-button {
+    font-size: 13px;
   }
 
   .site-header-account .topbar-account-link + .topbar-account-link,

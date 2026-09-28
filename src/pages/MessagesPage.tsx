@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import type { KeyboardEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SiteHeader from '../components/layout/SiteHeader';
@@ -181,6 +181,7 @@ export default function MessagesPage() {
   const [groupNameDraft, setGroupNameDraft] = useState('');
   const [selectedGroupMemberEmails, setSelectedGroupMemberEmails] = useState<string[]>([]);
   const [formError, setFormError] = useState('');
+  const messageListRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
     if (!user) {
@@ -263,6 +264,20 @@ export default function MessagesPage() {
   const activeThread =
     filteredThreads.find((thread) => thread.id === activeThreadId) ?? filteredThreads[0] ?? null;
   const activeMessages = activeThread ? messagesByThread[activeThread.id] ?? [] : [];
+  const latestActiveMessageId = activeMessages.at(-1)?.id ?? '';
+
+  useEffect(() => {
+    if (activeSection !== 'messages' || !activeThread) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      const messageList = messageListRef.current;
+      if (messageList) {
+        messageList.scrollTop = messageList.scrollHeight;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [activeSection, activeThread, latestActiveMessageId]);
 
   const unreadCountByThread = useMemo(() => {
     if (!user) {
@@ -729,7 +744,7 @@ export default function MessagesPage() {
                     </div>
                   </div>
 
-                  <div className="messages-bubble-list">
+                  <div ref={messageListRef} className="messages-bubble-list">
                     <div className="messages-date-divider"><span>2026년 9월 21일 (월)</span></div>
                     {activeMessages.map((message) => {
                       const isMine = message.authorEmail === user.email;

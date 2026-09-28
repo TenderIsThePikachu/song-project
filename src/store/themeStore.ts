@@ -6,10 +6,10 @@ const THEME_STORAGE_KEY = 'song-project-theme';
 
 function getSavedTheme(): ThemeMode {
   if (typeof window === 'undefined') {
-    return 'dark';
+    return 'light';
   }
 
-  return window.localStorage.getItem(THEME_STORAGE_KEY) === 'light' ? 'light' : 'dark';
+  return window.localStorage.getItem(THEME_STORAGE_KEY) === 'dark' ? 'dark' : 'light';
 }
 
 type ThemeStoreState = {
@@ -22,7 +22,8 @@ function applyTheme(theme: ThemeMode) {
   const root = document.documentElement;
 
   root.classList.add('is-theme-changing');
-  document.documentElement.dataset.theme = theme;
+  root.dataset.theme = theme;
+  root.style.colorScheme = theme;
   window.localStorage.setItem(THEME_STORAGE_KEY, theme);
 
   window.requestAnimationFrame(() => {

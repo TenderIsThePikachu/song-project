@@ -15,7 +15,9 @@ export type AuthSessionResponse = {
 
 const DEFAULT_AUTH_SERVER_URL =
   typeof window !== 'undefined'
-    ? `${window.location.protocol}//${window.location.hostname}:8788`
+    ? import.meta.env.DEV
+      ? `${window.location.protocol}//${window.location.hostname}:8788`
+      : window.location.origin
     : 'http://localhost:8788';
 
 const AUTH_SERVER_URL =
@@ -62,6 +64,31 @@ export function loginWithServer(payload: { email: string; password: string }) {
     method: 'POST',
     body: JSON.stringify(payload),
   });
+}
+
+export async function connectFirebaseUserToServer(payload: {
+  email: string;
+  password: string;
+  name: string;
+  mode: 'login' | 'signup';
+}) {
+  const login = () => loginWithServer({ email: payload.email, password: payload.password });
+  const signup = () =>
+    signupWithServer({
+      email: payload.email,
+      password: payload.password,
+      name: payload.name,
+    });
+
+  try {
+    return await (payload.mode === 'signup' ? signup() : login());
+  } catch (primaryError) {
+    try {
+      return await (payload.mode === 'signup' ? login() : signup());
+    } catch {
+      throw primaryError;
+    }
+  }
 }
 
 export function requestPasswordReset(payload: { email: string }) {

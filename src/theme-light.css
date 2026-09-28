@@ -3244,10 +3244,22 @@ html[data-theme="light"] .transport-button:disabled {
 }
 
 html[data-theme="light"] .transport-status-chip {
-  border-color: rgba(22, 134, 106, 0.22) !important;
-  background: var(--light-accent-soft) !important;
-  color: #0d604c !important;
+  border-color: #d6dde7 !important;
+  background: #ffffff !important;
+  color: #334155 !important;
   font-weight: 900 !important;
+}
+
+html[data-theme="light"] .transport-status-chip:hover {
+  border-color: #9cabbc !important;
+  background: #f7f9fb !important;
+  color: #152238 !important;
+}
+
+html[data-theme="light"] .transport-status-chip.is-active {
+  border-color: #20ae89 !important;
+  background: #e8f8f3 !important;
+  color: #08765d !important;
 }
 
 html[data-theme="light"] .transport-control--status :is(span, strong, b) {

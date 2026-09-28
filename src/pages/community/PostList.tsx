@@ -3,7 +3,6 @@ import { useNavigate } from 'react-router-dom';
 import CommunitySpaceNav from '../../components/community/CommunitySpaceNav';
 import PostCard from '../../components/community/PostCard';
 import SiteHeader from '../../components/layout/SiteHeader';
-import { DUMMY_POSTS } from '../../dummy/mockData';
 import { useAuthStore } from '../../store/authStore';
 import { useCommunityStore } from '../../store/communityStore';
 import type { Post } from '../../types/community';
@@ -34,21 +33,6 @@ const GUIDE_ITEMS = [
 ];
 const PAGE_SIZE = 8;
 
-const FALLBACK_POSTS: Post[] = [
-  { ...DUMMY_POSTS[0], category: '음악 공유', title: '새로 만든 곡 들어봐주세요! (City Lights)', content: '요즘 시티팝 느낌으로 작업한 곡입니다. 분위기가 어떤지 의견 부탁드려요!', authorName: '하늘음표', tags: ['시티팝', '자작곡', '피드백환영'], createdAt: Date.now() - 5 * 60 * 60 * 1000, viewCount: 320, commentCount: 18, likeCount: 52 },
-  { ...DUMMY_POSTS[7], title: '미디 키보드 61키 vs 88키, 뭐가 좋을까요?', authorName: '초보작곡가', tags: ['미디', '장비', '입문'], createdAt: Date.now() - 7 * 60 * 60 * 1000, viewCount: 860, commentCount: 37, likeCount: 24 },
-  { ...DUMMY_POSTS[1], category: '음악 공유', title: '바다를 보며 만든 곡 (Waves)', content: '여름 여행에서 영감을 받아 만든 인스트루멘탈 곡이에요. 편하게 들어주세요!', authorName: '파도소리', tags: ['인스트루멘탈', '뉴에이지', '자작곡'], createdAt: Date.now() - 12 * 60 * 60 * 1000, viewCount: 1100, commentCount: 21, likeCount: 91 },
-  { ...DUMMY_POSTS[11], title: '작곡할 때 영감을 얻는 5가지 방법', authorName: '노트한장', tags: ['작곡팁', '영감', '작업방식'], createdAt: Date.now() - 24 * 60 * 60 * 1000, viewCount: 950, commentCount: 14, likeCount: 68 },
-  { ...DUMMY_POSTS[4], title: '코드 진행 피드백 부탁드립니다 (DEMO)', authorName: '감성온도', tags: ['코드진행', '피드백', '발라드'], createdAt: Date.now() - 26 * 60 * 60 * 1000, viewCount: 640, commentCount: 27, likeCount: 41 },
-  ...DUMMY_POSTS.slice(5),
-];
-
-const FALLBACK_FEATURED: Post[] = [
-  { ...DUMMY_POSTS[2], title: '초보 작곡가가 알아야 할 코드 진행의 기본', content: '작곡을 처음 시작하는 분들을 위해, 가장 자주 쓰이는 코드 진행 패턴을 정리했어요!', authorName: '뮤지션킴', likeCount: 142, commentCount: 32, viewCount: 1200 },
-  { ...DUMMY_POSTS[1], title: '이 곡 피드백 부탁드립니다!', content: '처음으로 완성한 곡인데, 편곡이 어색한 것 같아요. 조언 부탁드려요!', authorName: '달빛사운드', likeCount: 89, commentCount: 25, viewCount: 980 },
-  { ...DUMMY_POSTS[5], title: '가성비 좋은 오디오 인터페이스 추천해요!', content: '입문자도 쓰기 좋은 가성비 오디오 인터페이스 TOP 5를 정리했습니다.', authorName: '사운드노트', likeCount: 76, commentCount: 18, viewCount: 760 },
-];
-
 function sortPosts(posts: Post[], sortKey: SortKey) {
   const cloned = [...posts];
   if (sortKey === 'latest') return cloned.sort((a, b) => b.createdAt - a.createdAt);
@@ -77,10 +61,8 @@ export default function PostList() {
 
   useEffect(() => { void seedCommunity().catch(console.error); }, [seedCommunity]);
 
-  // Keep the board presentation stable even when the backing store has only a
-  // handful of seed records. This is also the visual order used by the design.
-  const displayPosts = FALLBACK_POSTS;
-  const featuredPosts = FALLBACK_FEATURED;
+  const displayPosts = posts;
+  const featuredPosts = useMemo(() => sortPosts(posts, 'popular').slice(0, 3), [posts]);
   const popularTags = useMemo(() => {
     const counts = new Map<string, number>();
     displayPosts.forEach((post) => post.tags?.forEach((tag) => counts.set(tag, (counts.get(tag) ?? 0) + 1)));
@@ -170,7 +152,7 @@ export default function PostList() {
 
             <section className="community-board-panel community-reference-panel">
               <div className="community-board-summary">
-                <strong>전체 게시글 <em>{posts.length > 0 ? filteredPosts.length : 125}개</em></strong>
+                <strong>전체 게시글 <em>{filteredPosts.length}개</em></strong>
                 <div className="community-sort-tabs">
                   {SORT_OPTIONS.map((option) => (
                     <button key={option.key} type="button"

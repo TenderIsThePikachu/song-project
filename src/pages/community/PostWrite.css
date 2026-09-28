@@ -1322,6 +1322,13 @@
   border-top: 1px solid #e6ebf1;
 }
 
+.community-write-submit-error {
+  margin: 0 auto 0 0;
+  color: #c13f4f;
+  font-size: 13px;
+  font-weight: 700;
+}
+
 .community-write-cancel-button,
 .community-write-submit-button {
   min-width: 112px;

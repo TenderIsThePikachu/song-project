@@ -15,6 +15,10 @@ const MANAGER_EMAIL_PATTERNS = [
   /manager/i,
   /^admin$/i,
 ];
+const COMMUNITY_DEMO_SEED_ENABLED = process.env.COMMUNITY_DEMO_SEED === 'true';
+const LEGACY_COMMUNITY_SEED_POST_IDS = new Set(
+  Array.from({ length: 8 }, (_, index) => `community-post-${index + 1}`)
+);
 
 function createId(prefix) {
   return `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
@@ -52,6 +56,17 @@ function isManagerEmail(email) {
 }
 
 function createSeedState() {
+  if (!COMMUNITY_DEMO_SEED_ENABLED) {
+    return {
+      posts: [],
+      comments: [],
+      likedPostIdsByUser: {},
+      bookmarkedPostIdsByUser: {},
+      reportedPostIdsByUser: {},
+      blockedAuthorEmails: [],
+    };
+  }
+
   const now = Date.now();
   const hour = 60 * 60 * 1000;
 
@@ -266,7 +281,37 @@ async function loadState() {
   return await loadLegacyState();
 }
 
-let state = await loadState();
+const loadedState = await loadState();
+const removedLegacySeedData =
+  !COMMUNITY_DEMO_SEED_ENABLED &&
+  loadedState.posts.some((post) => LEGACY_COMMUNITY_SEED_POST_IDS.has(post.id));
+let state = removedLegacySeedData
+  ? {
+      ...loadedState,
+      posts: loadedState.posts.filter((post) => !LEGACY_COMMUNITY_SEED_POST_IDS.has(post.id)),
+      comments: loadedState.comments.filter(
+        (comment) => !LEGACY_COMMUNITY_SEED_POST_IDS.has(comment.postId)
+      ),
+      likedPostIdsByUser: Object.fromEntries(
+        Object.entries(loadedState.likedPostIdsByUser).map(([email, ids]) => [
+          email,
+          ids.filter((id) => !LEGACY_COMMUNITY_SEED_POST_IDS.has(id)),
+        ])
+      ),
+      bookmarkedPostIdsByUser: Object.fromEntries(
+        Object.entries(loadedState.bookmarkedPostIdsByUser).map(([email, ids]) => [
+          email,
+          ids.filter((id) => !LEGACY_COMMUNITY_SEED_POST_IDS.has(id)),
+        ])
+      ),
+      reportedPostIdsByUser: Object.fromEntries(
+        Object.entries(loadedState.reportedPostIdsByUser).map(([email, ids]) => [
+          email,
+          ids.filter((id) => !LEGACY_COMMUNITY_SEED_POST_IDS.has(id)),
+        ])
+      ),
+    }
+  : loadedState;
 
 function saveState() {
   if (getSqlDriver() === 'mysql') {
@@ -275,6 +320,10 @@ function saveState() {
   }
 
   saveSqlState('community', state);
+}
+
+if (removedLegacySeedData) {
+  saveState();
 }
 
 function getVisibleComments(comments, posts, blockedAuthorEmails) {

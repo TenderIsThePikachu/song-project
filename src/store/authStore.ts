@@ -47,6 +47,10 @@ function getDisplayName(email: string, fallback?: string) {
   return localPart?.trim() || 'user';
 }
 
+function isFirebaseIdToken(token: string | null) {
+  return token?.split('.').length === 3;
+}
+
 export const useAuthStore = create<AuthState>()(
   persist(
     (set) => ({
@@ -184,6 +188,17 @@ export const useAuthStore = create<AuthState>()(
     }),
     {
       name: 'song-maker-auth',
+      version: 1,
+      migrate: (persistedState, version) => {
+        const state = persistedState as AuthState;
+
+        if (version < 1 && isFirebaseIdToken(state.sessionToken)) {
+          clearStoredSessionToken();
+          return { ...state, user: null, sessionToken: null };
+        }
+
+        return state;
+      },
     }
   )
 );

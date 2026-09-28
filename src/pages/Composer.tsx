@@ -80,6 +80,8 @@ import './Composer.css';
 type ComposerTab = ComposerTabKey;
 const EMPTY_COLLAB_NOTE_COLORS: Record<string, string> = {};
 type OptimisticCollabNoteColors = Record<string, string | null>;
+const COLLAB_CURSOR_SEND_INTERVAL_MS = 100;
+const COLLAB_CURSOR_VISIBLE_MS = 12_000;
 
 function getComposerOperationColorChanges(
   operation: CollabComposerOperation,
@@ -299,7 +301,7 @@ function distributeLyricsIntoBars(value: string) {
 const tabPickerGroups: TabPickerGroup[] = [
   {
     title: '기본 파트',
-    options: ['melody', 'lyrics', 'drums', 'bass'],
+    options: ['melody', 'drums', 'bass'],
   },
   {
     title: '악기 트랙',
@@ -732,6 +734,7 @@ export function Composer() {
   const setComposerLock = useCollabStore((state) => state.setComposerLock);
   const setCollabMemberColor = useCollabStore((state) => state.setMemberColor);
   const touchPresence = useCollabStore((state) => state.touchPresence);
+  const updateCollabCursor = useCollabStore((state) => state.updateCursor);
   const leavePresence = useCollabStore((state) => state.leavePresence);
   const presenceByProject = useCollabStore((state) => state.presenceByProject);
   const composerLocksByProject = useCollabStore((state) => state.composerLocksByProject);
@@ -808,6 +811,11 @@ export function Composer() {
   const heldBarLocksRef = useRef(new Set<string>());
   const lockWriteQueueRef = useRef(new Map<string, Promise<void>>());
   const collabMessageInputRef = useRef<HTMLTextAreaElement | null>(null);
+  const collabChatListRef = useRef<HTMLDivElement | null>(null);
+  const composerPageRef = useRef<HTMLDivElement | null>(null);
+  const pendingCursorPositionRef = useRef<{ x: number; y: number } | null>(null);
+  const cursorWriteTimerRef = useRef<number | null>(null);
+  const lastCursorWriteAtRef = useRef(0);
   const loadedProjectIdRef = useRef<string | null>(null);
   const followScrollFrameRef = useRef<number | null>(null);
   const livePlayheadRef = useRef({ step: 0, bpm: 120, receivedAt: 0 });
@@ -847,13 +855,25 @@ export function Composer() {
   }, [collabId, collabMember, setCollabMemberColor, user]);
 
   const handleCollabColorChange = useCallback((color: string) => {
+    const previousColor = collabSessionColor;
     setCollabSessionColor(color);
+    setOptimisticCollabNoteColors((current) =>
+      Object.fromEntries(
+        Object.entries(current).map(([key, noteColor]) => [
+          key,
+          noteColor === previousColor ? color : noteColor,
+        ])
+      )
+    );
     if (!collabId || !user) return;
 
     const storageKey = `collab-member-color:${collabId}:${user.email.toLowerCase()}`;
     window.localStorage.setItem(storageKey, color);
-    void setCollabMemberColor(collabId, user.email, color).catch(console.error);
-  }, [collabId, setCollabMemberColor, user]);
+    operationQueueRef.current = operationQueueRef.current
+      .catch(() => undefined)
+      .then(() => setCollabMemberColor(collabId, user.email, color))
+      .catch(console.error);
+  }, [collabId, collabSessionColor, setCollabMemberColor, user]);
 
   const tutorialCompleted = Boolean(user?.email && tutorialCompletedByEmail);
   const isGuideOpen = tutorialRequested && !tutorialCompleted;
@@ -887,6 +907,16 @@ export function Composer() {
   const [activeTrackId, setActiveTrackId] = useState<string | null>(
     () => (newProjectRequested ? null : readComposerTabDraft().activeTrackId)
   );
+  const previousComposerSelectionRef = useRef<{ tab: ComposerTab; trackId: string | null }>({
+    tab: activeTab === 'lyrics' ? 'melody' : activeTab,
+    trackId: activeTab === 'lyrics' ? null : activeTrackId,
+  });
+
+  useEffect(() => {
+    if (activeTab !== 'lyrics') {
+      previousComposerSelectionRef.current = { tab: activeTab, trackId: activeTrackId };
+    }
+  }, [activeTab, activeTrackId]);
   const [mutedArrangementTracks, setMutedArrangementTracks] = useState<Set<string>>(
     () => new Set()
   );
@@ -1876,6 +1906,20 @@ export function Composer() {
         : [],
     [collabId, collabMessages]
   );
+  const latestCollabMessageId = projectCollabMessages.at(-1)?.id ?? '';
+
+  useEffect(() => {
+    if (!isCollabPanelOpen || collabPanelTab !== 'chat') return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      const chatList = collabChatListRef.current;
+      if (chatList) {
+        chatList.scrollTop = chatList.scrollHeight;
+      }
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [collabPanelTab, isCollabPanelOpen, latestCollabMessageId]);
   const activeCollabPresence = useMemo(() => {
     const latestByEmail = new Map<string, (typeof presenceByProject)[string][number]>();
     (collabId ? presenceByProject[collabId] ?? [] : [])
@@ -1927,12 +1971,98 @@ export function Composer() {
       user?.email,
     ]
   );
+  const activeRemoteCursors = useMemo(
+    () =>
+      Array.from(activeCollabPresence.values())
+        .filter(
+          (entry) =>
+            entry.sessionId !== COLLAB_SESSION_ID &&
+            entry.cursor &&
+            collabPresenceNow - entry.cursor.updatedAt <= COLLAB_CURSOR_VISIBLE_MS
+        )
+        .map((entry) => {
+          const member = collabProject?.members.find((item) => item.email === entry.email);
+          const fallbackColor = getCollabMemberColor(
+            `${collabProject?.id ?? collabId}:${member?.joinedAt ?? entry.email}:${entry.name}`
+          ).accent;
+          return {
+            sessionId: entry.sessionId,
+            name: entry.name,
+            x: entry.cursor!.x,
+            y: entry.cursor!.y,
+            color: isCollabMemberColor(member?.color)
+              ? member.color
+              : isCollabMemberColor(entry.color)
+                ? entry.color
+                : fallbackColor,
+          };
+        }),
+    [activeCollabPresence, collabId, collabPresenceNow, collabProject]
+  );
 
   useEffect(() => {
     if (!collabId) return undefined;
     const timer = window.setInterval(() => setCollabPresenceNow(Date.now()), 4_000);
     return () => window.clearInterval(timer);
   }, [collabId]);
+
+  const flushCollabCursor = useCallback(() => {
+    cursorWriteTimerRef.current = null;
+    const position = pendingCursorPositionRef.current;
+    pendingCursorPositionRef.current = null;
+    if (!position || !collabId || !user) return;
+
+    lastCursorWriteAtRef.current = Date.now();
+    void updateCollabCursor(collabId, {
+      email: user.email,
+      name: user.name,
+      color: collabSessionColor,
+      ...position,
+    }).catch(console.error);
+  }, [collabId, collabSessionColor, updateCollabCursor, user]);
+
+  const handleCollabPointerMove = useCallback((clientX: number, clientY: number) => {
+    const page = composerPageRef.current;
+    if (!page || !collabId || !user) return;
+
+    const bounds = page.getBoundingClientRect();
+    pendingCursorPositionRef.current = {
+      x: Math.max(0, Math.min(1, (clientX - bounds.left) / bounds.width)),
+      y: Math.max(0, Math.min(1, (clientY - bounds.top) / bounds.height)),
+    };
+
+    if (cursorWriteTimerRef.current !== null) return;
+    const delay = Math.max(
+      0,
+      COLLAB_CURSOR_SEND_INTERVAL_MS - (Date.now() - lastCursorWriteAtRef.current)
+    );
+    cursorWriteTimerRef.current = window.setTimeout(flushCollabCursor, delay);
+  }, [collabId, flushCollabCursor, user]);
+
+  const hideCollabCursor = useCallback(() => {
+    pendingCursorPositionRef.current = null;
+    if (cursorWriteTimerRef.current !== null) {
+      window.clearTimeout(cursorWriteTimerRef.current);
+      cursorWriteTimerRef.current = null;
+    }
+    if (!collabId || !user) return;
+    void updateCollabCursor(collabId, {
+      email: user.email,
+      name: user.name,
+      color: collabSessionColor,
+      x: null,
+      y: null,
+    }).catch(console.error);
+  }, [collabId, collabSessionColor, updateCollabCursor, user]);
+
+  useEffect(
+    () => () => {
+      if (cursorWriteTimerRef.current !== null) {
+        window.clearTimeout(cursorWriteTimerRef.current);
+      }
+    },
+    []
+  );
   const activeGuideStep = COMPOSER_GUIDE_STEPS[guideStepIndex];
   const matchedChordTargets = useMemo(
     () => countMatchedChordTargets(melody, COMPOSER_TUTORIAL_CHORD_TARGETS),
@@ -2670,6 +2800,40 @@ export function Composer() {
     },
     [handleOpenTab, hiddenArrangementTrackIds]
   );
+
+  const handleLyricsToggle = useCallback(() => {
+    if (activeTab !== 'lyrics' || activeTrackId) {
+      previousComposerSelectionRef.current = { tab: activeTab, trackId: activeTrackId };
+      handleTrackPickerOpen('lyrics');
+      return;
+    }
+
+    const previous = previousComposerSelectionRef.current;
+    const previousExtraTrackStillExists = Boolean(
+      previous.trackId &&
+      openExtraTrackIds.includes(previous.trackId) &&
+      extraTracks.some((track) => track.id === previous.trackId)
+    );
+    if (previousExtraTrackStillExists) {
+      activateTab(previous.tab, previous.trackId);
+      return;
+    }
+
+    const previousPrimaryStillOpen =
+      previous.tab !== 'lyrics' && openTabsState.includes(previous.tab);
+    const fallbackTab = previousPrimaryStillOpen
+      ? previous.tab
+      : openTabsState.find((tab) => tab !== 'lyrics') ?? 'melody';
+    activateTab(fallbackTab);
+  }, [
+    activateTab,
+    activeTab,
+    activeTrackId,
+    extraTracks,
+    handleTrackPickerOpen,
+    openExtraTrackIds,
+    openTabsState,
+  ]);
 
   const handleDuplicateArrangementTrack = useCallback(
     (track: ArrangementTrackDefinition) => {
@@ -4469,6 +4633,7 @@ export function Composer() {
 
   return (
     <div
+      ref={composerPageRef}
       className={`composer-page composer-page--${activeTab}${
         isGuideOpen ? ' composer-page--guide-open' : ''
       }${isHelpOverlayEnabled ? ' is-help-enabled' : ''}${isPlaying ? ' is-playing' : ''}`}
@@ -4477,6 +4642,8 @@ export function Composer() {
           52 + Math.min(arrangementVisibleTracks.length, 7) * 58
         }px`,
       } as CSSProperties}
+      onPointerMove={(event) => handleCollabPointerMove(event.clientX, event.clientY)}
+      onPointerLeave={hideCollabCursor}
     >
       <SiteHeader activeSection="composer" />
       <input
@@ -4503,6 +4670,8 @@ export function Composer() {
           collabColor={collabSessionColor}
           onCollabColorChange={handleCollabColorChange}
           onPlayStarted={() => setPlayedTutorialOnce(true)}
+          onLyricsClick={handleLyricsToggle}
+          lyricsActive={activeTab === 'lyrics' && !activeExtraTrack}
         />
       </footer>
 
@@ -4839,7 +5008,7 @@ export function Composer() {
       <div
         className={`composer-studio-layout${isArrangementCollapsed ? ' is-arrangement-collapsed' : ''}${
           collabId ? ' is-collab' : ''
-        }`}
+        }${activeTab === 'lyrics' && !activeExtraTrack ? ' is-lyrics-mode' : ''}`}
         style={{
           ['--arrangement-panel-height' as string]: `${
             52 + Math.min(arrangementVisibleTracks.length, 7) * 58
@@ -4982,7 +5151,10 @@ export function Composer() {
 
               {collabPanelTab === 'chat' ? (
                 <div className="composer-collab-chat">
-                  <div className="composer-collab-drawer-body composer-collab-chat-list">
+                  <div
+                    ref={collabChatListRef}
+                    className="composer-collab-drawer-body composer-collab-chat-list"
+                  >
                     {projectCollabMessages.map((message) => {
                       const memberColor = message.authorColor || '#64748b';
                       return (
@@ -5867,6 +6039,31 @@ export function Composer() {
               alt={`${activeHelpPanel.title} 도움말 GIF`}
             />
           </div>
+        </div>
+      ) : null}
+
+      {collabId && activeRemoteCursors.length > 0 ? (
+        <div className="composer-collab-cursors" aria-hidden="true">
+          {activeRemoteCursors.map((cursor) => (
+            <div
+              key={cursor.sessionId}
+              className={`composer-collab-cursor${cursor.x > 0.82 ? ' is-flipped' : ''}${
+                cursor.y > 0.9 ? ' is-raised' : ''
+              }`}
+              style={
+                {
+                  left: `${cursor.x * 100}%`,
+                  top: `${cursor.y * 100}%`,
+                  '--collab-cursor-color': cursor.color,
+                } as CSSProperties
+              }
+            >
+              <svg viewBox="0 0 24 28" focusable="false">
+                <path d="M2 2.3v20.1l5.3-5.1 3.6 8.2 4.2-1.9-3.6-8.1H19L2 2.3Z" />
+              </svg>
+              <span>{cursor.name}</span>
+            </div>
+          ))}
         </div>
       ) : null}
 

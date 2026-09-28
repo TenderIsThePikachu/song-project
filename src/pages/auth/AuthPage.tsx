@@ -3,6 +3,7 @@ import type { FormEvent } from 'react';
 import { useNavigate } from 'react-router-dom';
 import SiteHeader from '../../components/layout/SiteHeader';
 import { useAuthStore } from '../../store/authStore';
+import { connectFirebaseUserToServer } from '../../utils/authApi';
 import './AuthPage.css';
 
 // 🔥 1. 기존 커스텀 API 대신 파이어베이스 도구들을 불러옵니다.
@@ -96,7 +97,8 @@ function getFirebaseErrorMessage(error: unknown, mode: AuthMode) {
     case 'auth/user-not-found': return '가입되지 않은 이메일입니다.';
     case 'auth/weak-password': return '비밀번호는 6자리 이상이어야 합니다.';
     case 'auth/invalid-email': return '유효하지 않은 이메일 형식입니다.';
-    default: 
+    default:
+      if (error instanceof Error && error.message) return error.message;
       if (mode === 'reset') return '비밀번호 재설정 요청 중 오류가 발생했습니다.';
       if (mode === 'signup') return '회원가입 처리 중 오류가 발생했습니다.';
       return '로그인 처리 중 오류가 발생했습니다.';
@@ -168,14 +170,18 @@ export default function AuthPage({ mode }: AuthPageProps) {
         // 가입 직후 파이어베이스 프로필에 닉네임 저장
         await updateProfile(userCredential.user, { displayName: trimmedNickname });
         
-        // 파이어베이스 토큰 가져오기 (기존 sessionToken 대체)
-        const token = await userCredential.user.getIdToken();
+        const serverSession = await connectFirebaseUserToServer({
+          email: userCredential.user.email || trimmedEmail,
+          password,
+          name: trimmedNickname,
+          mode: 'signup',
+        });
 
         signup({
           email: userCredential.user.email || trimmedEmail,
           nickname: trimmedNickname,
           avatarUrl: userCredential.user.photoURL || undefined,
-          sessionToken: token,
+          sessionToken: serverSession.sessionToken,
         });
         navigate('/');
         return;
@@ -184,13 +190,18 @@ export default function AuthPage({ mode }: AuthPageProps) {
       // 🔥 4. 파이어베이스로 로그인 처리하기
       if (mode === 'login') {
         const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
-        const token = await userCredential.user.getIdToken();
+        const serverSession = await connectFirebaseUserToServer({
+          email: userCredential.user.email || trimmedEmail,
+          password,
+          name: userCredential.user.displayName || 'Guest',
+          mode: 'login',
+        });
 
         login({
           email: userCredential.user.email || trimmedEmail,
           name: userCredential.user.displayName || 'Guest',
           avatarUrl: userCredential.user.photoURL || undefined,
-          sessionToken: token,
+          sessionToken: serverSession.sessionToken,
         });
 
         if (rememberMe) {

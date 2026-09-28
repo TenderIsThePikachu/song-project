@@ -318,22 +318,45 @@
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  min-height: 26px;
-  padding: 0 9px;
-  border-radius: 999px;
-  border: 1px solid rgba(121, 255, 67, 0.18);
-  background: rgba(121, 255, 67, 0.1);
-  color: #deffd1;
-  font-size: 11px;
+  gap: 7px;
+  height: 34px;
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #343942;
+  border-radius: 8px;
+  background: #171a1f;
+  color: #dbe2ec;
+  box-shadow: 0 1px 0 rgba(255, 255, 255, 0.035) inset;
+  font: inherit;
+  font-size: 12px;
   font-weight: 800;
-  letter-spacing: 0.04em;
+  letter-spacing: 0;
   cursor: pointer;
   white-space: nowrap;
+  transition: border-color .16s ease, background-color .16s ease, color .16s ease;
+}
+
+.transport-status-chip:hover {
+  border-color: #596270;
+  background: #20242b;
+  color: #fff;
 }
 
 .transport-status-chip.is-active {
-  border-color: rgba(121, 255, 67, 0.42);
-  background: rgba(121, 255, 67, 0.18);
+  border-color: #26b995;
+  background: rgba(38, 185, 149, .14);
+  color: #7ee8ca;
+}
+
+.transport-lyrics-icon {
+  width: 15px;
+  height: 15px;
+  flex: 0 0 auto;
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 1.7;
 }
 
 .transport-dialog-backdrop {

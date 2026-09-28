@@ -54,6 +54,7 @@ type MusicShareState = {
 };
 
 let musicShareBootstrapPromise: Promise<void> | null = null;
+const trackLikeMutationVersions = new Map<string, number>();
 
 function isBaseTrack(trackId: string) {
   return trackId.startsWith('share-base-');
@@ -254,34 +255,86 @@ export const useMusicShareStore = create<MusicShareState>()(
         applySnapshot(snapshot);
       },
       toggleTrackLike: async (trackId, userEmail) => {
-        if (isBaseTrack(trackId)) {
-          set((state) => {
-            const likedTrackIds = state.likedTrackIdsByUser[userEmail] ?? [];
-            const alreadyLiked = likedTrackIds.includes(trackId);
-            const metrics = getLocalMetrics(state.trackMetricsById[trackId]);
+        const previousState = get();
+        const previousLikedTrackIds = previousState.likedTrackIdsByUser[userEmail] ?? [];
+        const wasLiked = previousLikedTrackIds.includes(trackId);
+        const previousMetrics = getLocalMetrics(previousState.trackMetricsById[trackId]);
+        const nextLiked = !wasLiked;
 
+        set((state) => ({
+          ...state,
+          likedTrackIdsByUser: {
+            ...state.likedTrackIdsByUser,
+            [userEmail]: nextLiked
+              ? [...new Set([...(state.likedTrackIdsByUser[userEmail] ?? []), trackId])]
+              : (state.likedTrackIdsByUser[userEmail] ?? []).filter((id) => id !== trackId),
+          },
+          trackMetricsById: {
+            ...state.trackMetricsById,
+            [trackId]: {
+              ...getLocalMetrics(state.trackMetricsById[trackId]),
+              likeCount: Math.max(0, previousMetrics.likeCount + (nextLiked ? 1 : -1)),
+            },
+          },
+        }));
+
+        if (isBaseTrack(trackId)) {
+          return;
+        }
+
+        const mutationKey = `${userEmail}:${trackId}`;
+        const mutationVersion = (trackLikeMutationVersions.get(mutationKey) ?? 0) + 1;
+        trackLikeMutationVersions.set(mutationKey, mutationVersion);
+
+        try {
+          const response = await toggleTrackLikeOnServer({ trackId, userEmail });
+
+          if (trackLikeMutationVersions.get(mutationKey) !== mutationVersion) return;
+
+          const serverMetrics = response.snapshot.trackMetricsById?.[trackId];
+          set((state) => {
+            const currentLikedTrackIds = state.likedTrackIdsByUser[userEmail] ?? [];
             return {
               ...state,
               likedTrackIdsByUser: {
                 ...state.likedTrackIdsByUser,
-                [userEmail]: alreadyLiked
-                  ? likedTrackIds.filter((id) => id !== trackId)
-                  : [...likedTrackIds, trackId],
+                [userEmail]: response.liked
+                  ? [...new Set([...currentLikedTrackIds, trackId])]
+                  : currentLikedTrackIds.filter((id) => id !== trackId),
               },
-              trackMetricsById: {
-                ...state.trackMetricsById,
-                [trackId]: {
-                  ...metrics,
-                  likeCount: Math.max(0, metrics.likeCount + (alreadyLiked ? -1 : 1)),
-                },
-              },
+              trackMetricsById: serverMetrics
+                ? {
+                    ...state.trackMetricsById,
+                    [trackId]: getLocalMetrics(serverMetrics),
+                  }
+                : state.trackMetricsById,
             };
           });
-          return;
+        } catch (error) {
+          if (trackLikeMutationVersions.get(mutationKey) === mutationVersion) {
+            set((state) => {
+              const currentLikedTrackIds = state.likedTrackIdsByUser[userEmail] ?? [];
+              return {
+                ...state,
+                likedTrackIdsByUser: {
+                  ...state.likedTrackIdsByUser,
+                  [userEmail]: wasLiked
+                    ? [...new Set([...currentLikedTrackIds, trackId])]
+                    : currentLikedTrackIds.filter((id) => id !== trackId),
+                },
+                trackMetricsById: {
+                  ...state.trackMetricsById,
+                  [trackId]: previousMetrics,
+                },
+              };
+            });
+          }
+          throw error;
+        } finally {
+          if (trackLikeMutationVersions.get(mutationKey) === mutationVersion) {
+            trackLikeMutationVersions.delete(mutationKey);
+          }
         }
-
-        const response = await toggleTrackLikeOnServer({ trackId, userEmail });
-        applySnapshot(response.snapshot);
       },
       addTrackComment: async ({ trackId, authorName, authorEmail, content }) => {
         if (isBaseTrack(trackId)) {

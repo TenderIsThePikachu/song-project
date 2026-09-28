@@ -9,6 +9,7 @@ import {
 } from 'firebase/auth';
 import { auth } from '../../firebase';
 import { useAuthStore } from '../../store/authStore';
+import { connectFirebaseUserToServer } from '../../utils/authApi';
 import './AuthDialog.css';
 
 export type AuthDialogMode = 'login' | 'signup' | 'reset';
@@ -67,6 +68,7 @@ function getFirebaseErrorMessage(error: unknown, mode: AuthDialogMode) {
     case 'auth/invalid-email':
       return '유효하지 않은 이메일 형식입니다.';
     default:
+      if (error instanceof Error && error.message) return error.message;
       if (mode === 'reset') return '비밀번호 재설정 요청 중 오류가 발생했습니다.';
       if (mode === 'signup') return '회원가입 처리 중 오류가 발생했습니다.';
       return '로그인 처리 중 오류가 발생했습니다.';
@@ -155,13 +157,18 @@ export default function AuthDialog({ mode, onClose, onModeChange, inline = false
       if (mode === 'signup') {
         const userCredential = await createUserWithEmailAndPassword(auth, trimmedEmail, password);
         await updateProfile(userCredential.user, { displayName: trimmedNickname });
-        const token = await userCredential.user.getIdToken();
+        const serverSession = await connectFirebaseUserToServer({
+          email: userCredential.user.email || trimmedEmail,
+          password,
+          name: trimmedNickname,
+          mode: 'signup',
+        });
 
         signup({
           email: userCredential.user.email || trimmedEmail,
           nickname: trimmedNickname,
           avatarUrl: userCredential.user.photoURL || undefined,
-          sessionToken: token,
+          sessionToken: serverSession.sessionToken,
         });
         onClose();
         return;
@@ -169,13 +176,18 @@ export default function AuthDialog({ mode, onClose, onModeChange, inline = false
 
       if (mode === 'login') {
         const userCredential = await signInWithEmailAndPassword(auth, trimmedEmail, password);
-        const token = await userCredential.user.getIdToken();
+        const serverSession = await connectFirebaseUserToServer({
+          email: userCredential.user.email || trimmedEmail,
+          password,
+          name: userCredential.user.displayName || 'Guest',
+          mode: 'login',
+        });
 
         login({
           email: userCredential.user.email || trimmedEmail,
           name: userCredential.user.displayName || 'Guest',
           avatarUrl: userCredential.user.photoURL || undefined,
-          sessionToken: token,
+          sessionToken: serverSession.sessionToken,
         });
 
         if (rememberMe) {

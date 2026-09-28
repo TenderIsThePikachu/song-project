@@ -1,5 +1,5 @@
-import { type ReactNode } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { type ReactNode, useEffect } from 'react';
+import { useLocation, useNavigate } from 'react-router-dom';
 import TopbarAccount from '../auth/TopbarAccount';
 import NotificationBell from '../notifications/NotificationBell';
 import ThemeToggle from '../theme/ThemeToggle';
@@ -31,8 +31,44 @@ const NAV_ITEMS: Array<{
   { key: 'shorts', label: '숏폼', route: '/community/shorts' },
 ];
 
+type VisibleHeaderSection = 'composer' | 'collab' | 'community' | 'shorts';
+
+const LAST_HEADER_SECTION_KEY = 'song-project-last-header-section';
+const ACCOUNT_PATHS = ['/profile', '/library', '/messages', '/settings'];
+
+function isVisibleHeaderSection(section: SiteHeaderSection): section is VisibleHeaderSection {
+  return NAV_ITEMS.some((item) => item.key === section);
+}
+
+function getLastHeaderSection(): VisibleHeaderSection {
+  if (typeof window === 'undefined') return 'composer';
+
+  const savedSection = window.sessionStorage.getItem(LAST_HEADER_SECTION_KEY) as SiteHeaderSection;
+  return isVisibleHeaderSection(savedSection) ? savedSection : 'composer';
+}
+
 export default function SiteHeader({ activeSection = null, rightSlot = null }: SiteHeaderProps) {
   const navigate = useNavigate();
+  const location = useLocation();
+  const isAccountPage = ACCOUNT_PATHS.some(
+    (path) => location.pathname === path || location.pathname.startsWith(`${path}/`)
+  );
+  const resolvedActiveSection = isVisibleHeaderSection(activeSection)
+    ? activeSection
+    : isAccountPage
+      ? getLastHeaderSection()
+      : null;
+
+  useEffect(() => {
+    if (isVisibleHeaderSection(activeSection)) {
+      window.sessionStorage.setItem(LAST_HEADER_SECTION_KEY, activeSection);
+    }
+  }, [activeSection]);
+
+  const handleNavClick = (section: VisibleHeaderSection, route: string) => {
+    window.sessionStorage.setItem(LAST_HEADER_SECTION_KEY, section);
+    navigate(route);
+  };
 
   return (
     <header className="site-header">
@@ -57,10 +93,10 @@ export default function SiteHeader({ activeSection = null, rightSlot = null }: S
               key={item.key}
               type="button"
               className={`site-header-nav-link${
-                activeSection === item.key ? ' is-active' : ''
+                resolvedActiveSection === item.key ? ' is-active' : ''
               }`}
-              onClick={() => navigate(item.route)}
-              aria-current={activeSection === item.key ? 'page' : undefined}
+              onClick={() => handleNavClick(item.key as VisibleHeaderSection, item.route)}
+              aria-current={resolvedActiveSection === item.key ? 'page' : undefined}
             >
               {item.label}
             </button>

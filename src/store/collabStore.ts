@@ -35,10 +35,12 @@ export type CollabProject = {
   sourceProjectId: string | null; snapshot?: SongProject; snapshotRevision: number;
   snapshotUpdatedByEmail: string | null; snapshotUpdatedBySessionId: string | null;
   members: CollabMember[]; tags: string[]; noteColors?: Record<string, string>;
+  noteAuthors?: Record<string, string>;
 };
 export type CollabMessage = { id: string; projectId: string; authorEmail: string; authorName: string; authorColor?: string; content: string; createdAt: number; };
 export type CollabTask = { id: string; projectId: string; content: string; completed: boolean; assigneeName: string; createdAt: number; };
-export type CollabPresence = { sessionId: string; projectId: string; email: string; name: string; color?: string; focus?: string; lastSeenAt: number; };
+export type CollabCursorPosition = { x: number; y: number; updatedAt: number; };
+export type CollabPresence = { sessionId: string; projectId: string; email: string; name: string; color?: string; focus?: string; cursor?: CollabCursorPosition | null; lastSeenAt: number; };
 export type CollabComposerInstrument =
   | 'melody'
   | 'violin'
@@ -87,6 +89,7 @@ type CollabState = {
   applyComposerOperation: (projectId: string, payload: ApplyComposerOperationPayload) => Promise<number>;
   setComposerLock: (projectId: string, payload: ComposerLockPayload) => Promise<void>;
   touchPresence: (projectId: string, payload: { email: string; name: string; color?: string; focus?: string }) => Promise<void>;
+  updateCursor: (projectId: string, payload: { email: string; name: string; color?: string; x: number | null; y: number | null }) => Promise<void>;
   leavePresence: (projectId: string) => Promise<void>;
   renameProject: (projectId: string, userEmail: string, title: string) => Promise<void>;
   deleteProject: (projectId: string, userEmail: string) => Promise<void>;
@@ -291,7 +294,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
       id: projectId, title: payload.title, summary: payload.summary, genre: payload.genre, bpm: payload.bpm, steps: payload.steps,
       status: 'planning', createdAt: Date.now(), updatedAt: Date.now(), ownerEmail: payload.ownerEmail, ownerName: payload.ownerName,
       sourceProjectId: payload.sourceProjectId, snapshotRevision: 1, snapshotUpdatedByEmail: payload.ownerEmail, snapshotUpdatedBySessionId: payload.sessionId || COLLAB_SESSION_ID,
-      members: [{ email: payload.ownerEmail, name: payload.ownerName, role: 'owner', joinedAt: Date.now(), color: COLLAB_SESSION_COLOR.accent }], tags: [], noteColors: {},
+      members: [{ email: payload.ownerEmail, name: payload.ownerName, role: 'owner', joinedAt: Date.now(), color: COLLAB_SESSION_COLOR.accent }], tags: [], noteColors: {}, noteAuthors: {},
       snapshot: sanitizeForFirestore(payload.snapshot)
     };
     await setDoc(doc(db, 'collab_projects', projectId), newProject);
@@ -308,15 +311,37 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     const project = get().projects.find((item) => item.id === projectId);
     if (!project) return;
 
+    const normalizedEmail = email.trim().toLowerCase();
+    const previousColor = project.members.find(
+      (member) => member.email.trim().toLowerCase() === normalizedEmail
+    )?.color;
     const members = project.members.map((member) =>
-      member.email === email ? { ...member, color } : member
+      member.email.trim().toLowerCase() === normalizedEmail ? { ...member, color } : member
     );
+    const noteColors = { ...(project.noteColors ?? {}) };
+    const noteAuthors = { ...(project.noteAuthors ?? {}) };
+
+    Object.entries(noteColors).forEach(([key, noteColor]) => {
+      const authorEmail = noteAuthors[key]?.trim().toLowerCase();
+      const isOwnedNote = authorEmail === normalizedEmail;
+      const isLegacyOwnedNote = !authorEmail && Boolean(previousColor) && noteColor === previousColor;
+      if (isOwnedNote || isLegacyOwnedNote) {
+        noteColors[key] = color;
+        noteAuthors[key] = normalizedEmail;
+      }
+    });
+
     set((state) => ({
       projects: state.projects.map((item) =>
-        item.id === projectId ? { ...item, members } : item
+        item.id === projectId ? { ...item, members, noteColors, noteAuthors } : item
       ),
     }));
-    await updateDoc(doc(db, 'collab_projects', projectId), { members });
+    await updateDoc(doc(db, 'collab_projects', projectId), {
+      members,
+      noteColors,
+      noteAuthors,
+      updatedAt: Date.now(),
+    });
   },
 
   addMessage: async (projectId, payload) => {
@@ -385,11 +410,15 @@ export const useCollabStore = create<CollabState>((set, get) => ({
       const operationColor = payload.color || COLLAB_SESSION_COLOR.accent;
       const currentProject = get().projects.find((project) => project.id === projectId);
       const noteColors = { ...(currentProject?.noteColors ?? {}) };
+      const noteAuthors = { ...(currentProject?.noteAuthors ?? {}) };
+      const normalizedAuthorEmail = payload.email.trim().toLowerCase();
       getOperationNoteColorChanges(payload.operation, operationColor).forEach((change) => {
         if (change.color) {
           noteColors[change.key] = change.color;
+          noteAuthors[change.key] = normalizedAuthorEmail;
         } else {
           delete noteColors[change.key];
+          delete noteAuthors[change.key];
         }
       });
       const updatedAt = Date.now();
@@ -399,6 +428,7 @@ export const useCollabStore = create<CollabState>((set, get) => ({
       batch.update(projectRef, {
         snapshot: sanitizeForFirestore(currentSnapshot),
         noteColors,
+        noteAuthors,
         snapshotRevision: increment(1),
         snapshotUpdatedByEmail: payload.email,
         snapshotUpdatedBySessionId: payload.sessionId || COLLAB_SESSION_ID,
@@ -458,6 +488,27 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     const presenceId = `${projectId}_${COLLAB_SESSION_ID}`;
     await setDoc(doc(db, 'collab_presence', presenceId), {
       projectId, sessionId: COLLAB_SESSION_ID, email: payload.email, name: payload.name, color: payload.color || COLLAB_SESSION_COLOR.accent, focus: payload.focus || '', lastSeenAt: Date.now()
+    }, { merge: true });
+  },
+
+  updateCursor: async (projectId, payload) => {
+    const presenceId = `${projectId}_${COLLAB_SESSION_ID}`;
+    const now = Date.now();
+    const hasPosition = payload.x !== null && payload.y !== null;
+    await setDoc(doc(db, 'collab_presence', presenceId), {
+      projectId,
+      sessionId: COLLAB_SESSION_ID,
+      email: payload.email,
+      name: payload.name,
+      color: payload.color || COLLAB_SESSION_COLOR.accent,
+      cursor: hasPosition
+        ? {
+            x: Math.max(0, Math.min(1, payload.x as number)),
+            y: Math.max(0, Math.min(1, payload.y as number)),
+            updatedAt: now,
+          }
+        : null,
+      lastSeenAt: now,
     }, { merge: true });
   },
 

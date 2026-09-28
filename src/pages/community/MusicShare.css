@@ -816,7 +816,7 @@
 .music-share-page .music-share-content-head {
   min-height: 116px;
   align-items: flex-start;
-  padding: 0 48px;
+  padding: 0;
 }
 
 .music-share-page .music-share-content-kicker {
@@ -1350,7 +1350,7 @@ html:not([data-theme="light"]) .music-share-page .music-share-card-stats {
   min-height: 0;
   height: auto;
   margin-bottom: 10px;
-  padding: 22px 48px 20px;
+  padding: 22px 0 20px;
 }
 
 .music-share-page .music-share-title {

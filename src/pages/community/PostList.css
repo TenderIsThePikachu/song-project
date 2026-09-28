@@ -470,3 +470,119 @@ html[data-theme='dark'] .community-reset-button { border-color: #425168; color: 
   .community-board-sidebar { grid-template-columns: 1fr; }
   .community-sidebar-promo { grid-column: auto; }
 }
+
+@media (min-width: 761px) {
+  .community-board-shell {
+    padding-top: 18px;
+    font-size: 14px;
+  }
+
+  .community-board-hero h1 { font-size: 36px; }
+  .community-board-hero p { font-size: 16px; }
+  .community-board-write-button {
+    min-width: 116px;
+    height: 44px;
+    padding: 0 20px;
+    font-size: 14px;
+  }
+
+  .community-board-column { padding: 16px 18px 20px; }
+  .community-reference-toolbar .community-search,
+  html[data-theme='light'] .community-board-page .community-reference-toolbar .community-search {
+    height: 42px !important;
+  }
+  .community-reference-toolbar .community-search input,
+  html[data-theme='light'] .community-board-page .community-reference-toolbar .community-search input {
+    height: 40px !important;
+  }
+  .community-filter-chip,
+  .community-reset-button,
+  .community-sort-button {
+    height: 36px;
+    padding: 0 11px;
+    font-size: 13px;
+  }
+
+  .community-featured-section { margin-top: 18px; }
+  .community-section-heading strong { font-size: 17px; }
+  .community-section-heading span { font-size: 12px; }
+  .community-featured-grid { gap: 13px; }
+  .community-featured-card {
+    min-height: 150px;
+    padding: 15px 14px;
+  }
+  .community-featured-copy { min-height: 118px; }
+  .community-featured-category { font-size: 11px; }
+  .community-featured-copy strong { font-size: 15px; }
+  .community-featured-excerpt { font-size: 12px; }
+  .community-featured-meta small,
+  .community-featured-meta > span { font-size: 9px; }
+
+  .community-board-summary > strong { font-size: 19px; }
+  .community-board-summary em { font-size: 13px; }
+  .community-post-board { gap: 9px; }
+  .community-post-row {
+    min-height: 84px;
+    padding: 10px 12px;
+    grid-template-columns: 66px minmax(0, 1fr) 140px 155px;
+    gap: 11px;
+  }
+  .community-post-thumbnail {
+    width: 66px;
+    height: 62px;
+    border-radius: 10px;
+  }
+  .community-post-tag {
+    padding: 3px 8px;
+    font-size: 10px;
+  }
+  .community-post-title { font-size: 14px; }
+  .community-post-excerpt { font-size: 12px; }
+  .community-post-tags i {
+    padding: 2px 6px;
+    font-size: 8px;
+  }
+  .community-post-author b { font-size: 10px; }
+  .community-post-author small { font-size: 8px; }
+  .community-post-stats > span { font-size: 10px; }
+  .community-post-row:has(.community-post-audio) { min-height: 94px; }
+
+  .community-board-sidebar { gap: 15px; }
+  .community-sidebar-card { padding: 18px; }
+  .community-sidebar-title strong { font-size: 16px; }
+  .community-sidebar-title span { font-size: 11px; }
+  .community-popular-tags button {
+    padding: 7px 10px;
+    font-size: 11px;
+  }
+  .community-guide-card li {
+    font-size: 11px;
+    line-height: 1.45;
+  }
+  .community-sidebar-promo strong { font-size: 13px; }
+  .community-sidebar-promo small { font-size: 9px; }
+}
+
+@media (min-width: 1181px) {
+  .community-board-shell {
+    width: min(1280px, calc(100% - 48px));
+    max-width: 1280px;
+  }
+  .community-board-layout {
+    grid-template-columns: minmax(0, 1fr) 290px;
+    gap: 18px;
+  }
+  .community-post-row {
+    grid-template-columns: 66px minmax(0, 1fr) 195px 175px 16px;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1399px) {
+  .community-reference-toolbar { flex-wrap: wrap; }
+  .community-reference-toolbar .community-search,
+  html[data-theme='light'] .community-board-page .community-reference-toolbar .community-search {
+    width: 100% !important;
+    flex-basis: 100% !important;
+  }
+  .community-filter-row { flex-wrap: wrap; }
+}
