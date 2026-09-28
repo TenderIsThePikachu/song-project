@@ -1,5 +1,5 @@
 import { clearStoredSessionToken, getStoredSessionToken } from './authSession';
-import { APP_SERVER_URL } from './serverApi';
+//import { APP_SERVER_URL } from './serverApi';
 
 export type AuthApiUser = {
   id: string;
@@ -14,7 +14,18 @@ export type AuthSessionResponse = {
   sessionToken: string;
 };
 
-const AUTH_SERVER_URL = APP_SERVER_URL;
+const DEFAULT_AUTH_SERVER_URL =
+  typeof window !== 'undefined'
+    ? import.meta.env.DEV
+      ? `${window.location.protocol}//${window.location.hostname}:8788`
+      : window.location.origin
+    : 'http://localhost:8788';
+
+const AUTH_SERVER_URL =
+  (import.meta.env.VITE_AUTH_SERVER_URL as string | undefined) ??
+  (import.meta.env.VITE_COLLAB_SERVER_URL as string | undefined) ??
+  DEFAULT_AUTH_SERVER_URL;
+
 
 async function fetchAuthJson<T>(path: string, init?: RequestInit) {
   let response: Response;
