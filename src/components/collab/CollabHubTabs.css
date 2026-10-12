@@ -1,8 +1,7 @@
 .collab-hub-tabs {
   display: grid;
-  grid-template-columns: repeat(2, minmax(0, 1fr));
-  gap: 12px;
-  width: min(430px, 100%);
+  grid-template-columns: minmax(0, 1fr);
+  width: min(210px, 100%);
   margin-bottom: 14px;
 }
 
@@ -49,8 +48,7 @@ html[data-theme='dark'] .collab-hub-tab.is-active {
 
 @media (max-width: 560px) {
   .collab-hub-tabs {
-    width: 100%;
-    gap: 8px;
+    width: min(210px, 100%);
   }
 
   .collab-hub-tab {

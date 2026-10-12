@@ -1,10 +1,12 @@
-import { useEffect, useMemo, useState } from 'react';
+import { useEffect, useMemo, useRef, useState } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
+import { exportSongProjectAsMp3 } from '../../audio/engine';
 import SiteHeader from '../../components/layout/SiteHeader';
 import TrackWaveform from '../../components/community/TrackWaveform';
 import {
   BASE_SHARED_TRACK_LIBRARY,
   buildSharedTrackCard,
+  getGenreLabel,
   getMusicShareTrackImage,
   type MusicShareTrackCard,
 } from '../../dummy/musicShareLibrary';
@@ -13,7 +15,7 @@ import { useComposerLibraryStore } from '../../store/composerLibraryStore';
 import { useMusicShareStore } from '../../store/musicShareStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useSongStore } from '../../store/songStore';
-import { analyzeSongSketchDna, getProjectFromSharedTrack, getRecruitUrlFromSketch } from '../../utils/songSketchDna';
+import { getProjectFromSharedTrack, getRecruitUrlFromSketch } from '../../utils/songSketchDna';
 import './MusicShareDetail.css';
 
 function formatCount(value: number) {
@@ -67,6 +69,10 @@ export default function MusicShareDetail() {
   const pushNotification = useNotificationStore((state) => state.pushNotification);
   const [commentInput, setCommentInput] = useState('');
   const [feedbackBar, setFeedbackBar] = useState('1');
+  const [isPreviewPreparing, setIsPreviewPreparing] = useState(false);
+  const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const previewAudioRef = useRef<HTMLAudioElement | null>(null);
+  const previewAudioUrlRef = useRef('');
 
   // 여기서 seedLibrary와 seedMusicShare가 사용됩니다. (에러 방지)
   useEffect(() => {
@@ -110,11 +116,15 @@ export default function MusicShareDetail() {
     if (!track) return null;
     return projects.find((item) => item.id === track.projectId)?.project ?? track.project ?? null;
   }, [projects, track]);
-  const trackDna = useMemo(() => {
-    if (!track) return null;
-    return analyzeSongSketchDna(getProjectFromSharedTrack(track, trackProject ?? undefined), track.title);
-  }, [track, trackProject]);
 
+  useEffect(() => {
+    return () => {
+      previewAudioRef.current?.pause();
+      previewAudioRef.current = null;
+      if (previewAudioUrlRef.current) URL.revokeObjectURL(previewAudioUrlRef.current);
+      previewAudioUrlRef.current = '';
+    };
+  }, [trackId]);
   // 🌟 무한 루프 방지용 코드 (순서가 중요합니다! 반드시 track이 정의된 아래에 있어야 합니다)
   const currentTrackId = track?.id;
   const currentUserEmail = user?.email;
@@ -207,6 +217,57 @@ export default function MusicShareDetail() {
     navigate('/composer?source=shared-track');
   };
 
+  const handleTogglePreview = async () => {
+    if (previewAudioRef.current) {
+      if (previewAudioRef.current.paused) {
+        await previewAudioRef.current.play();
+        setIsPreviewPlaying(true);
+      } else {
+        previewAudioRef.current.pause();
+        setIsPreviewPlaying(false);
+      }
+      return;
+    }
+
+    setIsPreviewPreparing(true);
+    try {
+      const project = getProjectFromSharedTrack(track, trackProject ?? undefined);
+      const blob = await exportSongProjectAsMp3(project);
+      const audioUrl = URL.createObjectURL(blob);
+      const audio = new Audio(audioUrl);
+      audio.onended = () => setIsPreviewPlaying(false);
+      previewAudioUrlRef.current = audioUrl;
+      previewAudioRef.current = audio;
+      await audio.play();
+      setIsPreviewPlaying(true);
+    } catch (error) {
+      console.error('Track preview failed:', error);
+      alert('미리듣기를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+    } finally {
+      setIsPreviewPreparing(false);
+    }
+  };
+
+  const handleOpenYouTube = () => {
+    const query = encodeURIComponent(`${track.title} ${track.creatorName}`);
+    window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank', 'noopener,noreferrer');
+  };
+
+  const handleShareTrack = async () => {
+    const url = window.location.href;
+    if (navigator.share) {
+      try {
+        await navigator.share({ title: track.title, text: `${track.creatorName}의 공유곡`, url });
+        return;
+      } catch (error) {
+        if (error instanceof DOMException && error.name === 'AbortError') return;
+      }
+    }
+
+    await navigator.clipboard.writeText(url);
+    alert('공유 링크를 복사했습니다.');
+  };
+
   const handleRecruitFromTrack = () => {
     navigate(getRecruitUrlFromSketch(track.title, track.category, 'vocal,instrument,drums,bass'));
   };
@@ -274,8 +335,7 @@ const handleDeleteTrack = async () => {
       <SiteHeader activeSection="community" />
 
       <main className="music-share-detail-shell">
-        <section className="music-share-detail-hero" style={{ backgroundImage: `linear-gradient(180deg, rgba(10, 12, 16, 0.08), rgba(10, 12, 16, 0.4)), url(${trackImageUrl})` }}>
-          <div className="music-share-detail-overlay" />
+        <section className="music-share-detail-hero">
           <div className="music-share-detail-copy">
             <span className="music-share-detail-kicker">{track.category ? track.category.toUpperCase() : 'ETC'}</span>
             <h1>{track.title}</h1>
@@ -291,6 +351,9 @@ const handleDeleteTrack = async () => {
               seed={track.id}
               bars={112}
             />
+          </div>
+          <div className="music-share-detail-hero-cover">
+            <img src={trackImageUrl} alt={`${track.title} 커버`} />
           </div>
         </section>
 
@@ -326,19 +389,53 @@ const handleDeleteTrack = async () => {
               ))}
             </div>
 
-            {trackDna ? (
-              <div className="music-share-detail-dna">
+            <section className="music-share-detail-player-card" aria-label={`${track.title} 미리듣기`}>
+              <div className="music-share-detail-player-head">
                 <div>
-                  <span>SONG DNA</span>
-                  <strong>{trackDna.summary}</strong>
+                  <span>공유곡</span>
+                  <strong>{track.title}</strong>
                 </div>
-                <ul>
-                  <li><b>Mood</b><em>{trackDna.mood}</em></li>
-                  <li><b>Melody</b><em>{trackDna.melodyType}</em></li>
-                  <li><b>Use</b><em>{trackDna.useCase}</em></li>
-                </ul>
+                <button
+                  type="button"
+                  className={`music-share-detail-play-button${isPreviewPlaying ? ' is-playing' : ''}`}
+                  onClick={() => void handleTogglePreview()}
+                  disabled={isPreviewPreparing}
+                  aria-label={isPreviewPlaying ? '미리듣기 일시정지' : '미리듣기 재생'}
+                >
+                  <i aria-hidden="true" />
+                </button>
               </div>
-            ) : null}
+
+              <p className="music-share-detail-player-meta">
+                {getGenreLabel(track.category)} · {track.progression}
+              </p>
+
+              <button
+                type="button"
+                className="music-share-detail-player-preview"
+                onClick={() => void handleTogglePreview()}
+                disabled={isPreviewPreparing}
+                aria-label={isPreviewPlaying ? '미리듣기 일시정지' : '미리듣기 재생'}
+              >
+                <span className={`music-share-detail-preview-play${isPreviewPlaying ? ' is-playing' : ''}`}>
+                  <i aria-hidden="true" />
+                </span>
+                {isPreviewPreparing ? <b>미리듣기 준비 중</b> : null}
+              </button>
+
+              <button type="button" className="music-share-detail-service-link" onClick={handleOpenYouTube}>
+                <span className="music-share-detail-youtube-icon" aria-hidden="true"><i /></span>
+                <strong>유튜브</strong>
+                <em aria-hidden="true">›</em>
+              </button>
+
+              <div className="music-share-detail-player-actions">
+                <button type="button" className={saved ? 'is-active' : ''} onClick={handleToggleSave}>
+                  {saved ? '추가됨' : '추가'}
+                </button>
+                <button type="button" onClick={() => void handleShareTrack()}>공유</button>
+              </div>
+            </section>
 
             <div className="music-share-detail-actions">
               <button
@@ -347,13 +444,6 @@ const handleDeleteTrack = async () => {
                 onClick={handleToggleLike}
               >
                 {liked ? '좋아요 취소' : '좋아요'}
-              </button>
-              <button
-                type="button"
-                className={`music-share-detail-button${saved ? ' is-active' : ''}`}
-                onClick={handleToggleSave}
-              >
-                {saved ? '저장 해제' : '곡 저장'}
               </button>
               <button
                 type="button"

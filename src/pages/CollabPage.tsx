@@ -1,6 +1,5 @@
 import { useEffect, useMemo, useState } from 'react';
 import { useNavigate } from 'react-router-dom';
-import CollabHubTabs from '../components/collab/CollabHubTabs';
 import SiteHeader from '../components/layout/SiteHeader';
 import { useAuthStore } from '../store/authStore';
 import { useCollabStore, type CollabProject } from '../store/collabStore';
@@ -271,8 +270,6 @@ export default function CollabPage() {
       <SiteHeader activeSection="collab" />
 
       <main className="collab-shell">
-        <CollabHubTabs activeTab="collab" />
-
         <div className="collab-overview-grid">
           <section className="collab-hero">
             <div className="collab-hero-copy">

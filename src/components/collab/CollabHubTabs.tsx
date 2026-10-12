@@ -18,14 +18,6 @@ export default function CollabHubTabs({ activeTab }: CollabHubTabsProps) {
       >
         내 작업실
       </button>
-      <button
-        type="button"
-        className={`collab-hub-tab${activeTab === 'sessions' ? ' is-active' : ''}`}
-        aria-selected={activeTab === 'sessions'}
-        onClick={() => navigate('/community/sessions')}
-      >
-        팀원 찾기
-      </button>
     </div>
   );
 }
