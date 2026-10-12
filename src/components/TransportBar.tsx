@@ -12,7 +12,6 @@ import type { SongProject } from '../store/songStore.ts';
 import { useSongStore, buildSongProjectSnapshot } from '../store/songStore.ts';
 import { useAuthStore } from '../store/authStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
-import { fetchAiMusic } from '../utils/musicGenerator';
 import { COLLAB_MEMBER_COLOR_OPTIONS } from '../utils/collabMemberColor.ts';
 import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
 import './TransportBar.css';
@@ -27,7 +26,6 @@ const DEFAULT_AI_TEMPLATE = `분위기:
 const SAVE_BACKUP_STORAGE_KEY = 'song-maker-project-backups';
 const BAR_LENGTH = 16;
 const GO_TO_FIRST_BAR_EVENT = 'composer-go-to-first-bar';
-const MIN_AI_GENERATION_MS = 2_800;
 
 const GENRE_GROUPS = [
   {
@@ -230,6 +228,7 @@ function persistRecord(key: string, record: unknown) {
 
 type TransportBarProps = {
   onPlayStarted?: () => void;
+  onProjectReset?: () => void;
   onLyricsClick?: () => void;
   lyricsActive?: boolean;
   onScoreClick?: () => void;
@@ -238,6 +237,8 @@ type TransportBarProps = {
   onGenerateAiVocal?: (voice: 'female' | 'male') => void | Promise<void>;
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
+  initialGenre?: string;
+  currentProjectId?: string | null;
   workMode?: 'personal' | 'collab';
   collabMembers?: Array<{
     email: string;
@@ -345,39 +346,17 @@ type AiModalIconName = 'document' | 'settings' | 'bulb';
 
 const AiModalIcon = ({ name }: { name: AiModalIconName }) => {
   const paths = {
-    document: (
-      <>
-        <path d="M6 3.5h6.5L16 7v9.5H6z" />
-        <path d="M12.5 3.5V7H16M8.5 10h5M8.5 12.5h5M8.5 15h3.5" />
-      </>
-    ),
-    settings: (
-      <>
-        <path d="M4 6h12M4 10h12M4 14h12" />
-        <circle cx="8" cy="6" r="1.7" />
-        <circle cx="13" cy="10" r="1.7" />
-        <circle cx="7" cy="14" r="1.7" />
-      </>
-    ),
-    bulb: (
-      <>
-        <path d="M6.4 11.7A5 5 0 1 1 13.6 11.7c-.9.8-1.2 1.5-1.3 2.3H7.7c-.1-.8-.4-1.5-1.3-2.3Z" />
-        <path d="M8 16h4M8.8 18h2.4" />
-      </>
-    ),
+    document: <><path d="M6 3.5h6.5L16 7v9.5H6z" /><path d="M12.5 3.5V7H16M8.5 10h5M8.5 12.5h5M8.5 15h3.5" /></>,
+    settings: <><path d="M4 6h12M4 10h12M4 14h12" /><circle cx="8" cy="6" r="1.7" /><circle cx="13" cy="10" r="1.7" /><circle cx="7" cy="14" r="1.7" /></>,
+    bulb: <><path d="M6.4 11.7A5 5 0 1 1 13.6 11.7c-.9.8-1.2 1.5-1.3 2.3H7.7c-.1-.8-.4-1.5-1.3-2.3Z" /><path d="M8 16h4M8.8 18h2.4" /></>,
   } as const;
 
-  return (
-    <span className="transport-ai-icon" aria-hidden="true">
-      <svg viewBox="0 0 20 20" focusable="false">
-        {paths[name]}
-      </svg>
-    </span>
-  );
+  return <span className="transport-ai-icon" aria-hidden="true"><svg viewBox="0 0 20 20" focusable="false">{paths[name]}</svg></span>;
 };
 
 export const TransportBar = ({
   onPlayStarted,
+  onProjectReset,
   onLyricsClick,
   lyricsActive = false,
   onScoreClick,
@@ -386,6 +365,8 @@ export const TransportBar = ({
   onGenerateAiVocal,
   songTitle = '',
   onSongTitleChange,
+  initialGenre = 'ballad',
+  currentProjectId = null,
   workMode = 'personal',
   collabMembers = [],
   collabColor = '#14b8a6',
@@ -416,8 +397,7 @@ export const TransportBar = ({
   const shareComposerProject = useComposerLibraryStore((state) => state.shareProject);
 
   const [isExporting, setIsExporting] = useState(false);
-  const [isGenerating, setIsGenerating] = useState(false);
-  const [aiCompletionToast, setAiCompletionToast] = useState<'compose' | 'vocal' | null>(null);
+  const [aiCompletionToast, setAiCompletionToast] = useState<'vocal' | null>(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [isAiVocalPanelOpen, setIsAiVocalPanelOpen] = useState(false);
   const [aiVocalVoice, setAiVocalVoice] = useState<'female' | 'male'>('female');
@@ -425,7 +405,6 @@ export const TransportBar = ({
   const [isAddingVocal, setIsAddingVocal] = useState(false);
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
-
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
 
@@ -546,6 +525,11 @@ export const TransportBar = ({
   const [shareCoverFile, setShareCoverFile] = useState<File | null>(null);
   const [shareCoverPreviewUrl, setShareCoverPreviewUrl] = useState('');
   const [isUploadingShareCover, setIsUploadingShareCover] = useState(false);
+
+  useEffect(() => {
+    setSaveGenre(initialGenre);
+    setShareGenre(initialGenre);
+  }, [initialGenre]);
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const collabMenuRef = useRef<HTMLDivElement | null>(null);
@@ -796,6 +780,7 @@ export const TransportBar = ({
     Tone.Transport.position = 0;
     stopBackingTrack(false);
     clear();
+    onProjectReset?.();
     setCurrentStep(0);
     setPlaying(false);
     navigate('/composer', { replace: true });
@@ -856,7 +841,8 @@ export const TransportBar = ({
         });
       }
 
-      await saveComposerProject({
+      const savedProjectId = await saveComposerProject({
+        id: currentProjectId ?? undefined,
         title,
         description: saveDescription.trim(),
         genre: saveGenre,
@@ -867,6 +853,9 @@ export const TransportBar = ({
         creatorEmail: user?.email ?? 'guest@songmaker.local',
         exportFormat: saveFormat,
       });
+      if (!currentProjectId && workMode === 'personal') {
+        navigate(`/composer?project=${encodeURIComponent(savedProjectId)}`, { replace: true });
+      }
       setEditableSongTitle(title);
       onSongTitleChange?.(title);
 
@@ -942,45 +931,6 @@ export const TransportBar = ({
       alert(`공유에 실패했습니다.\n\n${message}`);
     } finally {
       setIsUploadingShareCover(false);
-    }
-  };
-
-  const handleAiGenerate = async () => {
-    const summary = aiSummary.trim();
-    const details = aiDetails.trim();
-
-    if (!summary && !details) {
-      alert('AI에게 전달할 분위기나 조건을 적어 주세요.');
-      return;
-    }
-
-    const prompt = [
-      summary ? `한 줄 설명: ${summary}` : '',
-      details ? `상세 요청:\n${details}` : '',
-      `프로젝트 설정:\n- BPM: ${bpm}\n- Steps: ${steps}\n- Melody Volume: ${volumes.melody}\n- Drums Volume: ${volumes.drums}\n- Bass Volume: ${volumes.bass} \n Guitar Volume: ${volumes.guitar}`,
-    ]
-      .slice(0, 2)
-      .filter(Boolean)
-      .join('\n\n');
-
-    setIsGenerating(true);
-    try {
-      const generationStartedAt = performance.now();
-      const aiGeneratedProject = (await fetchAiMusic(prompt)) as SongProject;
-      const elapsedMs = performance.now() - generationStartedAt;
-      if (elapsedMs < MIN_AI_GENERATION_MS) {
-        await new Promise((resolve) => window.setTimeout(resolve, MIN_AI_GENERATION_MS - elapsedMs));
-      }
-      useSongStore.getState().loadProject(aiGeneratedProject);
-      setAiCompletionToast('compose');
-      setIsAiPanelOpen(false);
-    } catch (error) {
-      console.error('AI generation failed:', error);
-      const message =
-        error instanceof Error ? error.message : 'AI 생성 요청을 처리하지 못했습니다.';
-      alert(`AI 생성에 실패했습니다.\n\n${message}`);
-    } finally {
-      setIsGenerating(false);
     }
   };
 
@@ -1189,14 +1139,13 @@ export const TransportBar = ({
         />
         <button
           type="button"
-          className={`transport-button transport-button--accent${
-            isAiPanelOpen ? ' is-open' : ''
-          }`}
+          className={`transport-button transport-button--accent${isAiPanelOpen ? ' is-open' : ''}`}
           onClick={() => {
             stopVocalPreview();
             setIsAiVocalPanelOpen(false);
             setIsAiPanelOpen((open) => !open);
           }}
+          aria-expanded={isAiPanelOpen}
         >
           작곡 AI
         </button>
@@ -1496,112 +1445,44 @@ export const TransportBar = ({
         <div
           className="transport-ai-backdrop"
           onMouseDown={(event) => {
-            if (event.target === event.currentTarget && !isGenerating) {
-              setIsAiPanelOpen(false);
-            }
+            if (event.target === event.currentTarget) setIsAiPanelOpen(false);
           }}
         >
-        <section
-          className="transport-ai-panel"
-          aria-label="작곡 AI"
-          aria-modal="true"
-          role="dialog"
-        >
-          {isGenerating ? (
-            <div className="transport-ai-generating" role="status" aria-live="polite">
-              <div className="transport-ai-scan" aria-hidden="true" />
-              <div className="transport-ai-notes" aria-hidden="true">
-                {['♪', '♬', '✦', '♩', '✧'].map((note, index) => (
-                  <span key={`${note}-${index}`}>{note}</span>
-                ))}
+          <section className="transport-ai-panel" aria-label="작곡 AI" aria-modal="true" role="dialog">
+            <div className="transport-ai-header">
+              <div>
+                <span className="transport-ai-eyebrow"><span aria-hidden="true">✦</span> 작곡 AI</span>
+                <strong>원하는 곡을 바로 만들어보세요.</strong>
               </div>
-              <div className="transport-ai-orb" aria-hidden="true">
-                <span />
-                <span />
-                <span />
-              </div>
-              <strong>AI가 곡을 생성 중입니다</strong>
-              <p>
-                프롬프트에 맞는 장르, 코드 진행, 악기 구성을 고르고 있어요.
-              </p>
-              <div className="transport-ai-wave" aria-hidden="true">
-                {Array.from({ length: 18 }).map((_, index) => (
-                  <span key={index} style={{ animationDelay: `${index * 42}ms` }} />
-                ))}
-              </div>
-              <div className="transport-ai-steps" aria-hidden="true">
-                <span>프롬프트 분석</span>
-                <span>코드 진행</span>
-                <span>악기 배치</span>
-              </div>
+              <button type="button" className="transport-ai-close" onClick={() => setIsAiPanelOpen(false)} aria-label="작곡 AI 닫기">×</button>
             </div>
-          ) : null}
-          <div className="transport-ai-header">
-            <div>
-              <span className="transport-ai-eyebrow"><span aria-hidden="true">✦</span> 작곡 AI</span>
-              <strong>원하는 곡을 바로 만들어보세요.</strong>
+
+            <label className="transport-ai-field">
+              <span className="transport-ai-field-label"><AiModalIcon name="document" />한 줄 요약</span>
+              <input type="text" className="transport-ai-input" value={aiSummary} onChange={(event) => setAiSummary(event.target.value)} placeholder="예: 몽환적인 시티팝 무드, 여름 밤처럼" />
+            </label>
+
+            <label className="transport-ai-field">
+              <span className="transport-ai-field-label"><AiModalIcon name="settings" />상세 요청</span>
+              <textarea className="transport-ai-textarea" value={aiDetails} onChange={(event) => setAiDetails(event.target.value)} placeholder={DEFAULT_AI_TEMPLATE} />
+            </label>
+
+            <div className="transport-ai-helper">
+              <AiModalIcon name="bulb" />
+              <p>작곡 AI 생성 서버 연결 후 장르, 분위기, BPM과 악기 조건을 분석해 곡을 생성합니다.</p>
             </div>
-            <button
-              type="button"
-              className="transport-ai-close"
-              onClick={() => setIsAiPanelOpen(false)}
-              aria-label="작곡 AI 닫기"
-            >
-              ×
-            </button>
-          </div>
 
-          <label className="transport-ai-field">
-            <span className="transport-ai-field-label">
-              <AiModalIcon name="document" />
-              한 줄 요약
-            </span>
-            <input
-              type="text"
-              className="transport-ai-input"
-              value={aiSummary}
-              onChange={(event) => setAiSummary(event.target.value)}
-              placeholder="예: 몽환적인 시티팝 무드, 여름 밤처럼"
-            />
-          </label>
-
-          <label className="transport-ai-field">
-            <span className="transport-ai-field-label">
-              <AiModalIcon name="settings" />
-              상세 요청
-            </span>
-            <textarea
-              className="transport-ai-textarea"
-              value={aiDetails}
-              onChange={(event) => setAiDetails(event.target.value)}
-              placeholder={DEFAULT_AI_TEMPLATE}
-            />
-          </label>
-
-          <div className="transport-ai-helper">
-            <AiModalIcon name="bulb" />
-            <p>AI가 장르, 분위기, BPM, 악기 조건을 분석해서 코드 진행과 필요한 악기 파트를 생성합니다.</p>
-          </div>
-
-          <div className="transport-ai-actions">
-            <button
-              type="button"
-              className="transport-button transport-ai-cancel"
-              onClick={() => setIsAiPanelOpen(false)}
-              disabled={isGenerating}
-            >
-              닫기
-            </button>
-            <button
-              type="button"
-              className="transport-button transport-button--accent transport-ai-submit is-open"
-              onClick={handleAiGenerate}
-              disabled={isGenerating}
-            >
-              {isGenerating ? '생성 중...' : '✦ AI로 생성'}
-            </button>
-          </div>
-        </section>
+            <div className="transport-ai-actions">
+              <button type="button" className="transport-button transport-ai-cancel" onClick={() => setIsAiPanelOpen(false)}>닫기</button>
+              <button
+                type="button"
+                className="transport-button transport-button--accent transport-ai-submit is-open"
+                onClick={() => alert('작곡 AI 생성 서버가 아직 연결되지 않았습니다.')}
+              >
+                ✦ AI로 생성
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
 
@@ -1710,12 +1591,8 @@ export const TransportBar = ({
             <span />
           </div>
           <div className="transport-ai-complete-copy">
-            <strong>{aiCompletionToast === 'vocal' ? 'AI 보컬 트랙을 추가했습니다' : 'AI 곡이 배치됐습니다'}</strong>
-            <span>
-              {aiCompletionToast === 'vocal'
-                ? '멜로디와 가사를 바탕으로 보컬 가이드가 준비됐어요.'
-                : '프롬프트에 맞춰 피아노롤에 바로 펼쳐놨어요.'}
-            </span>
+            <strong>AI 보컬 트랙을 추가했습니다</strong>
+            <span>멜로디와 가사를 바탕으로 보컬 가이드가 준비됐어요.</span>
           </div>
           <div className="transport-ai-complete-wave" aria-hidden="true">
             {Array.from({ length: 14 }).map((_, index) => (

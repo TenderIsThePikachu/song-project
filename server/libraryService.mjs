@@ -280,19 +280,27 @@ export function getComposerLibrarySnapshot() {
 
 export function saveComposerProject(payload) {
   const timestamp = Date.now();
-  const projectId = createId('project');
+  const requestedProjectId = normalizeText(payload.id);
+  const creatorEmail = normalizeEmail(payload.creatorEmail) || 'guest@songmaker.local';
+  const existingProject = requestedProjectId
+    ? state.projects.find(
+        (project) => project.id === requestedProjectId && project.creatorEmail === creatorEmail
+      )
+    : null;
+  const projectId = existingProject?.id || createId('project');
 
   const nextProject = {
+    ...existingProject,
     id: projectId,
     title: normalizeText(payload.title, '새 프로젝트'),
     description: normalizeText(payload.description),
     genre: normalizeText(payload.genre, '미정'),
     bpm: Number(payload.bpm) || 120,
     steps: Number(payload.steps) || 32,
-    createdAt: timestamp,
+    createdAt: existingProject?.createdAt ?? timestamp,
     updatedAt: timestamp,
     creatorName: normalizeText(payload.creatorName, 'guest'),
-    creatorEmail: normalizeEmail(payload.creatorEmail) || 'guest@songmaker.local',
+    creatorEmail,
     project: payload.project,
     exportFormat: payload.exportFormat === 'mp3' || payload.exportFormat === 'flac' ? payload.exportFormat : 'wav',
     isShared: false,
@@ -302,7 +310,7 @@ export function saveComposerProject(payload) {
 
   state = {
     ...state,
-    projects: [nextProject, ...state.projects],
+    projects: [nextProject, ...state.projects.filter((project) => project.id !== projectId)],
   };
   saveState();
 

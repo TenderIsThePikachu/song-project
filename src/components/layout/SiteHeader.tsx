@@ -25,7 +25,7 @@ const NAV_ITEMS: Array<{
   label: string;
   route: string;
 }> = [
-  { key: 'composer', label: '스튜디오', route: '/composer?tab=melody' },
+  { key: 'composer', label: '스튜디오', route: '/library' },
   { key: 'collab', label: '합작', route: '/collab' },
   { key: 'community', label: '게시판', route: '/community' },
   { key: 'shorts', label: '클립', route: '/community/shorts' },
@@ -34,7 +34,7 @@ const NAV_ITEMS: Array<{
 type VisibleHeaderSection = 'composer' | 'collab' | 'community' | 'shorts';
 
 const LAST_HEADER_SECTION_KEY = 'song-project-last-header-section';
-const ACCOUNT_PATHS = ['/profile', '/library', '/messages', '/settings'];
+const ACCOUNT_PATHS = ['/profile', '/messages', '/settings'];
 
 function isVisibleHeaderSection(section: SiteHeaderSection): section is VisibleHeaderSection {
   return NAV_ITEMS.some((item) => item.key === section);

@@ -2492,17 +2492,7 @@ export const useSongStore = create<SongState>()(
         drums: createEmptyMatrix(DRUM_ROWS, state.steps),
         bass: createEmptyMatrix(BASS_ROWS, state.steps),
         bassLengths: createEmptyLengthMatrix(BASS_ROWS, state.steps),
-        extraTracks: withLyricsMelodyTrack(
-          state.extraTracks.map((track) => createEmptyExtraTrack(
-            track.instrument,
-            state.steps,
-            [],
-            track.id,
-            track.label,
-            track.volume
-          )),
-          state.steps
-        ),
+        extraTracks: withLyricsMelodyTrack([], state.steps),
       })
     ),
 

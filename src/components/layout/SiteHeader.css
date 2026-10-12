@@ -86,7 +86,7 @@
   display: flex;
   align-items: center;
   justify-content: flex-start;
-  gap: 30px;
+  gap: 22px;
   margin-left: 34px;
   min-width: 0;
   height: 34px;
@@ -100,12 +100,12 @@
   box-sizing: border-box;
   line-height: 1;
   white-space: nowrap;
-  padding: 0 14px;
+  padding: 0 12px;
   border: 0;
   border-radius: 999px;
   background: transparent;
   color: rgba(255, 255, 255, 0.78);
-  font-size: 14px;
+  font-size: 15px;
   font-weight: 700;
   letter-spacing: 0;
   cursor: pointer;

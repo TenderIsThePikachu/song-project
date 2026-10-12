@@ -26,6 +26,19 @@ const statusLabels: Record<CollabStatus, string> = {
   feedback: '피드백',
 };
 
+const NEW_PROJECT_GENRES = [
+  { value: 'ballad', label: '발라드' },
+  { value: 'pop', label: '팝' },
+  { value: 'indie-pop', label: '인디팝' },
+  { value: 'jazz', label: '재즈' },
+  { value: 'rnb', label: 'R&B' },
+  { value: 'hiphop', label: '힙합' },
+  { value: 'rock', label: '록' },
+  { value: 'electronic', label: '일렉트로닉' },
+  { value: 'ost', label: 'OST' },
+  { value: 'lofi', label: '로파이' },
+] as const;
+
 function LibraryIcon({ name }: { name: 'music' | 'share' | 'users' | 'info' | 'search' | 'edit' | 'chevron' }) {
   const paths: Record<typeof name, ReactNode> = {
     music: <><path d="M9 18V5l10-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></>,
@@ -63,27 +76,73 @@ export default function ProjectLibraryPage() {
   const [sortOrder, setSortOrder] = useState<SortOrder>('latest');
   const [query, setQuery] = useState('');
   const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
+  const [newProjectTitle, setNewProjectTitle] = useState('');
+  const [newProjectBpm, setNewProjectBpm] = useState(120);
+  const [newProjectGenre, setNewProjectGenre] = useState('ballad');
 
-  useEffect(() => { void seedLibrary().catch(console.error); }, [seedLibrary]);
-  useEffect(() => { void initializeRealtime().catch(console.error); }, [initializeRealtime]);
+  useEffect(() => {
+    void seedLibrary().catch(console.error);
+  }, [seedLibrary]);
+
+  useEffect(() => {
+    void initializeRealtime().catch(console.error);
+  }, [initializeRealtime]);
+
+  useEffect(() => {
+    if (!isCreateDialogOpen) return;
+
+    const handleEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsCreateDialogOpen(false);
+    };
+    window.addEventListener('keydown', handleEscape);
+    return () => window.removeEventListener('keydown', handleEscape);
+  }, [isCreateDialogOpen]);
 
   const visibleProjects = useMemo(() => {
     if (!user?.email) return projects;
     return projects.filter((project) => project.creatorEmail === user.email);
   }, [projects, user?.email]);
-  const workProjects = useMemo(() => visibleProjects.filter((project) => !project.isShared), [visibleProjects]);
-  const sharedProjects = useMemo(() => visibleProjects.filter((project) => project.isShared), [visibleProjects]);
+
+  const workProjects = useMemo(
+    () => visibleProjects.filter((project) => !project.isShared),
+    [visibleProjects]
+  );
+  const sharedProjects = useMemo(
+    () => visibleProjects.filter((project) => project.isShared),
+    [visibleProjects]
+  );
   const myCollabProjects = useMemo(() => {
     if (!user?.email) return [] as CollabProject[];
-    return collabProjects.filter((project) => project.ownerEmail === user.email || project.members.some((member) => member.email === user.email));
+    return collabProjects.filter(
+      (project) =>
+        project.ownerEmail === user.email ||
+        project.members.some((member) => member.email === user.email)
+    );
   }, [collabProjects, user?.email]);
 
   const entries = useMemo(() => {
-    const projectSource = activeTab === 'shared' ? sharedProjects : activeTab === 'recent' ? workProjects : activeTab === 'collab' ? [] : visibleProjects;
+    const projectSource = activeTab === 'shared'
+      ? sharedProjects
+      : activeTab === 'recent'
+        ? workProjects
+        : activeTab === 'collab'
+          ? []
+          : visibleProjects;
     const normalizedQuery = query.trim().toLocaleLowerCase('ko-KR');
     const nextEntries: LibraryEntry[] = [
-      ...projectSource.map((project) => ({ kind: 'project' as const, updatedAt: project.updatedAt, project })),
-      ...(activeTab === 'all' || activeTab === 'collab' ? myCollabProjects.map((project) => ({ kind: 'collab' as const, updatedAt: project.updatedAt, project })) : []),
+      ...projectSource.map((project) => ({
+        kind: 'project' as const,
+        updatedAt: project.updatedAt,
+        project,
+      })),
+      ...(activeTab === 'all' || activeTab === 'collab'
+        ? myCollabProjects.map((project) => ({
+            kind: 'collab' as const,
+            updatedAt: project.updatedAt,
+            project,
+          }))
+        : []),
     ].filter((entry) => {
       if (!normalizedQuery) return true;
       const searchText = entry.kind === 'project'
@@ -92,15 +151,40 @@ export default function ProjectLibraryPage() {
       return searchText.toLocaleLowerCase('ko-KR').includes(normalizedQuery);
     });
     return nextEntries.sort((left, right) => {
-      if (sortOrder === 'title') return left.project.title.localeCompare(right.project.title, 'ko-KR');
-      return sortOrder === 'oldest' ? left.updatedAt - right.updatedAt : right.updatedAt - left.updatedAt;
+      if (sortOrder === 'title') {
+        return left.project.title.localeCompare(right.project.title, 'ko-KR');
+      }
+      return sortOrder === 'oldest'
+        ? left.updatedAt - right.updatedAt
+        : right.updatedAt - left.updatedAt;
     });
   }, [activeTab, myCollabProjects, query, sharedProjects, sortOrder, visibleProjects, workProjects]);
 
-  const counts = { work: workProjects.length, shared: sharedProjects.length, collab: myCollabProjects.length };
+  const counts = {
+    work: workProjects.length,
+    shared: sharedProjects.length,
+    collab: myCollabProjects.length,
+  };
+
   const handleOpenProject = (project: ComposerProjectRecord) => {
     loadProject(project.project);
     navigate(`/composer?project=${encodeURIComponent(project.id)}`);
+  };
+  const handleOpenCreateDialog = () => {
+    setNewProjectTitle('');
+    setNewProjectBpm(120);
+    setNewProjectGenre('ballad');
+    setIsCreateDialogOpen(true);
+  };
+  const handleCreateProject = () => {
+    const params = new URLSearchParams({
+      new: '1',
+      title: newProjectTitle.trim() || '제목 없는 곡',
+      bpm: String(newProjectBpm),
+      genre: newProjectGenre,
+    });
+    setIsCreateDialogOpen(false);
+    navigate(`/composer?${params.toString()}`);
   };
   const handleDeleteProject = async (project: ComposerProjectRecord) => {
     if (!user?.email) { alert('프로젝트를 삭제하려면 로그인이 필요합니다.'); return; }
@@ -136,9 +220,9 @@ export default function ProjectLibraryPage() {
 
   return (
     <div className="library-page">
-      <SiteHeader activeSection="library" />
+      <SiteHeader activeSection="composer" />
       <main className="library-shell">
-        <section className="library-hero"><div><span>MY MUSIC</span><h1>내 음악을 한 곳에서 관리하세요.</h1><p>저장한 작곡 프로젝트와 공유한 곡을 다시 열고 이어서 작업할 수 있습니다.</p></div><button type="button" className="library-primary-button" onClick={() => navigate('/composer?new=1')}><b>+</b> 새 작업 만들기</button></section>
+        <section className="library-hero"><div><span>COMPOSING STUDIO</span><h1>나의 작곡 스튜디오</h1><p>새로운 곡을 시작하거나 저장한 작곡을 다시 열어 이어서 완성해보세요.</p></div><button type="button" className="library-primary-button" onClick={handleOpenCreateDialog}><b>+</b> 새 작곡 만들기</button></section>
         <section className="library-summary" aria-label="프로젝트 요약">
           <button type="button" className={activeTab === 'all' || activeTab === 'recent' ? 'is-active' : ''} onClick={() => setActiveTab('recent')}><i><LibraryIcon name="music" /></i><span><b>내 작업</b><strong>{counts.work}<small>개</small></strong><em>내가 만든 작곡 프로젝트</em></span><LibraryIcon name="chevron" /></button>
           <button type="button" className={activeTab === 'shared' ? 'is-active' : ''} onClick={() => setActiveTab('shared')}><i><LibraryIcon name="share" /></i><span><b>공유됨</b><strong>{counts.shared}<small>개</small></strong><em>다른 사용자와 공유한 곡</em></span><LibraryIcon name="chevron" /></button>
@@ -149,9 +233,115 @@ export default function ProjectLibraryPage() {
         <section className="library-toolbar"><div className="library-tabs" role="tablist" aria-label="내 음악 필터">{(Object.keys(tabLabels) as LibraryTab[]).map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'is-active' : ''} onClick={() => setActiveTab(tab)}>{tabLabels[tab]}</button>)}</div><div className="library-tools"><label><LibraryIcon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="작업 제목, 아티스트명으로 검색하세요..." /></label><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as SortOrder)} aria-label="정렬"><option value="latest">최신순</option><option value="oldest">오래된순</option><option value="title">제목순</option></select></div></section>
         <section className="library-list" aria-label={tabLabels[activeTab]}>
           {isLoading ? <div className="library-loading">작업 목록을 불러오는 중입니다.</div> : entries.map((entry) => entry.kind === 'project' ? renderProjectCard(entry.project) : renderCollabCard(entry.project))}
-          {!isLoading && !entries.length ? <div className="library-empty"><i><LibraryIcon name="music" /></i><strong>{query ? '검색 결과가 없습니다.' : '아직 저장한 작업이 없습니다.'}</strong><span>{query ? '검색어를 바꾸거나 다른 분류를 확인해보세요.' : '지금 바로 첫 번째 곡을 만들어보세요.'}</span><div><button type="button" className="is-primary" onClick={() => navigate('/composer?new=1')}><b>+</b> 새 작업 만들기</button><button type="button" onClick={() => navigate('/composer')}><LibraryIcon name="edit" /> 작곡 화면으로 이동</button></div></div> : null}
+          {!isLoading && !entries.length ? <div className="library-empty"><i><LibraryIcon name="music" /></i><strong>{query ? '검색 결과가 없습니다.' : '아직 저장한 작업이 없습니다.'}</strong><span>{query ? '검색어를 바꾸거나 다른 분류를 확인해보세요.' : '지금 바로 첫 번째 곡을 만들어보세요.'}</span><div><button type="button" className="is-primary" onClick={handleOpenCreateDialog}><b>+</b> 새 작곡 만들기</button><button type="button" onClick={() => navigate('/composer')}><LibraryIcon name="edit" /> 스튜디오로 이동</button></div></div> : null}
         </section>
       </main>
+      {isCreateDialogOpen ? (
+        <div
+          className="library-create-backdrop"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsCreateDialogOpen(false);
+          }}
+        >
+          <form
+            className="library-create-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="library-create-title"
+            onSubmit={(event) => {
+              event.preventDefault();
+              handleCreateProject();
+            }}
+          >
+            <header className="library-create-header">
+              <div>
+                <span>NEW COMPOSITION</span>
+                <h2 id="library-create-title">새 작곡 설정</h2>
+                <p>곡의 기본 정보를 정한 뒤 스튜디오를 시작하세요.</p>
+              </div>
+              <button
+                type="button"
+                className="library-create-close"
+                aria-label="새 작곡 설정 닫기"
+                onClick={() => setIsCreateDialogOpen(false)}
+              >
+                ×
+              </button>
+            </header>
+
+            <div className="library-create-body">
+              <label className="library-create-field">
+                <span>곡 이름</span>
+                <input
+                  autoFocus
+                  value={newProjectTitle}
+                  maxLength={60}
+                  placeholder="새로운 곡의 이름을 입력하세요"
+                  onChange={(event) => setNewProjectTitle(event.target.value)}
+                />
+                <small>{newProjectTitle.length}/60</small>
+              </label>
+
+              <fieldset className="library-create-tempo">
+                <legend>BPM</legend>
+                <div className="library-create-bpm-row">
+                  <input
+                    type="number"
+                    min={60}
+                    max={200}
+                    value={newProjectBpm}
+                    aria-label="BPM 직접 입력"
+                    onChange={(event) =>
+                      setNewProjectBpm(
+                        Math.min(200, Math.max(60, Number(event.target.value) || 60))
+                      )
+                    }
+                  />
+                  <span>beats per minute</span>
+                </div>
+                <input
+                  className="library-create-bpm-slider"
+                  type="range"
+                  min={60}
+                  max={200}
+                  value={newProjectBpm}
+                  onChange={(event) => setNewProjectBpm(Number(event.target.value))}
+                />
+                <div className="library-create-presets" aria-label="BPM 빠른 선택">
+                  {[80, 100, 120, 140].map((tempo) => (
+                    <button
+                      key={tempo}
+                      type="button"
+                      className={newProjectBpm === tempo ? 'is-active' : ''}
+                      onClick={() => setNewProjectBpm(tempo)}
+                    >
+                      {tempo}
+                    </button>
+                  ))}
+                </div>
+              </fieldset>
+
+              <label className="library-create-genre">
+                <span>장르</span>
+                <select
+                  value={newProjectGenre}
+                  onChange={(event) => setNewProjectGenre(event.target.value)}
+                >
+                  {NEW_PROJECT_GENRES.map((genre) => (
+                    <option key={genre.value} value={genre.value}>{genre.label}</option>
+                  ))}
+                </select>
+              </label>
+            </div>
+
+            <footer className="library-create-actions">
+              <button type="button" onClick={() => setIsCreateDialogOpen(false)}>취소</button>
+              <button type="submit" className="is-primary">만들기</button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

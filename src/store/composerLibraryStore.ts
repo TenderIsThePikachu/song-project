@@ -32,6 +32,7 @@ export type ComposerProjectRecord = {
 };
 
 type SaveProjectPayload = {
+  id?: string;
   title: string;
   description: string;
   genre: string;

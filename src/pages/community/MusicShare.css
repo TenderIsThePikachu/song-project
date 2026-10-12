@@ -770,8 +770,8 @@
 
 .music-share-page .music-share-shell {
   box-sizing: border-box;
-  width: min(1280px, calc(100% - 48px));
-  max-width: 1280px;
+  width: min(1500px, calc(100% - 48px));
+  max-width: 1500px;
   margin: 0 auto;
   padding: 16px 0 72px;
   display: block;
@@ -783,7 +783,7 @@
 }
 
 .music-share-page .music-share-shell > :not(.community-space-nav):not(.music-share-comment-modal) {
-  width: min(1200px, 100%);
+  width: 100%;
   margin-right: auto;
   margin-left: auto;
 }

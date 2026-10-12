@@ -208,7 +208,7 @@ export default function MusicShareDetail() {
   };
 
   const handleRecruitFromTrack = () => {
-    navigate(getRecruitUrlFromSketch(track.title, track.category, 'vocal,guitar,drums,bass'));
+    navigate(getRecruitUrlFromSketch(track.title, track.category, 'vocal,instrument,drums,bass'));
   };
 
 const isOwner = user && track && user.name === track.creatorName;

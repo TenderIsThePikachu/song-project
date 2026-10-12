@@ -42,21 +42,6 @@ function formatDate(value: number) {
   return new Date(value).toLocaleDateString('ko-KR');
 }
 
-function formatTime(value: number) {
-  return new Date(value).toLocaleTimeString('ko-KR', {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
-}
-
-function formatRelativeTime(value: number) {
-  const minutes = Math.max(1, Math.floor((Date.now() - value) / 60_000));
-  if (minutes < 60) return `${minutes}분 전`;
-  const hours = Math.floor(minutes / 60);
-  if (hours < 24) return `${hours}시간 전`;
-  return `${Math.floor(hours / 24)}일 전`;
-}
-
 function formatCount(value: number) {
   return value.toLocaleString('ko-KR');
 }
@@ -77,7 +62,6 @@ export default function CollabPage() {
   const user = useAuthStore((state) => state.user);
   const isLocalHost = isLocalDevelopmentHost();
   const projects = useCollabStore((state) => state.projects);
-  const messages = useCollabStore((state) => state.messages);
   const tasks = useCollabStore((state) => state.tasks);
   const renameProject = useCollabStore((state) => state.renameProject);
   const deleteProject = useCollabStore((state) => state.deleteProject);
@@ -167,11 +151,6 @@ export default function CollabPage() {
     });
     return map;
   }, [tasks]);
-
-  const recentMessages = useMemo(
-    () => [...messages].sort((left, right) => right.createdAt - left.createdAt).slice(0, 3),
-    [messages]
-  );
 
   const featuredMembers = useMemo(() => {
     const members = new Map<string, string>();
@@ -456,34 +435,6 @@ export default function CollabPage() {
             </div>
           </section>
 
-          <aside className="collab-sidebar">
-            <section className="collab-side-card collab-chat-card">
-              <header><h2><CollabIcon name="message" /> 팀 채팅</h2><a href={sortedProjects[0] ? `/collab/${sortedProjects[0].id}` : '#collab-projects'}>전체 채팅 보기 ›</a></header>
-              <div className="collab-chat-list">
-                {recentMessages.length ? recentMessages.map((message, index) => (
-                  <article key={message.id}>
-                    <span className={`collab-avatar is-${(index % 3) + 1}`}>{getInitial(message.authorName)}</span>
-                    <div><strong>{message.authorName}<time>{formatTime(message.createdAt)}</time></strong><p>{message.content}</p></div>
-                    {index < 2 ? <b>{index + 1}</b> : null}
-                  </article>
-                )) : <p className="collab-side-empty">아직 팀 채팅 메시지가 없습니다.</p>}
-              </div>
-            </section>
-
-            <section className="collab-side-card collab-activity-card">
-              <header><h2><CollabIcon name="activity" /> 최근 활동</h2><a href="#collab-projects">전체 보기 ›</a></header>
-              <div className="collab-activity-list">
-                {sortedProjects.slice(0, 4).map((project, index) => (
-                  <article key={project.id}>
-                    <span className={`collab-activity-dot is-${(index % 3) + 1}`}>{getInitial(project.ownerName)}</span>
-                    <p><strong>{project.ownerName}</strong>님이 <b>{project.title}</b> 프로젝트를 업데이트했어요.</p>
-                    <time>{formatRelativeTime(project.updatedAt)}</time>
-                  </article>
-                ))}
-                {!sortedProjects.length ? <p className="collab-side-empty">아직 최근 활동이 없습니다.</p> : null}
-              </div>
-            </section>
-          </aside>
         </div>
       </main>
 

@@ -832,9 +832,17 @@ export function Composer() {
   const addCollabMessage = useCollabStore((state) => state.addMessage);
   const libraryProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
+  const saveLibraryProject = useComposerLibraryStore((state) => state.saveProject);
   const collabId = searchParams.get('collab');
   const projectId = searchParams.get('project');
   const newProjectRequested = searchParams.get('new') === '1';
+  const requestedNewProjectTitle = (searchParams.get('title') ?? '').trim().slice(0, 60);
+  const requestedNewProjectBpmValue = Number(searchParams.get('bpm'));
+  const requestedNewProjectBpm = Number.isFinite(requestedNewProjectBpmValue)
+    ? Math.min(200, Math.max(60, requestedNewProjectBpmValue))
+    : 120;
+  const requestedNewProjectGenre = searchParams.get('genre') || 'ballad';
+  const configuredNewProjectRef = useRef(false);
   const tutorialRequested = false;
   const requestedGuideStep = Number(searchParams.get('guideStep') ?? '0');
   const collabProject = useMemo(
@@ -924,6 +932,8 @@ export function Composer() {
     Array<{ scroller: HTMLElement; header: HTMLElement | null; stepSpan: number }>
   >([]);
   const liveDrumScrollersRef = useRef<HTMLElement[]>([]);
+  const arrangementTrackListRef = useRef<HTMLDivElement | null>(null);
+  const arrangementLanesRef = useRef<HTMLDivElement | null>(null);
   const [conflictNotice, setConflictNotice] = useState('');
   const [collabSyncTick, setCollabSyncTick] = useState(0);
   const [collabPresenceNow, setCollabPresenceNow] = useState(() => Date.now());
@@ -1050,6 +1060,7 @@ export function Composer() {
   });
 
   useEffect(() => {
+    if (configuredNewProjectRef.current) return;
     if (bpm === 92 || bpm === 100) {
       setBpm(172);
     }
@@ -1125,6 +1136,7 @@ export function Composer() {
   const [isNotepadOpen, setIsNotepadOpen] = useState(true);
   const [notepadMode, setNotepadMode] = useState<ComposerNotepadMode>('lyrics');
   const [notepadDraft, setNotepadDraft] = useState(readComposerNotepadDraft);
+  const [projectGenre, setProjectGenre] = useState('ballad');
   const [isLyricsWorkspaceOpen, setIsLyricsWorkspaceOpen] = useState(false);
   const [isScoreViewerOpen, setIsScoreViewerOpen] = useState(false);
   const closeScoreViewer = useCallback(() => setIsScoreViewerOpen(false), []);
@@ -1176,6 +1188,7 @@ export function Composer() {
   const drumShellRef = useRef<HTMLElement | null>(null);
   const bassShellRef = useRef<HTMLElement | null>(null);
   const footerRef = useRef<HTMLElement | null>(null);
+  const scoreDraftCreatedAtRef = useRef(Date.now());
 
   useEffect(() => {
     if (activeTab === 'lyrics' || !mainViewportRef.current) return;
@@ -1211,11 +1224,25 @@ export function Composer() {
   );
 
   useEffect(() => {
-    if (!newProjectRequested) {
+    if (loadedLibraryProject?.genre) {
+      setProjectGenre(loadedLibraryProject.genre);
+    }
+  }, [loadedLibraryProject?.genre]);
+
+  useEffect(() => {
+    if (!newProjectRequested || configuredNewProjectRef.current) {
       return;
     }
 
+    configuredNewProjectRef.current = true;
     clear();
+    setBpm(requestedNewProjectBpm);
+    setProjectGenre(requestedNewProjectGenre);
+    setNotepadDraft({
+      title: requestedNewProjectTitle || '제목 없는 곡',
+      lyrics: '',
+      memo: '',
+    });
     window.localStorage.setItem(
       COMPOSER_TAB_STORAGE_KEY,
       JSON.stringify({
@@ -1230,8 +1257,41 @@ export function Composer() {
     setArrangementTrackOrder(DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`));
     setActiveTrackId(null);
     setVisitedTabs([]);
-    navigate('/composer', { replace: true });
-  }, [clear, navigate, newProjectRequested]);
+
+    const createProject = async () => {
+      try {
+        const createdProjectId = await saveLibraryProject({
+          title: requestedNewProjectTitle || '제목 없는 곡',
+          description: '',
+          genre: requestedNewProjectGenre,
+          bpm: requestedNewProjectBpm,
+          steps: useSongStore.getState().steps,
+          project: buildSongProjectSnapshot(useSongStore.getState()),
+          creatorName: user?.name ?? '게스트',
+          creatorEmail: user?.email ?? 'guest@songmaker.local',
+          exportFormat: 'wav',
+        });
+        navigate(`/composer?project=${encodeURIComponent(createdProjectId)}`, { replace: true });
+      } catch (error) {
+        console.error('Failed to create composer project:', error);
+        navigate('/composer', { replace: true });
+        alert('새 작곡을 저장하지 못했습니다. 작곡 화면에서 다시 저장해 주세요.');
+      }
+    };
+
+    void createProject();
+  }, [
+    clear,
+    navigate,
+    newProjectRequested,
+    requestedNewProjectBpm,
+    requestedNewProjectGenre,
+    requestedNewProjectTitle,
+    saveLibraryProject,
+    setBpm,
+    user?.email,
+    user?.name,
+  ]);
 
   const isActivePrimaryTabOpen = !activeTrackId && openTabsState.includes(activeTab);
   const openTabItems = useMemo<ComposerTabItem[]>(() => {
@@ -1289,6 +1349,25 @@ export function Composer() {
 
     return tracks.sort((left, right) => Number(right.fixed) - Number(left.fixed));
   }, [hiddenArrangementTrackIds, openTabItems]);
+  useEffect(() => {
+    if (isArrangementCollapsed) return undefined;
+
+    const frame = window.requestAnimationFrame(() => {
+      const trackList = arrangementTrackListRef.current;
+      const lanes = arrangementLanesRef.current;
+      if (!trackList || !lanes) return;
+
+      const sharedMaxScroll = Math.min(
+        Math.max(0, trackList.scrollHeight - trackList.clientHeight),
+        Math.max(0, lanes.scrollHeight - lanes.clientHeight)
+      );
+      const nextScrollTop = Math.min(trackList.scrollTop, sharedMaxScroll);
+      trackList.scrollTop = nextScrollTop;
+      lanes.scrollTop = nextScrollTop;
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [arrangementVisibleTracks.length, isArrangementCollapsed]);
   const scoreViewerParts = useMemo(
     () => arrangementVisibleTracks
       .filter((track) => track.trackId !== LYRICS_MELODY_TRACK_ID)
@@ -1506,6 +1585,13 @@ export function Composer() {
       setSelectedLyricsBar(nextIndex);
     }
   }, [currentStep, isLyricsWorkspaceOpen, lyricsBarLines.length, lyricsStartBar]);
+
+  useEffect(() => {
+    if (activeTab === 'lyrics' || isArrangementCollapsed) {
+      setIsLyricsWorkspaceOpen(false);
+    }
+  }, [activeTab, isArrangementCollapsed]);
+
   const activeHelpPanel = activeHelpZone ? composerHelpPanels[activeHelpZone] : null;
   const getTabPickerLabel = (tab: TabPickerOption) => {
     if (tab === 'airInstrument') {
@@ -5184,6 +5270,8 @@ useEffect(() => {
           songTitle={
             loadedLibraryProject?.title ?? collabProject?.title ?? notepadDraft.title
           }
+          initialGenre={projectGenre}
+          currentProjectId={projectId}
           onSongTitleChange={(title) =>
             setNotepadDraft((current) => ({ ...current, title }))
           }
@@ -5192,6 +5280,35 @@ useEffect(() => {
           collabColor={collabSessionColor}
           onCollabColorChange={handleCollabColorChange}
           onPlayStarted={() => setPlayedTutorialOnce(true)}
+          onProjectReset={() => {
+            const defaultExtraTrackIds = [LYRICS_MELODY_TRACK_ID];
+            const defaultArrangementOrder = [
+              `extra-${LYRICS_MELODY_TRACK_ID}`,
+              ...DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`),
+            ];
+
+            setOpenTabsState(DEFAULT_OPEN_TABS);
+            setOpenExtraTrackIds(defaultExtraTrackIds);
+            setArrangementTrackOrder(defaultArrangementOrder);
+            setActiveTrackId(null);
+            setVisitedTabs([]);
+            setMutedArrangementTracks(new Set());
+            setHiddenArrangementTrackIds(new Set());
+            setOpenTrackMenuId(null);
+            setIsTabPickerOpen(false);
+            setIsLyricsWorkspaceOpen(false);
+            setPendingAiVocalTrackId(null);
+            activateTab('melody');
+            window.localStorage.setItem(
+              COMPOSER_TAB_STORAGE_KEY,
+              JSON.stringify({
+                openTabs: DEFAULT_OPEN_TABS,
+                openExtraTrackIds: defaultExtraTrackIds,
+                arrangementTrackOrder: defaultArrangementOrder,
+                activeTrackId: null,
+              })
+            );
+          }}
           onLyricsClick={handleLyricsToggle}
           lyricsActive={activeTab === 'lyrics' && !activeExtraTrack}
           onScoreClick={() => setIsScoreViewerOpen((open) => !open)}
@@ -5731,16 +5848,18 @@ useEffect(() => {
           </>
         ) : null}
 
-        <button
-          type="button"
-          className={`composer-lyrics-edge-button${isLyricsWorkspaceOpen ? ' is-open' : ''}`}
-          onClick={() => setIsLyricsWorkspaceOpen((current) => !current)}
-          aria-label={isLyricsWorkspaceOpen ? '가사 메모 닫기' : '가사 메모 열기'}
-          aria-expanded={isLyricsWorkspaceOpen}
-          title="가사 메모"
-        >
-          {isLyricsWorkspaceOpen ? '›' : '‹'}
-        </button>
+        {activeTab !== 'lyrics' && !isArrangementCollapsed ? (
+          <button
+            type="button"
+            className={`composer-lyrics-edge-button${isLyricsWorkspaceOpen ? ' is-open' : ''}`}
+            onClick={() => setIsLyricsWorkspaceOpen((current) => !current)}
+            aria-label={isLyricsWorkspaceOpen ? '가사 메모 닫기' : '가사 메모 열기'}
+            aria-expanded={isLyricsWorkspaceOpen}
+            title="가사 메모"
+          >
+            {isLyricsWorkspaceOpen ? '›' : '‹'}
+          </button>
+        ) : null}
         <aside className="composer-track-panel" aria-label="트랙 목록">
           <div className="composer-track-panel-head">
             <strong>트랙 ({arrangementVisibleTracks.length})</strong>
@@ -5773,9 +5892,16 @@ useEffect(() => {
           </div>
 
           <div
+            ref={arrangementTrackListRef}
             className={`composer-track-list${
               arrangementVisibleTracks.length > 7 ? ' has-overflow' : ''
             }`}
+            onScroll={(event) => {
+              const lanes = arrangementLanesRef.current;
+              if (lanes && Math.abs(lanes.scrollTop - event.currentTarget.scrollTop) > 0.5) {
+                lanes.scrollTop = event.currentTarget.scrollTop;
+              }
+            }}
           >
             {arrangementVisibleTracks.map((track) => {
               const isActive =
@@ -5944,9 +6070,19 @@ useEffect(() => {
               </div>
             </div>
             <div
+              ref={arrangementLanesRef}
               className="composer-arrangement-lanes"
               style={{
                 ['--arrangement-track-count' as string]: `${arrangementVisibleTracks.length}`,
+              }}
+              onScroll={(event) => {
+                const trackList = arrangementTrackListRef.current;
+                if (
+                  trackList &&
+                  Math.abs(trackList.scrollTop - event.currentTarget.scrollTop) > 0.5
+                ) {
+                  trackList.scrollTop = event.currentTarget.scrollTop;
+                }
               }}
             >
               {arrangementVisibleTracks.map((track) => {
@@ -6233,6 +6369,10 @@ useEffect(() => {
               <section className="composer-lyrics-input-panel">
                 <div className="composer-lyrics-section-title">
                   <strong>가사 입력</strong>
+                  <p>
+                    줄바꿈은 마디를 나누고, 띄어쓰기는 해당 마디의 노트마다 가사를 나눕니다.
+                    시작 마디를 정한 뒤 자동 분배를 눌러주세요.
+                  </p>
                 </div>
                 <textarea
                   value={lyricsText}
@@ -6543,7 +6683,7 @@ useEffect(() => {
         </section>
       </div>
 
-      {isLyricsWorkspaceOpen ? (
+      {isLyricsWorkspaceOpen && activeTab !== 'lyrics' && !isArrangementCollapsed ? (
         <section className="composer-lyrics-workspace" aria-label="가사 메모">
           <header className="composer-lyrics-workspace-head">
             <div>
@@ -6638,6 +6778,9 @@ useEffect(() => {
       <ScoreViewer
         open={isScoreViewerOpen}
         title={loadedLibraryProject?.title ?? collabProject?.title ?? notepadDraft.title}
+        creator={user?.name}
+        createdAt={loadedLibraryProject?.createdAt ?? collabProject?.createdAt ?? scoreDraftCreatedAtRef.current}
+        updatedAt={loadedLibraryProject?.updatedAt ?? collabProject?.updatedAt}
         onClose={closeScoreViewer}
         parts={scoreViewerParts}
       />

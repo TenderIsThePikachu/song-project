@@ -4,12 +4,17 @@
 
 .notification-bell-trigger {
   position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
   width: 34px;
   height: 34px;
+  padding: 0;
   border: 1px solid rgba(255, 255, 255, 0.08);
   border-radius: 999px;
   background: rgba(255, 255, 255, 0.04);
   color: #f5f7fa;
+  line-height: 0;
   cursor: pointer;
 }
 
@@ -18,15 +23,14 @@
 }
 
 .notification-bell-icon {
-  position: absolute;
-  top: 8px;
-  left: 10px;
+  position: relative;
   width: 12px;
   height: 14px;
   border: 1.8px solid currentColor;
   border-top-left-radius: 8px;
   border-top-right-radius: 8px;
   border-bottom: 0;
+  transform: translateY(-3px);
 }
 
 .notification-bell-icon::before,

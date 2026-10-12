@@ -58,7 +58,25 @@
   font-weight: 900;
 }
 .score-viewer-title strong { display: block; font-size: 20px; }
-.score-viewer-title p { margin: 4px 0 0; color: #718197; font-size: 12px; }
+.score-viewer-meta {
+  margin: 7px 0 0;
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 5px 16px;
+  color: #718197;
+  font-size: 11px;
+}
+.score-viewer-meta > div { display: inline-flex; align-items: center; gap: 5px; }
+.score-viewer-meta > div + div::before {
+  width: 1px;
+  height: 10px;
+  margin-right: 11px;
+  background: #d9e1e8;
+  content: '';
+}
+.score-viewer-meta dt { color: #8795a7; font-weight: 700; }
+.score-viewer-meta dd { margin: 0; color: #4e6077; font-weight: 700; }
 
 .score-viewer-icon-button,
 .score-viewer-zoom button {
@@ -202,6 +220,8 @@ html[data-theme] .score-viewer-paper-shell::-webkit-scrollbar-corner { backgroun
   .score-viewer-backdrop { inset: 0; padding: 0; }
   .score-viewer { width: 100%; height: 100dvh; max-height: none; border: 0; border-radius: 0; }
   .score-viewer-header { min-height: 76px; padding: 14px; }
+  .score-viewer-meta { gap: 4px 10px; }
+  .score-viewer-meta > div + div::before { margin-right: 5px; }
   .score-viewer-toolbar { align-items: stretch; flex-wrap: wrap; padding: 10px 12px; }
   .score-viewer-track-select { flex: 1; }
   .score-viewer-track-select select { width: 100%; }

@@ -1,5 +1,14 @@
 import { Component, type ErrorInfo, type ReactNode } from 'react';
 
+const CHUNK_RECOVERY_KEY = 'song-project-chunk-recovery';
+const CHUNK_RECOVERY_COOLDOWN_MS = 30_000;
+
+function isChunkLoadError(error: Error) {
+  return /Failed to fetch dynamically imported module|Importing a module script failed|error loading dynamically imported module|Load failed for module/i.test(
+    error.message
+  );
+}
+
 type AppErrorBoundaryProps = {
   children: ReactNode;
 };
@@ -9,6 +18,8 @@ type AppErrorBoundaryState = {
 };
 
 export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorBoundaryState> {
+  private recoveryTimer: number | undefined;
+
   state: AppErrorBoundaryState = {
     error: null,
   };
@@ -17,8 +28,41 @@ export class AppErrorBoundary extends Component<AppErrorBoundaryProps, AppErrorB
     return { error };
   }
 
+  componentDidMount() {
+    const url = new URL(window.location.href);
+
+    if (url.searchParams.has('__app_reload')) {
+      url.searchParams.delete('__app_reload');
+      window.history.replaceState(window.history.state, '', url);
+    }
+
+    this.recoveryTimer = window.setTimeout(() => {
+      window.sessionStorage.removeItem(CHUNK_RECOVERY_KEY);
+    }, CHUNK_RECOVERY_COOLDOWN_MS);
+  }
+
   componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error('App render failed:', error, errorInfo);
+
+    if (!isChunkLoadError(error)) {
+      return;
+    }
+
+    const lastRecovery = Number(window.sessionStorage.getItem(CHUNK_RECOVERY_KEY) ?? 0);
+
+    if (Date.now() - lastRecovery < CHUNK_RECOVERY_COOLDOWN_MS) {
+      return;
+    }
+
+    window.sessionStorage.setItem(CHUNK_RECOVERY_KEY, String(Date.now()));
+
+    const url = new URL(window.location.href);
+    url.searchParams.set('__app_reload', String(Date.now()));
+    window.location.replace(url);
+  }
+
+  componentWillUnmount() {
+    window.clearTimeout(this.recoveryTimer);
   }
 
   render() {

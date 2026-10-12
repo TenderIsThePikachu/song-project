@@ -4362,6 +4362,13 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   font-weight: 850;
 }
 
+.composer-lyrics-section-title p {
+  margin: 5px 0 0;
+  color: #718197;
+  font-size: 11px;
+  line-height: 1.5;
+}
+
 .composer-lyrics-input-panel > textarea {
   flex: 1;
   min-height: 0;
@@ -4592,6 +4599,11 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 .composer-lyrics-tab-panel--workspace .composer-lyrics-section-title strong,
 .composer-lyrics-tab-panel--workspace .composer-lyrics-bars-head strong {
   font-size: 19px;
+}
+
+.composer-lyrics-tab-panel--workspace .composer-lyrics-section-title p {
+  margin-top: 7px;
+  font-size: 12px;
 }
 
 .composer-lyrics-tab-panel--workspace .composer-lyrics-input-panel > textarea {

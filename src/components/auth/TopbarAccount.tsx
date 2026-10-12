@@ -121,14 +121,6 @@ export default function TopbarAccount() {
             type="button"
             className="topbar-account-menu-button"
             role="menuitem"
-            onClick={() => handleMove('/library')}
-          >
-            내 음악
-          </button>
-          <button
-            type="button"
-            className="topbar-account-menu-button"
-            role="menuitem"
             onClick={() => handleMove('/messages')}
           >
             메시지

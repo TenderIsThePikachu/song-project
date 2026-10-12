@@ -14,10 +14,12 @@
 .collab-overview-grid,
 .collab-content-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) 450px;
   gap: 12px;
   align-items: stretch;
 }
+
+.collab-overview-grid { grid-template-columns: minmax(0, 1fr) 450px; }
+.collab-content-grid { grid-template-columns: minmax(0, 1fr); }
 
 .collab-hero,
 .collab-stat-stack,

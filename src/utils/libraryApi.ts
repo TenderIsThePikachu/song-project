@@ -128,6 +128,7 @@ async function getComposerMagicSnapshot(): Promise<ComposerMagicSnapshot> {
 export async function saveComposerProjectOnServer(payload: Record<string, any>): Promise<{ projectId: string; snapshot: ComposerMagicSnapshot }> {
   const projectId = (payload.id as string) || doc(collection(db, 'composer_projects')).id;
   const projectRef = doc(db, 'composer_projects', projectId);
+  const existingProject = await getDoc(projectRef);
   
   // 저장할 때 번역기를 거쳐서 2차원 배열 에러를 방지!
   const safePayload = sanitizeForFirestore(payload);
@@ -135,6 +136,9 @@ export async function saveComposerProjectOnServer(payload: Record<string, any>):
   await setDoc(projectRef, {
     ...safePayload,
     id: projectId,
+    createdAt: existingProject.exists()
+      ? existingProject.data().createdAt ?? Date.now()
+      : Date.now(),
     updatedAt: Date.now()
   }, { merge: true });
 
