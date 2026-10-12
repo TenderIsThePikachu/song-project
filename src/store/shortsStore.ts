@@ -81,6 +81,7 @@ function normalizeShort(short: Partial<ShortItem> & { id?: string }, index: numb
     audioSizeBytes: short.audioSizeBytes,
     musicProjectId: short.musicProjectId,
     musicProjectTitle: short.musicProjectTitle,
+    musicShareTrackId: short.musicShareTrackId,
   };
 }
 

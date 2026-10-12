@@ -5271,6 +5271,7 @@ useEffect(() => {
             loadedLibraryProject?.title ?? collabProject?.title ?? notepadDraft.title
           }
           initialGenre={projectGenre}
+          onGenreChange={setProjectGenre}
           currentProjectId={projectId}
           onSongTitleChange={(title) =>
             setNotepadDraft((current) => ({ ...current, title }))

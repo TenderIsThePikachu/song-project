@@ -413,6 +413,43 @@
   pointer-events: auto;
 }
 
+.shorts-reel-detail-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 999px;
+  background: rgba(9, 11, 15, 0.58);
+  color: #fff;
+  font: inherit;
+  cursor: pointer;
+  backdrop-filter: blur(10px);
+  transition: background 0.18s ease, transform 0.18s ease;
+}
+
+.shorts-reel-detail-button:hover {
+  background: rgba(20, 184, 166, 0.82);
+  transform: translateY(-1px);
+}
+
+.shorts-reel-detail-button:focus-visible {
+  outline: 2px solid rgba(255, 255, 255, 0.78);
+  outline-offset: 3px;
+}
+
+.shorts-reel-detail-button span {
+  font-size: 15px;
+  line-height: 1;
+}
+
+.shorts-reel-detail-button strong {
+  font-size: 11px;
+  font-weight: 800;
+  white-space: nowrap;
+}
+
 .shorts-reel-stat,
 .shorts-reel-stat-button {
   display: inline-flex;

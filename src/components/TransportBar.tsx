@@ -238,6 +238,7 @@ type TransportBarProps = {
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
   initialGenre?: string;
+  onGenreChange?: (genre: string) => void;
   currentProjectId?: string | null;
   workMode?: 'personal' | 'collab';
   collabMembers?: Array<{
@@ -366,6 +367,7 @@ export const TransportBar = ({
   songTitle = '',
   onSongTitleChange,
   initialGenre = 'ballad',
+  onGenreChange,
   currentProjectId = null,
   workMode = 'personal',
   collabMembers = [],
@@ -672,8 +674,11 @@ export const TransportBar = ({
 
   const openDialog = (dialog: Exclude<ComposerDialog, null>) => {
     setIsAiPanelOpen(false);
-    if (dialog === 'save' && !saveTitle.trim()) {
-      setSaveTitle(editableSongTitle.trim());
+    if (dialog === 'save') {
+      if (!saveTitle.trim()) {
+        setSaveTitle(editableSongTitle.trim());
+      }
+      setSaveGenre(initialGenre);
     }
     setActiveDialog(dialog);
   };
@@ -858,6 +863,7 @@ export const TransportBar = ({
       }
       setEditableSongTitle(title);
       onSongTitleChange?.(title);
+      onGenreChange?.(saveGenre);
 
       const blob = saveFormat === 'wav' ? await exportSongAsWav() : await exportSongAsMp3();
       const extension = saveFormat === 'wav' ? 'wav' : 'mp3';
@@ -907,6 +913,7 @@ export const TransportBar = ({
       }
 
       await shareComposerProject({
+        projectId: currentProjectId ?? undefined,
         title,
         description: shareDescription.trim(),
         genre: shareGenre,

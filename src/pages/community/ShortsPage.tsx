@@ -7,6 +7,7 @@ import { useAuthStore } from '../../store/authStore';
 import { useComposerLibraryStore, type ComposerProjectRecord } from '../../store/composerLibraryStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useShortsStore } from '../../store/shortsStore';
+import { useMusicShareStore } from '../../store/musicShareStore';
 import {
   SHORT_TONE_BACKGROUNDS,
   type ShortItem,
@@ -194,6 +195,8 @@ export default function ShortsPage() {
   const libraryProjects = useComposerLibraryStore((state) => state.projects);
   const libraryStatus = useComposerLibraryStore((state) => state.bootstrapStatus);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
+  const musicShareTracks = useMusicShareStore((state) => state.tracks);
+  const seedMusicShare = useMusicShareStore((state) => state.seedMusicShare);
   const shorts = useShortsStore((state) => state.shorts);
   const comments = useShortsStore((state) => state.comments);
   const createShort = useShortsStore((state) => state.createShort);
@@ -243,7 +246,30 @@ export default function ShortsPage() {
     void seedLibrary().catch((error) => {
       console.error(error);
     });
-  }, [seedLibrary, user]);
+    void seedMusicShare().catch((error) => {
+      console.error(error);
+    });
+  }, [seedLibrary, seedMusicShare, user]);
+
+  const findMusicShareTrackId = useCallback(
+    (musicProjectId?: string, musicProjectTitle?: string, creatorEmail?: string) => {
+      if (!musicProjectId && !musicProjectTitle) return undefined;
+
+      const normalizedTitle = musicProjectTitle?.trim().toLocaleLowerCase('ko-KR');
+      return (
+        musicShareTracks.find(
+          (track) => track.id === musicProjectId || track.projectId === musicProjectId
+        )?.id ??
+        musicShareTracks.find(
+          (track) =>
+            Boolean(normalizedTitle) &&
+            track.title.trim().toLocaleLowerCase('ko-KR') === normalizedTitle &&
+            (!creatorEmail || track.creatorEmail === creatorEmail)
+        )?.id
+      );
+    },
+    [musicShareTracks]
+  );
 
   const myMusicProjects = useMemo(
     () => libraryProjects
@@ -747,6 +773,12 @@ export default function ShortsPage() {
     const editingShort = editingShortId
       ? shorts.find((short) => short.id === editingShortId) ?? null
       : null;
+    const musicShareTrackId =
+      findMusicShareTrackId(
+        formState.musicProjectId,
+        formState.musicProjectTitle,
+        user.email
+      ) ?? editingShort?.musicShareTrackId;
 
     let videoStorageKey = formState.videoStorageKey || editingShort?.videoStorageKey;
     let videoUrl = editingShort?.videoUrl;
@@ -807,6 +839,7 @@ export default function ShortsPage() {
           audioSizeBytes,
           musicProjectId: formState.musicProjectId || undefined,
           musicProjectTitle: formState.musicProjectTitle || undefined,
+          musicShareTrackId,
         });
 
         pushNotification({
@@ -836,6 +869,7 @@ export default function ShortsPage() {
           audioSizeBytes,
           musicProjectId: formState.musicProjectId || undefined,
           musicProjectTitle: formState.musicProjectTitle || undefined,
+          musicShareTrackId,
         });
 
         pushNotification({
@@ -1073,6 +1107,13 @@ export default function ShortsPage() {
                   const resolvedVideoUrl =
                     resolvedVideoUrlByShortId[short.id] ?? short.videoUrl ?? '';
                   const resolvedAudioUrl = short.audioUrl ?? '';
+                  const linkedMusicShareTrackId =
+                    short.musicShareTrackId ||
+                    findMusicShareTrackId(
+                      short.musicProjectId,
+                      short.musicProjectTitle,
+                      short.creatorEmail
+                    );
 
                   return (
                     <article
@@ -1168,6 +1209,22 @@ export default function ShortsPage() {
                           </div>
 
                           <div className="shorts-reel-actions">
+                            {linkedMusicShareTrackId ? (
+                              <button
+                                type="button"
+                                className="shorts-reel-detail-button"
+                                onClick={() =>
+                                  navigate(
+                                    `/community/music/${encodeURIComponent(linkedMusicShareTrackId)}`
+                                  )
+                                }
+                                aria-label={`${short.musicProjectTitle || '연결된 음악'} 상세보기`}
+                              >
+                                <span aria-hidden="true">♪</span>
+                                <strong>상세보기</strong>
+                              </button>
+                            ) : null}
+
                             <div
                               className="shorts-reel-stat"
                               aria-label={`조회수 ${formatCount(short.viewCount)}`}
