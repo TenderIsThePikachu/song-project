@@ -1,0 +1,90 @@
+[*Papago Translation used. If you found errors, Please contact admin, Comet.]
+
+Terms and conditions :: https://docs.google.com/document/d/1JXwRblb2vbZWCkk9ARE7U3-OmNgAfRcnDHYEfhN5c9Q/edit?usp=sharing
+
+For reference when access to the top link is not available:: 
+cometutau.wixsite.com/utau-aqua-planet/terms-and-conditions
+------------------------------------------------------------------------
+- = exh (strong exhale (breath))
+R = SP (Common exhale (breath))
+br = AP (Inhale)
++ = Connect with the previous pronunciation.
+
+If you can't hear the br(breathe), add parameta [dynamics], And set near A3 (three scales).
+------------------------------------------------------------------------
+- gender(curve) 2~9 Recommended !
+
+If the bass of the scale below C3 is unstable, 
+If you give a value above this (~15), it will improve to some extent. 
+
+- You can adjust the Velocity (curve) value for pronunciation speed. 
+   (Basic 100, pronunciation is faster as you increase it.)
+- If the vowel is weak, cut the note and correct it by adding "-" at the end.
+------------------------------------------------------------------------
+0. If the Vocoder appears to be missing
+Please download the vocoder at the following link. 
+▶ https://github.com/openvpi/vocoders/releases/tag/pc-nsf-hifigan-44.1k-hop512-128bin-2025.02
+You can receive the extension file that ends with .oudep and drag and drop it on Open Utau.
+
+(Other than that, basic preparation for Definger's sound source~>)
+Click the link at the bottom of the Open Utau error to access the site,
+▶  https://github.com/xunmengshe/OpenUtau/wiki/Vocoders
+Please copy and connect to .
+
+Click to download all the letters (nsf_hi~~, Kouon~~) that the link is hanging on.
+(Four files as of March 5, 2025)
+If you don't get a pop-up or download, please check if the pop-up or download is blocked or not.)
+
+After that, you can drag and drop all files into OpenUTAU and install them.
+-------------------------
+<Setting Up Later>
+
+1. OpenUTAU -> [Tools] -> [Preferences] -> "Use Beta Version - [On]". (MultiDict)
+2. Update after OpenUTAU reboot (Reboot after update)
+
+3. If your computer isn't good, if it doesn't work because of performance, -
+Lower Diffsinger => Lending Steps and Depth to find the appropriate value. 
+(Recommended minimum rendering value> Steps 10~20, depth is also recommended to be lowered similarly.)
+In order to ensure good quality, it is good to give a certain level and depth value. (The value is recommended when set to the lowest.)
+
+<Related to entering lyrics>
+★. Phonemizer settings (regarding lyrics input)
+You can change the ponemizer setting to the most suitable one depending on the UT and the purpose of use.
+	(1) DIFFS (Diffsinger Phonemizer) :: 
+When entering English/Japanese, output in Japanese pronunciation (ex. input 'a' in lyrics = 'ja/a' / ex2. input 'あ' in lyrics = 'ja/a')
+Korean pronunciation can be input*output when entering Korean (ex. 'Ah' in the lyrics = 'ko/a')
+Unable to enter English lyrics (error)
+	(2) DIFFS JA (Diffsinger Japanese Phonemizer) :: 
+(1)the same as
+	(3) DIFFS KO (Diffsinger Korean Ponemizer):: When using Korean romanizer, etc
+When entering Japanese, it can be output in Japanese pronunciation (ex. Enter 'あ' in the lyrics = 'ja/a')
+When inputting English/Korean, output in Korean pronunciation (ex. input 'a' in the lyrics = 'ko/a' ex2. input 'a' in the lyrics = 'ko/a')
+b> When entering 'gan' in English or 'gan' in Korean (automatically adjust to ko/g, ko/a, ko/N)
+Unable to enter English lyrics (error)
+	(4) DIFFS EN (Diffsinger English Ponemizer):: When using UT with English words, etc
+When entering Japanese, it can be output in Japanese pronunciation (ex. Enter 'あ' in the lyrics = 'ja/a')
+When entering Korean, output in Korean pronunciation (ex. input 'ah' in lyrics = 'ko/a')
+When you enter English, it is printed in English pronunciation. When you write a word on a single note, it converts the pronunciation into words.
+
+<Parameter>
+★.variance parameter
+The currently downloaded (Aqua Planet DS 1.0_T) sound source supports the tension parameter.
+You can only write down Aqua Planet DS 1.0 in the credit.
+
+(Aqua Planet DS 1.0_EB) is used for the Energy + Business parameter.
+------------------------------------------------------------------------
+<Other>
+0. Precautions
+Noise may be output. 
+In particular, the EB version is a parameter characteristic, and breathing/taps can be output before/after.
+if there is an unintended breath/tap
+	(1). Insert an SP note in front of the corresponding pronunciation
+	(2).br or - insert a note
+	    Or if you remove it appropriately during mixing, thank you.
+
+1. To add expressions
+[Project] -> [Expression Settings] -> "Add all the expressions that Renderer suggests" and use them. 
+Add expressions that can be used by DiffSinger, such as gender (curve) and tension.
+===========================================
+<<Update history>>
+2025.06.21 (Y/M/D) - Aqua Planet DiffSinger 1.0 RELEASE
