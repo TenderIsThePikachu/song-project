@@ -241,7 +241,6 @@ type TransportBarProps = {
   lyricsActive?: boolean;
   onScoreClick?: () => void;
   scoreActive?: boolean;
-  onAddAiVocalTrack?: (voice: 'female' | 'male') => void;
   onGenerateAiVocal?: (voice: 'female' | 'male') => void | Promise<void>;
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
@@ -370,7 +369,6 @@ export const TransportBar = ({
   lyricsActive = false,
   onScoreClick,
   scoreActive = false,
-  onAddAiVocalTrack,
   onGenerateAiVocal,
   songTitle = '',
   onSongTitleChange,
@@ -496,9 +494,6 @@ export const TransportBar = ({
 
   try {
     await new Promise((resolve) => window.setTimeout(resolve, 650));
-
-    // AI 보컬 트랙 생성
-    onAddAiVocalTrack?.(aiVocalVoice);
 
     // 실제 Aqua Planet 보컬 생성 요청
     await onGenerateAiVocal?.(aiVocalVoice);

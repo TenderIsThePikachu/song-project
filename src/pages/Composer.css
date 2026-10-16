@@ -4602,7 +4602,9 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 .composer-lyrics-tab-panel--workspace .composer-lyrics-workspace-grid {
   grid-template-columns: minmax(340px, .8fr) minmax(520px, 1.2fr);
   gap: 18px;
-  height: 500px;
+  flex: 1;
+  height: auto;
+  min-height: 500px;
 }
 
 .composer-lyrics-tab-panel--workspace .composer-lyrics-input-panel,
@@ -4661,6 +4663,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 @media (max-width: 940px) {
   .composer-lyrics-tab-panel--workspace .composer-lyrics-workspace-grid {
     grid-template-columns: 1fr;
+    flex: none;
     height: auto;
   }
 
@@ -5424,6 +5427,103 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   stroke-linejoin: round;
   stroke-width: 1.8;
   opacity: 1;
+}
+
+.composer-clip-audio-waveform {
+  position: absolute;
+  inset: 8px 10px;
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  pointer-events: none;
+}
+
+.composer-clip-audio-waveform i {
+  flex: 1;
+  min-width: 1px;
+  max-width: 4px;
+  border-radius: 2px;
+  background: currentColor;
+  opacity: 0.82;
+}
+
+.composer-audio-track-editor {
+  width: min(760px, calc(100% - 32px));
+  margin: auto;
+  border: 1px solid #303844;
+  border-radius: 8px;
+  background: #1b1f25;
+  color: #f4f7fb;
+  overflow: hidden;
+}
+
+.composer-audio-track-summary {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 20px;
+  border-bottom: 1px solid #303844;
+}
+
+.composer-audio-track-icon {
+  display: grid;
+  width: 42px;
+  height: 42px;
+  place-items: center;
+  border-radius: 50%;
+  background: #32c9a5;
+  color: #0c2821;
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.composer-audio-track-summary div {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+}
+
+.composer-audio-track-summary strong {
+  font-size: 16px;
+}
+
+.composer-audio-track-summary span {
+  color: #9ba7b7;
+  font-size: 13px;
+}
+
+.composer-audio-track-player {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 14px;
+  align-items: center;
+  padding: 18px 20px;
+}
+
+.composer-audio-track-player audio {
+  width: 100%;
+  min-width: 0;
+}
+
+.composer-audio-track-player a {
+  padding: 9px 13px;
+  border: 1px solid #425064;
+  border-radius: 6px;
+  color: #e8edf4;
+  font-size: 13px;
+  font-weight: 700;
+  text-decoration: none;
+}
+
+.composer-audio-track-player a:hover {
+  border-color: #32c9a5;
+  color: #58dfbd;
+}
+
+@media (max-width: 720px) {
+  .composer-audio-track-player {
+    grid-template-columns: 1fr;
+  }
 }
 
 .composer-arrangement-playhead {

@@ -10,7 +10,13 @@ import {
   renderAquaPlanetVocal,
 } from '../utils/vocalSynth';
 import {
+  deleteAiVocalAudio,
+  loadAiVocalAudio,
+  saveAiVocalAudio,
+} from '../utils/aiVocalAudioStorage.ts';
+import {
   initTransport,
+  getPlaybackStartDelaySeconds,
   preloadPlaybackEngine,
   playBassPreview,
   playDrumPreview,
@@ -567,6 +573,13 @@ type ArrangementTrackDefinition = {
   silent?: boolean;
 };
 
+type AiVocalAudioClip = {
+  url: string;
+  duration: number;
+  voice: 'female' | 'male';
+  audio: HTMLAudioElement;
+};
+
 const arrangementTrackIcons: Record<InstrumentComposerTab, string> = {
   melody: '🎵',
   violin: '🎻',
@@ -1088,12 +1101,14 @@ export function Composer() {
   const [mutedArrangementTracks, setMutedArrangementTracks] = useState<Set<string>>(
     () => new Set()
   );
+  const [aiVocalAudioClips, setAiVocalAudioClips] = useState<Record<string, AiVocalAudioClip>>({});
+  const aiVocalAudioClipsRef = useRef<Record<string, AiVocalAudioClip>>({});
+  const loadingAiVocalTrackIdsRef = useRef(new Set<string>());
+  const aiVocalPlaybackTimerRef = useRef<number | null>(null);
   const [openTrackMenuId, setOpenTrackMenuId] = useState<string | null>(null);
   const [hiddenArrangementTrackIds, setHiddenArrangementTrackIds] = useState<Set<string>>(
     () => new Set()
   );
-  const [pendingAiVocalTrackId, setPendingAiVocalTrackId] =
-  useState<string | null>(null);
   const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(false);
   const pianoEditTool: PianoEditTool = 'pencil';
   const [pianoZoom, setPianoZoom] = useState(1);
@@ -1452,7 +1467,10 @@ export function Composer() {
   }, [arrangementVisibleTracks.length, isArrangementCollapsed]);
   const scoreViewerParts = useMemo(
     () => arrangementVisibleTracks
-      .filter((track) => track.trackId !== LYRICS_MELODY_TRACK_ID)
+      .filter(
+        (track) =>
+          track.trackId !== LYRICS_MELODY_TRACK_ID && !track.label.startsWith('AI 보컬')
+      )
       .map((track) => ({
         id: track.key ?? track.id,
         trackId: track.trackId,
@@ -1464,6 +1482,87 @@ export function Composer() {
   const activeExtraTrack = useMemo(
     () => extraTracks.find((track) => track.id === activeTrackId) ?? null,
     [activeTrackId, extraTracks]
+  );
+  const activeAiVocalClip =
+    activeExtraTrack?.label.startsWith('AI 보컬')
+      ? aiVocalAudioClips[activeExtraTrack.id]
+      : undefined;
+
+  useEffect(() => {
+    aiVocalAudioClipsRef.current = aiVocalAudioClips;
+  }, [aiVocalAudioClips]);
+
+  useEffect(() => {
+    const liveTrackIds = new Set(extraTracks.map((track) => track.id));
+    const removedEntries = Object.entries(aiVocalAudioClips).filter(
+      ([trackId]) => !liveTrackIds.has(trackId)
+    );
+    if (!removedEntries.length) return;
+
+    removedEntries.forEach(([, clip]) => {
+      clip.audio.pause();
+      URL.revokeObjectURL(clip.url);
+    });
+    removedEntries.forEach(([trackId]) => {
+      void deleteAiVocalAudio(trackId).catch((error) => {
+        console.error('[AI Vocal] stored audio cleanup failed:', error);
+      });
+    });
+    setAiVocalAudioClips((current) =>
+      Object.fromEntries(Object.entries(current).filter(([trackId]) => liveTrackIds.has(trackId)))
+    );
+  }, [aiVocalAudioClips, extraTracks]);
+
+  useEffect(() => {
+    extraTracks
+      .filter((track) => track.label.startsWith('AI 보컬'))
+      .forEach((track) => {
+        if (aiVocalAudioClips[track.id] || loadingAiVocalTrackIdsRef.current.has(track.id)) {
+          return;
+        }
+
+        loadingAiVocalTrackIdsRef.current.add(track.id);
+        void loadAiVocalAudio(track.id)
+          .then(async (blob) => {
+            if (!blob || !useSongStore.getState().extraTracks.some((item) => item.id === track.id)) {
+              return;
+            }
+
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            const duration = await new Promise<number>((resolve) => {
+              const finish = () => resolve(Number.isFinite(audio.duration) ? audio.duration : 0);
+              audio.addEventListener('loadedmetadata', finish, { once: true });
+              audio.addEventListener('error', () => resolve(0), { once: true });
+            });
+
+            setAiVocalAudioClips((current) => ({
+              ...current,
+              [track.id]: {
+                url,
+                duration,
+                voice: track.label.includes('남성') ? 'male' : 'female',
+                audio,
+              },
+            }));
+          })
+          .catch((error) => {
+            console.error('[AI Vocal] stored audio restore failed:', error);
+          })
+          .finally(() => {
+            loadingAiVocalTrackIdsRef.current.delete(track.id);
+          });
+      });
+  }, [aiVocalAudioClips, extraTracks]);
+
+  useEffect(
+    () => () => {
+      Object.values(aiVocalAudioClipsRef.current).forEach((clip) => {
+        clip.audio.pause();
+        URL.revokeObjectURL(clip.url);
+      });
+    },
+    []
   );
   const getArrangementTrackData = useCallback(
     (track: ArrangementTrackDefinition) => {
@@ -1942,6 +2041,72 @@ export function Composer() {
       }
     }
   }, [isPlaying]);
+
+  useEffect(() => {
+    Object.entries(aiVocalAudioClips).forEach(([trackId, clip]) => {
+      const track = extraTracks.find((item) => item.id === trackId);
+      const arrangementId = `added-extra-${trackId}`;
+      clip.audio.volume = mutedArrangementTracks.has(arrangementId)
+        ? 0
+        : Math.min(1, Math.max(0, (track?.volume ?? 72) / 100));
+    });
+  }, [aiVocalAudioClips, extraTracks, mutedArrangementTracks]);
+
+  useEffect(() => {
+    if (aiVocalPlaybackTimerRef.current !== null) {
+      window.clearTimeout(aiVocalPlaybackTimerRef.current);
+      aiVocalPlaybackTimerRef.current = null;
+    }
+
+    const clips = Object.values(aiVocalAudioClips);
+    if (!isPlaying) {
+      clips.forEach((clip) => clip.audio.pause());
+      return undefined;
+    }
+
+    const state = useSongStore.getState();
+    clips.forEach((clip) => {
+      clip.audio.pause();
+      clip.audio.currentTime = Math.min(
+        clip.duration,
+        state.currentStep * (60 / Math.max(1, state.bpm) / 4)
+      );
+    });
+    aiVocalPlaybackTimerRef.current = window.setTimeout(() => {
+      aiVocalPlaybackTimerRef.current = null;
+      clips.forEach((clip) => void clip.audio.play().catch(() => undefined));
+    }, getPlaybackStartDelaySeconds() * 1000);
+
+    return () => {
+      if (aiVocalPlaybackTimerRef.current !== null) {
+        window.clearTimeout(aiVocalPlaybackTimerRef.current);
+        aiVocalPlaybackTimerRef.current = null;
+      }
+    };
+  }, [aiVocalAudioClips, isPlaying]);
+
+  useEffect(() => {
+    let previousStep = currentStep;
+    const handleAiVocalLoop = (event: Event) => {
+      const step = (event as CustomEvent<{ step?: number }>).detail?.step;
+      if (!isPlayingRef.current || typeof step !== 'number') return;
+
+      if (step < previousStep) {
+        const liveBpm = useSongStore.getState().bpm;
+        Object.values(aiVocalAudioClipsRef.current).forEach((clip) => {
+          clip.audio.currentTime = Math.min(
+            clip.duration,
+            step * (60 / Math.max(1, liveBpm) / 4)
+          );
+          void clip.audio.play().catch(() => undefined);
+        });
+      }
+      previousStep = step;
+    };
+
+    window.addEventListener('composer-playhead-step', handleAiVocalLoop);
+    return () => window.removeEventListener('composer-playhead-step', handleAiVocalLoop);
+  }, [currentStep]);
 
   useEffect(() => {
     const renderLivePlayhead = () => {
@@ -3113,26 +3278,6 @@ export function Composer() {
     },
     [activateTab, addInstrumentTrack, navigate, openTabsState]
   );
-
- const handleAddAiVocalTrack = useCallback(
-  (voice: 'female' | 'male') => {
-    const trackId = addAiVocalTrack(voice);
-
-    setOpenExtraTrackIds((current) => [...current, trackId]);
-    setArrangementTrackOrder((current) => [
-      ...current,
-      `extra-${trackId}`,
-    ]);
-
-    activateTab('melody', trackId);
-
-    // 새 AI 보컬 트랙이 실제로 선택된 뒤 보컬 생성을 시작하도록 예약
-    setPendingAiVocalTrackId(trackId);
-  },
-  [activateTab, addAiVocalTrack]
-);
-
-
 
 
 
@@ -4509,60 +4654,30 @@ export function Composer() {
     }
   };
 
-  const generateAiVocalFromTrack = useCallback(
-  async (track: typeof activeExtraTrack) => {
-    if (!track) return;
-
-    const trackNotes = track.grid.flatMap((rowValues, row) =>
-      rowValues
-        .map((active, col) => {
-          if (!active) return null;
-
-          return {
-            row,
-            col,
-            note: getExtraTrackNotes(track.instrument)[row] ?? '',
-            length:
-              track.melodyLengths?.[row]?.[col] ?? 1,
-            lyric:
-              noteLyrics[`${row}-${col}`] ?? '',
-          };
-        })
-        .filter(
-          (
-            item
-          ): item is {
-            row: number;
-            col: number;
-            note: string;
-            length: number;
-            lyric: string;
-          } => item !== null
-        )
-    );
-
-    const lyricNotes = trackNotes.filter(
+  const generateAiVocalFromMelody = useCallback(
+  async (voice: 'female' | 'male') => {
+    const lyricNotes = melodyLyricNotes.filter(
       (note) => note.lyric.trim().length > 0
     );
 
     if (lyricNotes.length === 0) {
       window.alert(
-        'AI 보컬 트랙에 가사가 있는 음표가 없습니다.\n' +
-        '먼저 음표와 가사를 입력해주세요.'
+        '멜로디 트랙에 가사가 있는 음표가 없습니다.\n' +
+        '먼저 멜로디 음표와 가사를 입력해주세요.'
       );
       return;
     }
 
     try {
       console.info('[Aqua Planet] 보컬 생성 시작', {
-        trackId: track.id,
-        trackLabel: track.label,
+        source: 'lyrics-melody',
+        voice,
         notes: lyricNotes,
       });
 
       const vocalNotes = notesFromComposer(
         lyricNotes,
-        getExtraTrackNotes(track.instrument)
+        MELODY_NOTES
       );
 
       const result = await renderAquaPlanetVocal(
@@ -4583,29 +4698,36 @@ export function Composer() {
       );
 
       const url = URL.createObjectURL(result.blob);
-
       const audio = new Audio(url);
+      const trackId = addAiVocalTrack(voice);
+      const duration = result.audioBuffer.duration;
 
-      const safeLabel = track.label.replace(/[\\/:*?"<>|]/g, '_');
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `${safeLabel}.wav`;
-      anchor.click();
-
-      // 재생과 다운로드가 끝날 시간을 주고 해제
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-
-      console.info('[Aqua Planet] 보컬 생성 완료', {
-        seconds: result.audioBuffer.duration,
+      void saveAiVocalAudio(trackId, result.blob).catch((error) => {
+        console.error('[AI Vocal] generated audio persistence failed:', error);
       });
 
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-      };
+      setAiVocalAudioClips((current) => ({
+        ...current,
+        [trackId]: { url, duration, voice, audio },
+      }));
+      setOpenExtraTrackIds((current) => [...current, trackId]);
+      setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
+      setArrangementClipLayouts((current) => ({
+        ...current,
+        [`extra-${trackId}-full`]: {
+          start: 0,
+          length: Math.min(
+            100,
+            Math.max(4, (duration / Math.max(0.01, steps * (60 / Math.max(1, bpm) / 4))) * 100)
+          ),
+        },
+      }));
+      activateTab('melody', trackId);
 
-      await audio.play();
-
-      console.info('[Aqua Planet] 보컬 재생 완료');
+      console.info('[Aqua Planet] 보컬 생성 완료', {
+        trackId,
+        seconds: duration,
+      });
     } catch (error) {
       console.error(
         '[Aqua Planet] vocal generation failed:',
@@ -4623,32 +4745,13 @@ export function Composer() {
     }
   },
   [
+    activateTab,
+    addAiVocalTrack,
     bpm,
-    getExtraTrackNotes,
-    noteLyrics,
+    melodyLyricNotes,
+    steps,
   ]
 );
-
-useEffect(() => {
-  if (!pendingAiVocalTrackId) return;
-  if (!activeExtraTrack) return;
-
-  if (activeExtraTrack.id !== pendingAiVocalTrackId) {
-    return;
-  }
-
-  if (!activeExtraTrack.label.startsWith('AI 보컬')) {
-    return;
-  }
-
-  setPendingAiVocalTrackId(null);
-
-  void generateAiVocalFromTrack(activeExtraTrack);
-}, [
-  pendingAiVocalTrackId,
-  activeExtraTrack,
-  generateAiVocalFromTrack,
-]);
 
   const getExtraTrackColors = (instrument: InstrumentKey): readonly string[] => {
     switch (instrument) {
@@ -4733,7 +4836,7 @@ useEffect(() => {
         : shouldAddTimedNote(liveTrack?.grid ?? track.grid, liveTrack?.melodyLengths ?? [], row, col);
     toggleExtraTrackCell(track.id, row, col, track.instrument === 'drums' ? undefined : lengthSteps ?? 4);
 
-    if (nextValue && track.id !== LYRICS_MELODY_TRACK_ID) {
+    if (nextValue) {
       playExtraTrackPreview(track.instrument, row, lengthSteps ?? 4);
     }
 
@@ -5444,7 +5547,6 @@ useEffect(() => {
             setOpenTrackMenuId(null);
             setIsTabPickerOpen(false);
             setIsLyricsWorkspaceOpen(false);
-            setPendingAiVocalTrackId(null);
             activateTab('melody');
             window.localStorage.setItem(
               COMPOSER_TAB_STORAGE_KEY,
@@ -5460,7 +5562,7 @@ useEffect(() => {
           lyricsActive={activeTab === 'lyrics' && !activeExtraTrack}
           onScoreClick={() => setIsScoreViewerOpen((open) => !open)}
           scoreActive={isScoreViewerOpen}
-          onAddAiVocalTrack={handleAddAiVocalTrack}
+          onGenerateAiVocal={generateAiVocalFromMelody}
         />
       </footer>
 
@@ -6210,12 +6312,17 @@ useEffect(() => {
                     arrangementClipLayouts[clipKey] ??
                     getDefaultArrangementClipLayout();
                   const trackData = getArrangementTrackData(track);
-                  const preview = buildArrangementClipPreview(
-                    trackData.grid,
-                    trackData.lengths,
-                    (layout.start / 100) * steps,
-                    ((layout.start + layout.length) / 100) * steps
-                  );
+                  const aiVocalClip = track.trackId
+                    ? aiVocalAudioClips[track.trackId]
+                    : undefined;
+                  const preview = aiVocalClip
+                    ? { hasAudio: true, pitchSegments: [] }
+                    : buildArrangementClipPreview(
+                        trackData.grid,
+                        trackData.lengths,
+                        (layout.start / 100) * steps,
+                        ((layout.start + layout.length) / 100) * steps
+                      );
                   const isSelected = selectedArrangementClip === clipKey;
                   const isDragging = draggingArrangementClip === clipKey;
                   const isActiveTrack =
@@ -6278,6 +6385,18 @@ useEffect(() => {
                           />
                         ))}
                       </svg>
+                      {aiVocalClip ? (
+                        <span className="composer-clip-audio-waveform" aria-hidden="true">
+                          {Array.from({ length: 40 }, (_, index) => (
+                            <i
+                              key={index}
+                              style={{
+                                height: `${24 + ((index * 17 + track.label.length * 11) % 64)}%`,
+                              }}
+                            />
+                          ))}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 };
@@ -6351,7 +6470,8 @@ useEffect(() => {
               </button>
             </div>
             {(activeExtraTrack
-              ? activeExtraTrack.instrument !== 'drums'
+              ? activeExtraTrack.instrument !== 'drums' &&
+                !activeExtraTrack.label.startsWith('AI 보컬')
               : activeTab !== 'drums' && activeTab !== 'lyrics') ? (
               <div className="composer-detail-tools" aria-label="피아노롤 편집 도구">
                 <div className="composer-note-zoom">
@@ -6392,7 +6512,34 @@ useEffect(() => {
         className={`composer-main composer-main--${activeTab}`}
       >
         {activeExtraTrack ? (
-          activeExtraTrack.instrument === 'drums' ? (
+          activeExtraTrack.label.startsWith('AI 보컬') ? (
+            <section className="composer-audio-track-editor" aria-label={`${activeExtraTrack.label} 오디오 트랙`}>
+              <div className="composer-audio-track-summary">
+                <span className="composer-audio-track-icon" aria-hidden="true">♪</span>
+                <div>
+                  <strong>{activeExtraTrack.label}</strong>
+                  <span>
+                    {activeAiVocalClip
+                      ? `${activeAiVocalClip.duration.toFixed(1)}초 · 멜로디와 가사로 생성됨`
+                      : '이 세션에 저장된 보컬 오디오가 없습니다.'}
+                  </span>
+                </div>
+              </div>
+              {activeAiVocalClip ? (
+                <div className="composer-audio-track-player">
+                  <audio controls src={activeAiVocalClip.url} preload="metadata">
+                    브라우저에서 오디오 재생을 지원하지 않습니다.
+                  </audio>
+                  <a
+                    href={activeAiVocalClip.url}
+                    download={`${activeExtraTrack.label.replace(/[\\/:*?"<>|]/g, '_')}.wav`}
+                  >
+                    WAV 다운로드
+                  </a>
+                </div>
+              ) : null}
+            </section>
+          ) : activeExtraTrack.instrument === 'drums' ? (
             renderExtraDrumSequencer(activeExtraTrack)
           ) : (
             renderMelodyLikeSequencer(

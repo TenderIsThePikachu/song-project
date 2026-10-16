@@ -1751,7 +1751,6 @@ export const useSongStore = create<SongState>()(
 
   addAiVocalTrack: (voice) => {
     const state = get();
-    const guideTrack = state.extraTracks.find((track) => track.id === LYRICS_MELODY_TRACK_ID);
     const track = createEmptyExtraTrack(
       'melody',
       state.steps,
@@ -1760,13 +1759,6 @@ export const useSongStore = create<SongState>()(
       `AI 보컬 · ${voice === 'female' ? '여성' : '남성'}`,
       72
     );
-
-    if (guideTrack) {
-      track.grid = cloneMatrix(guideTrack.grid);
-      track.melodyLengths = cloneLengthMatrix(
-        guideTrack.melodyLengths ?? createEmptyLengthMatrix(track.grid.length, state.steps)
-      );
-    }
 
     set((current) =>
       buildHistoryUpdate(current, {
