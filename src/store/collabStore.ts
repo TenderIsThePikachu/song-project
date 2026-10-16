@@ -61,15 +61,15 @@ export type CollabComposerHistoryEntry = { id: string; projectId: string; instru
 type CreateCollabFromComposerPayload = { sourceProjectId: string; title: string; summary: string; genre: string; bpm: number; steps: number; ownerEmail: string; ownerName: string; snapshot: SongProject; sessionId?: string; };
 type UpdateComposerPayload = { snapshot: SongProject; email: string; name: string; sessionId?: string; baseRevision?: number; };
 export type CollabComposerOperation = 
-  | { type: 'set-melody-note'; row: number; col: number; length: number; barIndex: number; }
-  | { type: 'toggle-violin-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
-  | { type: 'toggle-saxophone-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
-  | { type: 'toggle-guitar-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
-  | { type: 'toggle-drum-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
-  | { type: 'toggle-bass-step'; row: number; col: number; nextValue: boolean; barIndex: number; }
-  | { type: 'set-track-note'; instrument: CollabComposerInstrument; trackId?: string; row: number; col: number; nextValue: boolean; barIndex: number; }
-  | { type: 'set-track-chord'; instrument: CollabComposerInstrument; trackId?: string; chord: string; rows: number[]; col: number; barIndex: number; }
-  | { type: 'apply-chord'; chord: string; col: number; isBass: boolean; rows: number[]; barIndex: number; }
+  | { type: 'set-melody-note'; row: number; col: number; length: number; note?: string; barIndex: number; }
+  | { type: 'toggle-violin-step'; row: number; col: number; nextValue: boolean; note?: string; length?: number; barIndex: number; }
+  | { type: 'toggle-saxophone-step'; row: number; col: number; nextValue: boolean; note?: string; length?: number; barIndex: number; }
+  | { type: 'toggle-guitar-step'; row: number; col: number; nextValue: boolean; note?: string; length?: number; barIndex: number; }
+  | { type: 'toggle-drum-step'; row: number; col: number; nextValue: boolean; note?: string; barIndex: number; }
+  | { type: 'toggle-bass-step'; row: number; col: number; nextValue: boolean; note?: string; length?: number; barIndex: number; }
+  | { type: 'set-track-note'; instrument: CollabComposerInstrument; trackId?: string; row: number; col: number; nextValue: boolean; note?: string; length?: number; barIndex: number; }
+  | { type: 'set-track-chord'; instrument: CollabComposerInstrument; trackId?: string; chord: string; rows: number[]; notes?: string[]; length?: number; col: number; barIndex: number; }
+  | { type: 'apply-chord'; chord: string; col: number; isBass: boolean; rows: number[]; notes?: string[]; length?: number; barIndex: number; }
   | { type: 'set-volume'; instrument: CollabComposerInstrument; volume: number; };
 
 type ApplyComposerOperationPayload = { operation: CollabComposerOperation; email: string; name: string; color?: string; sessionId?: string; baseRevision?: number; };
@@ -165,7 +165,8 @@ function getOperationNoteColorChanges(operation: CollabComposerOperation, color:
     case 'toggle-guitar-step':
     case 'toggle-drum-step':
     case 'toggle-bass-step': {
-      const instrument = operation.type.replace('toggle-', '').replace('-step', '') as CollabComposerInstrument;
+      const rawInstrument = operation.type.replace('toggle-', '').replace('-step', '');
+      const instrument = (rawInstrument === 'drum' ? 'drums' : rawInstrument) as CollabComposerInstrument;
       changes.push({
         key: getCollabNoteColorKey(instrument, operation.row, operation.col),
         color: operation.nextValue ? color : null,

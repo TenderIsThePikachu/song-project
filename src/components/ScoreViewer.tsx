@@ -20,6 +20,7 @@ import {
   useSongStore,
 } from '../store/songStore';
 import { buildMusicXml, hasTrackNotes, type MusicXmlTrack } from '../utils/musicXml';
+import { formatTimeSignature, getBarCountForSteps } from '../utils/timeSignature';
 import './ScoreViewer.css';
 
 type ScoreViewerProps = {
@@ -234,6 +235,8 @@ export function ScoreViewer({
   const bass = useSongStore((state) => state.bass);
   const bassLengths = useSongStore((state) => state.bassLengths);
   const steps = useSongStore((state) => state.steps);
+  const timeSignature = useSongStore((state) => state.timeSignature);
+  const timeSignatureChanges = useSongStore((state) => state.timeSignatureChanges);
   const extraTracks = useSongStore((state) => state.extraTracks);
   const noteLyrics = useSongStore((state) => state.noteLyrics);
   const containerRef = useRef<HTMLDivElement | null>(null);
@@ -349,9 +352,11 @@ export function ScoreViewer({
       title,
       creator,
       bpm,
+      timeSignature,
+      timeSignatureChanges,
       tracks: selectedTracks,
     }),
-    [bpm, creator, selectedTracks, title]
+    [bpm, creator, selectedTracks, timeSignature, timeSignatureChanges, title]
   );
 
   useEffect(() => {
@@ -551,7 +556,8 @@ export function ScoreViewer({
               {createdLabel ? <div><dt>작성</dt><dd>{createdLabel}</dd></div> : null}
               {updatedLabel ? <div><dt>수정</dt><dd>{updatedLabel}</dd></div> : null}
               <div><dt>템포</dt><dd>{bpm} BPM</dd></div>
-              <div><dt>길이</dt><dd>{Math.max(1, Math.ceil(steps / 16))}마디</dd></div>
+              <div><dt>박자</dt><dd>{timeSignatureChanges.length > 1 ? `${formatTimeSignature(timeSignature)} 외 ${timeSignatureChanges.length - 1}` : formatTimeSignature(timeSignature)}</dd></div>
+              <div><dt>길이</dt><dd>{getBarCountForSteps(timeSignatureChanges, timeSignature, steps)}마디</dd></div>
               <div><dt>파트</dt><dd>{availableTracks.length}개</dd></div>
             </dl>
           </div>

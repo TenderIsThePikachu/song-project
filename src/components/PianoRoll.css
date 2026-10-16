@@ -229,23 +229,23 @@
   background-image:
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 2 - 1px),
-      rgba(255, 255, 255, 0.05) calc(var(--piano-step-span) * 2 - 1px) calc(var(--piano-step-span) * 2 + 1px)
+      transparent 0 calc(var(--piano-unit-span) - 1px),
+      rgba(255, 255, 255, 0.05) calc(var(--piano-unit-span) - 1px) var(--piano-unit-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
-      rgba(147, 197, 253, 0.08) calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4 + 1px)
+      transparent 0 calc(var(--piano-beat-span) - 1px),
+      rgba(147, 197, 253, 0.12) calc(var(--piano-beat-span) - 1px) var(--piano-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 8 - 1px),
-      rgba(251, 191, 36, 0.12) calc(var(--piano-step-span) * 8 - 1px) calc(var(--piano-step-span) * 8 + 1px)
+      transparent 0 calc(var(--piano-group-span) - 1px),
+      rgba(251, 191, 36, 0.16) calc(var(--piano-group-span) - 1px) var(--piano-group-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 16 - 1px),
-      rgba(255, 255, 255, 0.16) calc(var(--piano-step-span) * 16 - 1px) calc(var(--piano-step-span) * 16 + 1px)
+      transparent 0 calc(var(--piano-bar-span, 384px) - 1px),
+      rgba(255, 255, 255, 0.16) calc(var(--piano-bar-span, 384px) - 1px) calc(var(--piano-bar-span, 384px) + 1px)
     );
   background-repeat: repeat;
 }
@@ -397,11 +397,20 @@
 }
 
 .piano-roll-step-number.is-bar {
-  box-shadow: inset 2px 0 0 rgba(255, 255, 255, 0.22);
+  box-shadow: inset 3px 0 0 rgba(255, 255, 255, 0.26);
+}
+
+.piano-roll-bar-number small {
+  margin-left: 5px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: rgba(20, 184, 166, 0.18);
+  color: #5eead4;
+  font-size: 9px;
 }
 
 .piano-roll-step-number.is-half {
-  border-left: 1px solid rgba(251, 191, 36, 0.28);
+  border-left: 2px solid rgba(251, 191, 36, 0.3);
 }
 
 .piano-roll-step-number.is-quarter {
@@ -430,18 +439,18 @@
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 2 - 1px),
-      rgba(255, 255, 255, 0.05) calc(var(--piano-step-span) * 2 - 1px) calc(var(--piano-step-span) * 2)
+      transparent 0 calc(var(--piano-unit-span) - 1px),
+      rgba(255, 255, 255, 0.05) calc(var(--piano-unit-span) - 1px) var(--piano-unit-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
-      rgba(255, 255, 255, 0.1) calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+      transparent 0 calc(var(--piano-beat-span) - 1px),
+      rgba(255, 255, 255, 0.11) calc(var(--piano-beat-span) - 1px) var(--piano-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 8 - 1px),
-      rgba(255, 255, 255, 0.16) calc(var(--piano-step-span) * 8 - 1px) calc(var(--piano-step-span) * 8)
+      transparent 0 calc(var(--piano-bar-span) - 2px),
+      rgba(255, 255, 255, 0.22) calc(var(--piano-bar-span) - 2px) var(--piano-bar-span)
     ),
     #1a1c21;
 }
@@ -510,6 +519,7 @@
 }
 
 .piano-roll-cell.is-half::before {
+  width: 2px;
   background: rgba(251, 191, 36, 0.24);
 }
 

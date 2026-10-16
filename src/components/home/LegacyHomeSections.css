@@ -1111,7 +1111,7 @@ html:not([data-theme="light"]) .main-page .main-collab-card small {
   padding-top: 70px !important;
   padding-bottom: 66px !important;
   overflow: hidden !important;
-  background: #f9fcff url('/landing-assets/shared-chart-bg.jpg') center / cover no-repeat !important;
+  background: #f9fcff url('/landing-assets/shared-chart-bg.webp') center / cover no-repeat !important;
 }
 
 .main-page .main-hot-chart::before {
@@ -1497,7 +1497,7 @@ html[data-theme="light"] .main-page .main-hot-chart {
     radial-gradient(ellipse 28% 42% at 0% 40%, rgba(176, 232, 240, 0.2) 0%, rgba(210, 241, 246, 0.13) 58%, transparent 60%),
     radial-gradient(ellipse 24% 38% at 100% 78%, rgba(188, 225, 248, 0.24) 0%, rgba(216, 241, 251, 0.14) 58%, transparent 60%),
     radial-gradient(ellipse 24% 36% at 89% 0%, rgba(173, 238, 221, 0.2) 0%, rgba(200, 230, 250, 0.16) 62%, transparent 64%),
-    url('/landing-assets/shared-chart-bg.jpg') !important;
+    url('/landing-assets/shared-chart-bg.webp') !important;
   background-position: center, center, center, center !important;
   background-size: 100% 100%, 100% 100%, 100% 100%, 100% 100% !important;
   background-repeat: no-repeat !important;

@@ -4,8 +4,7 @@ import SiteHeader from '../components/layout/SiteHeader';
 import { useAuthStore } from '../store/authStore';
 import { useCollabStore, type CollabProject } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
-import { useSessionRecruitStore } from '../store/sessionRecruitStore';
-import { isLocalDevelopmentHost } from '../utils/localEnvironment';
+import { isLocalDevelopmentHost, LOCAL_COLLAB_GUEST } from '../utils/localEnvironment';
 import './CollabPage.css';
 
 const STATUS_LABEL: Record<CollabProject['status'], string> = {
@@ -15,10 +14,10 @@ const STATUS_LABEL: Record<CollabProject['status'], string> = {
 };
 
 const COLLAB_COVERS = [
-  '/landing-assets/shared-fallback-ballad.jpg',
-  '/landing-assets/shared-fallback-film.jpg',
-  '/landing-assets/shared-fallback-band.jpg',
-  '/landing-assets/shared-fallback-dream.jpg',
+  '/landing-assets/shared-fallback-ballad.webp',
+  '/landing-assets/shared-fallback-film.webp',
+  '/landing-assets/shared-fallback-band.webp',
+  '/landing-assets/shared-fallback-dream.webp',
 ];
 
 type CollabIconName = 'activity' | 'check' | 'folder' | 'message' | 'plus' | 'userPlus' | 'users';
@@ -58,20 +57,20 @@ function getConnectionLabel(status: ReturnType<typeof useCollabStore.getState>['
 
 export default function CollabPage() {
   const navigate = useNavigate();
-  const user = useAuthStore((state) => state.user);
+  const authenticatedUser = useAuthStore((state) => state.user);
   const isLocalHost = isLocalDevelopmentHost();
+  const user = authenticatedUser ?? (isLocalHost ? LOCAL_COLLAB_GUEST : null);
   const projects = useCollabStore((state) => state.projects);
   const tasks = useCollabStore((state) => state.tasks);
   const renameProject = useCollabStore((state) => state.renameProject);
   const deleteProject = useCollabStore((state) => state.deleteProject);
   const createFromComposerProject = useCollabStore((state) => state.createFromComposerProject);
+  const joinProject = useCollabStore((state) => state.joinProject);
   const initializeRealtime = useCollabStore((state) => state.initializeRealtime);
   const connectionStatus = useCollabStore((state) => state.connectionStatus);
   const connectionError = useCollabStore((state) => state.connectionError);
   const composerProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
-  const recruitPosts = useSessionRecruitStore((state) => state.posts);
-  const seedSessionRecruit = useSessionRecruitStore((state) => state.seedSessionRecruit);
   const [actionError, setActionError] = useState('');
   const [openMenuProjectId, setOpenMenuProjectId] = useState<string | null>(null);
   const [renameTarget, setRenameTarget] = useState<CollabProject | null>(null);
@@ -89,10 +88,6 @@ export default function CollabPage() {
     void seedLibrary().catch(console.error);
   }, [seedLibrary]);
 
-  useEffect(() => {
-    void seedSessionRecruit().catch(console.error);
-  }, [seedSessionRecruit]);
-
   const sortedProjects = useMemo(
     () => [...projects].sort((left, right) => right.updatedAt - left.updatedAt),
     [projects]
@@ -100,17 +95,17 @@ export default function CollabPage() {
 
   const myComposerProjects = useMemo(
     () =>
-      user
+      authenticatedUser
         ? composerProjects
             .filter(
               (project) =>
-                project.creatorEmail.trim().toLowerCase() === user.email.trim().toLowerCase()
+                project.creatorEmail.trim().toLowerCase() === authenticatedUser.email.trim().toLowerCase()
             )
             .sort((left, right) => right.updatedAt - left.updatedAt)
         : isLocalHost
           ? [...composerProjects].sort((left, right) => right.updatedAt - left.updatedAt)
           : [],
-    [composerProjects, isLocalHost, user]
+    [authenticatedUser, composerProjects, isLocalHost]
   );
 
   const linkedProjectsBySource = useMemo(
@@ -120,15 +115,6 @@ export default function CollabPage() {
         .map((project) => [project.sourceProjectId as string, project])
     ),
     [projects]
-  );
-
-  const recruitPostByProject = useMemo(
-    () => new Map(
-      recruitPosts
-        .filter((post) => Boolean(post.collabProjectId))
-        .map((post) => [post.collabProjectId as string, post])
-    ),
-    [recruitPosts]
   );
 
   const nearCompletionCount = useMemo(
@@ -193,7 +179,7 @@ export default function CollabPage() {
     }
   };
 
-  const handleOpenProject = (project: CollabProject) => {
+  const handleOpenProject = async (project: CollabProject) => {
     if (!user) {
       navigate('/login');
       return;
@@ -205,13 +191,19 @@ export default function CollabPage() {
       return;
     }
 
-    const recruitPost = recruitPostByProject.get(project.id);
-    if (recruitPost) {
-      navigate(`/community/sessions/${recruitPost.id}`);
+    if (isLocalHost) {
+      try {
+        setActionError('');
+        await joinProject(project.id, user);
+        navigate(`/collab/${project.id}`);
+      } catch (error) {
+        console.error(error);
+        setActionError(error instanceof Error ? error.message : '로컬 작업실에 들어가지 못했습니다.');
+      }
       return;
     }
 
-    setActionError('이 작업실은 연결된 팀원 모집글에서 지원하고 승인받아야 참여할 수 있습니다.');
+    setActionError('이 작업실은 승인된 멤버만 열 수 있습니다.');
   };
 
   const handleCreateFromFirstProject = () => {
@@ -347,7 +339,6 @@ export default function CollabPage() {
             <div className="collab-project-list">
               {sortedProjects.length ? sortedProjects.map((project, index) => {
                 const isMember = user ? project.members.some((member) => member.email === user.email) : false;
-                const recruitPost = recruitPostByProject.get(project.id);
                 const isOwner = user
                   ? project.ownerEmail.trim().toLowerCase() === user.email.trim().toLowerCase()
                   : false;
@@ -422,9 +413,11 @@ export default function CollabPage() {
                       type="button"
                       className="collab-card-open"
                       onClick={() => handleOpenProject(project)}
-                      disabled={!isMember && !recruitPost}
+                      disabled={!isMember && !isLocalHost}
                     >
-                      {isMember ? '작업실 열기' : recruitPost ? '모집글에서 지원하기' : '모집 준비 중'}
+                      {isMember || isLocalHost
+                        ? '작업실 열기'
+                        : '멤버 전용'}
                     </button>
                   </article>
                 );

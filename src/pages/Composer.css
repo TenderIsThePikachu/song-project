@@ -2203,23 +2203,23 @@
   background-image:
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 2 - 1px),
-      rgba(255, 255, 255, 0.05) calc(var(--sequencer-step-span) * 2 - 1px) calc(var(--sequencer-step-span) * 2 + 1px)
+      transparent 0 calc(var(--sequencer-unit-span) - 1px),
+      rgba(255, 255, 255, 0.05) calc(var(--sequencer-unit-span) - 1px) var(--sequencer-unit-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 4 - 1px),
-      rgba(96, 165, 250, 0.1) calc(var(--sequencer-step-span) * 4 - 1px) calc(var(--sequencer-step-span) * 4 + 1px)
+      transparent 0 calc(var(--sequencer-beat-span) - 1px),
+      rgba(96, 165, 250, 0.14) calc(var(--sequencer-beat-span) - 1px) var(--sequencer-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 8 - 1px),
-      rgba(251, 191, 36, 0.12) calc(var(--sequencer-step-span) * 8 - 1px) calc(var(--sequencer-step-span) * 8 + 1px)
+      transparent 0 calc(var(--sequencer-group-span) - 1px),
+      rgba(251, 191, 36, 0.16) calc(var(--sequencer-group-span) - 1px) var(--sequencer-group-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 16 - 1px),
-      rgba(255, 255, 255, 0.16) calc(var(--sequencer-step-span) * 16 - 1px) calc(var(--sequencer-step-span) * 16 + 1px)
+      transparent 0 calc(var(--sequencer-bar-span) - 2px),
+      rgba(255, 255, 255, 0.22) calc(var(--sequencer-bar-span) - 2px) var(--sequencer-bar-span)
     );
 }
 
@@ -2274,7 +2274,11 @@
 }
 
 .composer-drum-step-number.is-half {
-  border-left: 1px solid rgba(251, 191, 36, 0.24);
+  border-left: 2px solid rgba(251, 191, 36, 0.28);
+}
+
+.composer-drum-step-number.is-bar {
+  border-left: 3px solid rgba(255, 255, 255, 0.28);
 }
 
 .composer-drum-step-number--bass.is-current,
@@ -2489,23 +2493,23 @@
   background-image:
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 2 - 1px),
-      rgba(255, 255, 255, 0.05) calc(var(--sequencer-step-span) * 2 - 1px) calc(var(--sequencer-step-span) * 2 + 1px)
+      transparent 0 calc(var(--sequencer-unit-span) - 1px),
+      rgba(255, 255, 255, 0.05) calc(var(--sequencer-unit-span) - 1px) var(--sequencer-unit-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 4 - 1px),
-      rgba(96, 165, 250, 0.1) calc(var(--sequencer-step-span) * 4 - 1px) calc(var(--sequencer-step-span) * 4 + 1px)
+      transparent 0 calc(var(--sequencer-beat-span) - 1px),
+      rgba(96, 165, 250, 0.14) calc(var(--sequencer-beat-span) - 1px) var(--sequencer-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 8 - 1px),
-      rgba(251, 191, 36, 0.12) calc(var(--sequencer-step-span) * 8 - 1px) calc(var(--sequencer-step-span) * 8 + 1px)
+      transparent 0 calc(var(--sequencer-group-span) - 1px),
+      rgba(251, 191, 36, 0.16) calc(var(--sequencer-group-span) - 1px) var(--sequencer-group-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 16 - 1px),
-      rgba(255, 255, 255, 0.16) calc(var(--sequencer-step-span) * 16 - 1px) calc(var(--sequencer-step-span) * 16 + 1px)
+      transparent 0 calc(var(--sequencer-bar-span) - 2px),
+      rgba(255, 255, 255, 0.22) calc(var(--sequencer-bar-span) - 2px) var(--sequencer-bar-span)
     );
 }
 
@@ -2562,6 +2566,7 @@
 }
 
 .composer-drum-cell.is-half::before {
+  width: 2px;
   background: rgba(251, 191, 36, 0.24);
 }
 
@@ -3458,13 +3463,13 @@ body:has(.composer-page) .site-header .topbar-account-menu {
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
-      #252b34 calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+      transparent 0 calc(var(--piano-beat-span) - 1px),
+      #252b34 calc(var(--piano-beat-span) - 1px) var(--piano-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 16 - 1px),
-      #3a424e calc(var(--piano-step-span) * 16 - 1px) calc(var(--piano-step-span) * 16)
+      transparent 0 calc(var(--piano-bar-span, 384px) - 1px),
+      #3a424e calc(var(--piano-bar-span, 384px) - 1px) var(--piano-bar-span, 384px)
     ),
     #181c22;
 }
@@ -3473,8 +3478,8 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   background:
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
-      #2b313a calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+      transparent 0 calc(var(--piano-beat-span) - 1px),
+      #2b313a calc(var(--piano-beat-span) - 1px) var(--piano-beat-span)
     ),
     #171a20;
 }
@@ -3506,7 +3511,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 }
 
 .composer-roll-shell .piano-roll-cell.is-melody.is-bar {
-  box-shadow: inset 1px 0 0 #46515f;
+  box-shadow: inset 3px 0 0 #46515f;
 }
 
 .composer-roll-shell .piano-roll-note-block {
@@ -3615,6 +3620,15 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   line-height: 1;
   white-space: nowrap;
   pointer-events: none;
+}
+
+.composer-roll-shell .piano-roll-bar-number small {
+  margin-left: 5px;
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--editor-accent) 18%, #202731);
+  color: #65ddc4;
+  font-size: 9px;
 }
 
 .composer-roll-shell .piano-roll-playhead,
@@ -3909,7 +3923,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 
 .composer-collab-drawer-tabs {
   display: grid;
-  grid-template-columns: repeat(3, minmax(0, 1fr));
+  grid-template-columns: repeat(2, minmax(0, 1fr));
   padding: 8px 10px 0;
   border-bottom: 1px solid #dde5ec;
   background: #ffffff;
@@ -5185,8 +5199,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 
 .composer-arrangement-ruler {
   position: relative;
-  display: grid;
-  grid-template-columns: repeat(var(--arrangement-label-count, 16), minmax(0, 1fr));
+  display: block;
   height: 52px;
   min-width: 760px;
   box-sizing: border-box;
@@ -5238,6 +5251,9 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 }
 
 .composer-arrangement-ruler button {
+  position: absolute;
+  top: 0;
+  bottom: 0;
   border: 0;
   border-left: 1px solid #262b33;
   background: transparent;
@@ -5261,9 +5277,32 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   overflow-y: auto;
   scrollbar-color: rgba(159, 173, 191, .78) transparent;
   scrollbar-width: thin;
-  background-image:
-    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-major-span, 6.25%) - 1px), #252a32 calc(var(--arrangement-major-span, 6.25%) - 1px), #252a32 var(--arrangement-major-span, 6.25%)),
-    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(255,255,255,.025) calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(255,255,255,.025) var(--arrangement-minor-span, 1.5625%));
+  background-image: none;
+}
+
+.composer-arrangement-grid {
+  position: absolute;
+  z-index: 0;
+  inset: 0;
+  pointer-events: none;
+}
+
+.composer-arrangement-grid i {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  width: 1px;
+  background: rgba(255, 255, 255, .035);
+}
+
+.composer-arrangement-grid i.is-major {
+  width: 2px;
+  background: #252a32;
+}
+
+.composer-arrangement-grid i.is-meter-change {
+  width: 3px;
+  background: rgba(57, 210, 170, .48);
 }
 
 .composer-arrangement-lanes::-webkit-scrollbar {
@@ -5297,6 +5336,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 
 .composer-arrangement-lane {
   position: relative;
+  z-index: 1;
   border-bottom: 1px solid #282d35;
   --clip-color: #39d2aa;
 }

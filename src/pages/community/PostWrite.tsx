@@ -14,9 +14,9 @@ const CATEGORY_OPTIONS = ['일반', '질문', '정보'];
 const TOOLBAR_ITEMS = ['B', 'I', 'U', '•', '1.', '#'];
 const POPULAR_TAGS = ['작곡', '미디', '피아노', '질문', '작곡도구', '배경음악', 'AI작곡', '플러그인'];
 const POPULAR_IMAGES = [
-  '/landing-assets/shared-fallback-film.jpg',
-  '/landing-assets/shared-fallback-groove.jpg',
-  '/landing-assets/shared-fallback-dream.jpg',
+  '/landing-assets/shared-fallback-film.webp',
+  '/landing-assets/shared-fallback-groove.webp',
+  '/landing-assets/shared-fallback-dream.webp',
 ];
 
 type AttachmentPreview = {

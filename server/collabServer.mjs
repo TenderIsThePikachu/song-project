@@ -515,6 +515,10 @@ function getMatrixRowCount(matrix, fallback) {
 
 function ensureComposerSnapshot(project) {
   const snapshot = project.snapshot || {};
+  if (isVersionTwoComposerSnapshot(snapshot)) {
+    return cloneVersionTwoComposerSnapshot(snapshot);
+  }
+
   const steps = Math.max(
     1,
     Math.floor(Number(snapshot.steps || project.steps || DEFAULT_COMPOSER_STEPS))
@@ -648,7 +652,118 @@ function ensureComposerLockOwner(projectId, instrument, barIndex, sessionId) {
   );
 }
 
+function isVersionTwoComposerSnapshot(snapshot) {
+  return snapshot?.version === 2 && snapshot.tracks && typeof snapshot.tracks === 'object';
+}
+
+function cloneVersionTwoComposerSnapshot(snapshot) {
+  return {
+    ...snapshot,
+    volumes: { ...(snapshot.volumes || {}) },
+    tracks: Object.fromEntries(
+      Object.entries(snapshot.tracks || {}).map(([key, events]) => [
+        key,
+        Array.isArray(events) ? events.map((event) => ({ ...event })) : [],
+      ])
+    ),
+    extraTracks: Array.isArray(snapshot.extraTracks)
+      ? snapshot.extraTracks.map((track) => ({
+          ...track,
+          events: Array.isArray(track.events) ? track.events.map((event) => ({ ...event })) : [],
+        }))
+      : [],
+  };
+}
+
+function updateVersionTwoEvents(events, { note, col, duration, active }) {
+  if (!note || !Number.isFinite(col)) return events;
+
+  const start = Math.max(0, Math.floor(Number(col)));
+  const length = Math.max(1, Math.floor(Number(duration) || 1));
+  const nextEvents = events.filter((event) => {
+    if (event.note !== note) return true;
+    const eventStart = Math.max(0, Math.floor(Number(event.start) || 0));
+    const eventLength = Math.max(1, Math.floor(Number(event.duration) || 1));
+    return active
+      ? !rangesOverlap(eventStart, eventLength, start, length)
+      : !(start >= eventStart && start < eventStart + eventLength);
+  });
+
+  if (active) nextEvents.push({ note, start, duration: length });
+  nextEvents.sort((left, right) => Number(left.start) - Number(right.start));
+  return nextEvents;
+}
+
+function getVersionTwoEventTarget(snapshot, instrument, trackId) {
+  if (trackId) {
+    const track = snapshot.extraTracks.find((entry) => entry.id === trackId);
+    return track ? { owner: track, key: 'events' } : null;
+  }
+
+  const key = instrument === 'drum' ? 'drums' : instrument;
+  return Array.isArray(snapshot.tracks[key]) ? { owner: snapshot.tracks, key } : null;
+}
+
+function applyVersionTwoComposerOperation(snapshot, operation) {
+  const nextSnapshot = cloneVersionTwoComposerSnapshot(snapshot);
+  const updateTarget = (instrument, trackId, note, active, duration = 1) => {
+    const target = getVersionTwoEventTarget(nextSnapshot, instrument, trackId);
+    if (!target) return;
+    target.owner[target.key] = updateVersionTwoEvents(target.owner[target.key], {
+      note,
+      col: Number(operation.col),
+      duration,
+      active,
+    });
+  };
+
+  if (operation.type === 'set-volume') {
+    nextSnapshot.volumes[operation.instrument] = clampVolume(operation.volume);
+    return { snapshot: nextSnapshot, summary: `${getInstrumentLabel(operation.instrument)} 볼륨을 조절했습니다.` };
+  }
+
+  if (operation.type === 'set-melody-note') {
+    updateTarget('melody', undefined, operation.note, Number(operation.length) > 0, operation.length);
+    return { snapshot: nextSnapshot, summary: `${operation.barIndex + 1}마디 멜로디 노트를 수정했습니다.` };
+  }
+
+  if (operation.type === 'apply-chord' || operation.type === 'set-track-chord') {
+    const instrument = operation.type === 'apply-chord'
+      ? operation.isBass ? 'bass' : 'melody'
+      : operation.instrument;
+    const trackId = operation.type === 'set-track-chord' ? operation.trackId : undefined;
+    for (const note of operation.notes || []) {
+      updateTarget(instrument, trackId, note, true, operation.length);
+    }
+    return { snapshot: nextSnapshot, summary: `${operation.barIndex + 1}마디에 ${operation.chord} 코드를 적용했습니다.` };
+  }
+
+  if (operation.type === 'set-track-note') {
+    updateTarget(operation.instrument, operation.trackId, operation.note, Boolean(operation.nextValue), operation.length);
+    return { snapshot: nextSnapshot, summary: `${operation.barIndex + 1}마디 노트를 수정했습니다.` };
+  }
+
+  const toggleInstrumentByType = {
+    'toggle-violin-step': 'violin',
+    'toggle-saxophone-step': 'saxophone',
+    'toggle-guitar-step': 'guitar',
+    'toggle-drum-step': 'drums',
+    'toggle-bass-step': 'bass',
+  };
+  const instrument = toggleInstrumentByType[operation.type];
+  if (instrument) {
+    updateTarget(instrument, undefined, operation.note, Boolean(operation.nextValue), operation.length);
+    return { snapshot: nextSnapshot, summary: `${operation.barIndex + 1}마디 노트를 수정했습니다.` };
+  }
+
+  return { snapshot: nextSnapshot, summary: '작곡 설정을 변경했습니다.' };
+}
+
 function applyComposerOperationToSnapshot(snapshot, operation) {
+  if (isVersionTwoComposerSnapshot(snapshot)) {
+    return applyVersionTwoComposerOperation(snapshot, operation);
+  }
+
   const nextSnapshot = {
     ...snapshot,
     volumes: {
@@ -1033,6 +1148,44 @@ function handleApplyComposerOperation(projectId, payload) {
     operation
   );
   const revision = currentRevision + 1;
+  const noteColors = { ...(project.noteColors || {}) };
+  const noteAuthors = { ...(project.noteAuthors || {}) };
+  const authorEmail = String(payload.email || 'guest@songmaker.local').trim().toLowerCase();
+  const authorColor = payload.color || '#14b88f';
+  const setNoteAuthor = (instrument, row, col, active, trackId) => {
+    const key = `${trackId || instrument}:${row}:${col}`;
+    if (active) {
+      noteColors[key] = authorColor;
+      noteAuthors[key] = authorEmail;
+    } else {
+      delete noteColors[key];
+      delete noteAuthors[key];
+    }
+  };
+
+  if (operation.type === 'set-melody-note') {
+    setNoteAuthor('melody', operation.row, operation.col, Number(operation.length) > 0);
+  } else if (operation.type === 'apply-chord') {
+    for (const row of operation.rows || []) {
+      setNoteAuthor(operation.isBass ? 'bass' : 'melody', row, operation.col, true);
+    }
+  } else if (operation.type === 'set-track-note') {
+    setNoteAuthor(
+      operation.instrument,
+      operation.row,
+      operation.col,
+      Boolean(operation.nextValue),
+      operation.trackId
+    );
+  } else if (operation.type === 'set-track-chord') {
+    for (const row of operation.rows || []) {
+      setNoteAuthor(operation.instrument, row, operation.col, true, operation.trackId);
+    }
+  } else if (operation.type?.startsWith('toggle-') && operation.type?.endsWith('-step')) {
+    const rawInstrument = operation.type.replace('toggle-', '').replace('-step', '');
+    const instrument = rawInstrument === 'drum' ? 'drums' : rawInstrument;
+    setNoteAuthor(instrument, operation.row, operation.col, Boolean(operation.nextValue));
+  }
 
   state = {
     ...state,
@@ -1044,6 +1197,8 @@ function handleApplyComposerOperation(projectId, payload) {
             bpm: nextSnapshot.bpm ?? entry.bpm,
             steps: nextSnapshot.steps ?? entry.steps,
             snapshot: nextSnapshot,
+            noteColors,
+            noteAuthors,
             snapshotRevision: revision,
             snapshotUpdatedByEmail: payload.email ?? null,
             snapshotUpdatedBySessionId: payload.sessionId ?? null,

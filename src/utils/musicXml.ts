@@ -1,3 +1,13 @@
+import {
+  getBarCountForSteps,
+  getBarInfoAtIndex,
+  getBarInfoAtStep,
+  normalizeTimeSignature,
+  normalizeTimeSignatureChanges,
+  type TimeSignature,
+  type TimeSignatureChange,
+} from './timeSignature.ts';
+
 export type MusicXmlTrack = {
   id: string;
   name: string;
@@ -40,7 +50,6 @@ type NoteGroup = {
   notes: NoteSegment[];
 };
 
-const STEPS_PER_BAR = 16;
 const DIVISIONS = 4;
 const NOTATION_DURATIONS = [16, 12, 8, 6, 4, 3, 2, 1] as const;
 
@@ -120,9 +129,15 @@ function getPercussionStem(name?: string): RawNote['stem'] {
   return name?.toLowerCase() === 'kick' ? 'down' : 'up';
 }
 
-function getPercussionDuration(track: MusicXmlTrack, rowIndex: number, col: number) {
+function getPercussionDuration(
+  track: MusicXmlTrack,
+  rowIndex: number,
+  col: number,
+  timeSignatureChanges: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature
+) {
   const stem = getPercussionStem(track.percussionNames?.[rowIndex]);
-  const measureEnd = Math.floor(col / STEPS_PER_BAR) * STEPS_PER_BAR + STEPS_PER_BAR;
+  const measureEnd = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).end;
   let nextOnset = measureEnd;
 
   track.grid.forEach((row, candidateRowIndex) => {
@@ -137,7 +152,11 @@ function getPercussionDuration(track: MusicXmlTrack, rowIndex: number, col: numb
   return Math.max(1, Math.min(4, nextOnset - col));
 }
 
-function collectRawNotes(track: MusicXmlTrack) {
+function collectRawNotes(
+  track: MusicXmlTrack,
+  timeSignatureChanges: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature
+) {
   const notes: RawNote[] = [];
   track.grid.forEach((row, rowIndex) => {
     const pitch = track.pitches[rowIndex];
@@ -149,7 +168,7 @@ function collectRawNotes(track: MusicXmlTrack) {
         pitch,
         start: col,
         duration: track.percussion
-          ? getPercussionDuration(track, rowIndex, col)
+          ? getPercussionDuration(track, rowIndex, col, timeSignatureChanges, timeSignature)
           : Math.max(1, Math.floor(track.lengths?.[rowIndex]?.[col] ?? 1)),
         lyric: track.lyrics?.[`${rowIndex}-${col}`]?.trim() || undefined,
         notehead: track.percussion
@@ -165,16 +184,20 @@ function collectRawNotes(track: MusicXmlTrack) {
   return notes;
 }
 
-function splitNoteIntoMeasures(note: RawNote) {
+function splitNoteIntoMeasures(
+  note: RawNote,
+  timeSignatureChanges: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature
+) {
   const segments: Array<NoteSegment & { measure: number }> = [];
   let cursor = note.start;
   let remaining = note.duration;
   let consumed = 0;
 
   while (remaining > 0) {
-    const measure = Math.floor(cursor / STEPS_PER_BAR);
-    const start = cursor % STEPS_PER_BAR;
-    const availableInMeasure = STEPS_PER_BAR - start;
+    const bar = getBarInfoAtStep(timeSignatureChanges, timeSignature, cursor);
+    const measure = bar.index;
+    const availableInMeasure = bar.end - cursor;
     const available = Math.min(remaining, availableInMeasure);
     const chunks = splitDuration(available);
 
@@ -184,7 +207,7 @@ function splitNoteIntoMeasures(note: RawNote) {
       segments.push({
         measure,
         pitch: note.pitch,
-        start: cursor % STEPS_PER_BAR,
+        start: cursor - bar.start,
         duration,
         tieStop: hasPrevious,
         tieStart: hasNext,
@@ -324,13 +347,14 @@ function renderStaff(
   percussion: boolean,
   partIndex: number,
   voiceOffset = 0,
-  staff?: number
+  staff: number | undefined,
+  stepsPerBar: number
 ) {
   const groups = groupSegments(segments);
   const voices = assignVoices(groups, percussion);
   if (!voices.length) {
     const voice = voiceOffset + 1;
-    return `<note><rest measure="yes"/><duration>${STEPS_PER_BAR}</duration><voice>${voice}</voice><type>whole</type>${staff ? `<staff>${staff}</staff>` : ''}</note>`;
+    return `<note><rest measure="yes"/><duration>${stepsPerBar}</duration><voice>${voice}</voice>${staff ? `<staff>${staff}</staff>` : ''}</note>`;
   }
 
   return voices.map((voice, voiceIndex) => {
@@ -357,11 +381,11 @@ function renderStaff(
       cursor = group.start + group.duration;
       return `${rest}${chord}`;
     }).join('');
-    const endingRest = cursor < STEPS_PER_BAR
-      ? renderRest(STEPS_PER_BAR - cursor, voiceNumber, staff)
+    const endingRest = cursor < stepsPerBar
+      ? renderRest(stepsPerBar - cursor, voiceNumber, staff)
       : '';
     const backup = voiceIndex < voices.length - 1
-      ? `<backup><duration>${STEPS_PER_BAR}</duration></backup>`
+      ? `<backup><duration>${stepsPerBar}</duration></backup>`
       : '';
     return `${notes}${endingRest}${backup}`;
   }).join('');
@@ -371,21 +395,26 @@ function renderMeasure(
   measureNumber: number,
   segments: NoteSegment[],
   includeAttributes: boolean,
+  includeTimeChange: boolean,
   bpm: number,
   clef: 'G' | 'F' | 'percussion',
   percussion: boolean,
   partIndex: number,
-  grandStaff: boolean
+  grandStaff: boolean,
+  timeSignature: TimeSignature,
+  stepsPerBar: number
 ) {
   const attributes = includeAttributes
     ? grandStaff
-      ? `<attributes><divisions>${DIVISIONS}</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${bpm}</per-minute></metronome></direction-type><sound tempo="${bpm}"/></direction>`
-      : `<attributes><divisions>${DIVISIONS}</divisions><key><fifths>0</fifths></key><time><beats>4</beats><beat-type>4</beat-type></time><clef><sign>${clef}</sign><line>${clef === 'F' ? 4 : 2}</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${bpm}</per-minute></metronome></direction-type><sound tempo="${bpm}"/></direction>`
-    : '';
+      ? `<attributes><divisions>${DIVISIONS}</divisions><key><fifths>0</fifths></key><time><beats>${timeSignature.beats}</beats><beat-type>${timeSignature.beatType}</beat-type></time><staves>2</staves><clef number="1"><sign>G</sign><line>2</line></clef><clef number="2"><sign>F</sign><line>4</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${bpm}</per-minute></metronome></direction-type><sound tempo="${bpm}"/></direction>`
+      : `<attributes><divisions>${DIVISIONS}</divisions><key><fifths>0</fifths></key><time><beats>${timeSignature.beats}</beats><beat-type>${timeSignature.beatType}</beat-type></time><clef><sign>${clef}</sign><line>${clef === 'F' ? 4 : 2}</line></clef></attributes><direction placement="above"><direction-type><metronome><beat-unit>quarter</beat-unit><per-minute>${bpm}</per-minute></metronome></direction-type><sound tempo="${bpm}"/></direction>`
+    : includeTimeChange
+      ? `<attributes><time><beats>${timeSignature.beats}</beats><beat-type>${timeSignature.beatType}</beat-type></time></attributes>`
+      : '';
 
   const voiceXml = grandStaff
-    ? `${renderStaff(segments.filter((segment) => pitchToMidi(segment.pitch) >= 60), false, partIndex, 0, 1)}<backup><duration>${STEPS_PER_BAR}</duration></backup>${renderStaff(segments.filter((segment) => pitchToMidi(segment.pitch) < 60), false, partIndex, 4, 2)}`
-    : renderStaff(segments, percussion, partIndex);
+    ? `${renderStaff(segments.filter((segment) => pitchToMidi(segment.pitch) >= 60), false, partIndex, 0, 1, stepsPerBar)}<backup><duration>${stepsPerBar}</duration></backup>${renderStaff(segments.filter((segment) => pitchToMidi(segment.pitch) < 60), false, partIndex, 4, 2, stepsPerBar)}`
+    : renderStaff(segments, percussion, partIndex, 0, undefined, stepsPerBar);
 
   return `<measure number="${measureNumber}">${attributes}${voiceXml}</measure>`;
 }
@@ -394,29 +423,43 @@ function renderPart(
   track: MusicXmlTrack,
   partIndex: number,
   measureCount: number,
-  bpm: number
+  bpm: number,
+  timeSignature: TimeSignature,
+  timeSignatureChanges: readonly TimeSignatureChange[]
 ) {
-  const notes = collectRawNotes(track);
+  const notes = collectRawNotes(track, timeSignatureChanges, timeSignature);
   const measureSegments = new Map<number, NoteSegment[]>();
-  notes.flatMap(splitNoteIntoMeasures).forEach(({ measure, ...segment }) => {
+  notes.flatMap((note) => splitNoteIntoMeasures(note, timeSignatureChanges, timeSignature)).forEach(({ measure, ...segment }) => {
     measureSegments.set(measure, [...(measureSegments.get(measure) ?? []), segment]);
   });
   const averageMidi = notes.length
     ? notes.reduce((sum, note) => sum + pitchToMidi(note.pitch), 0) / notes.length
     : 60;
   const clef = track.percussion ? 'percussion' : averageMidi < 58 ? 'F' : 'G';
-  const measures = Array.from({ length: measureCount }, (_, index) =>
-    renderMeasure(
+  const measures = Array.from({ length: measureCount }, (_, index) => {
+    const bar = getBarInfoAtIndex(timeSignatureChanges, timeSignature, index);
+    const previousBar = index > 0
+      ? getBarInfoAtIndex(timeSignatureChanges, timeSignature, index - 1)
+      : null;
+    const includeTimeChange = Boolean(
+      previousBar &&
+      (previousBar.timeSignature.beats !== bar.timeSignature.beats ||
+        previousBar.timeSignature.beatType !== bar.timeSignature.beatType)
+    );
+    return renderMeasure(
       index + 1,
       measureSegments.get(index) ?? [],
       index === 0,
+      includeTimeChange,
       bpm,
       clef,
       Boolean(track.percussion),
       partIndex,
-      Boolean(track.grandStaff)
-    )
-  ).join('');
+      Boolean(track.grandStaff),
+      bar.timeSignature,
+      bar.length
+    );
+  }).join('');
   return `<part id="P${partIndex + 1}">${measures}</part>`;
 }
 
@@ -429,19 +472,30 @@ export function buildMusicXml({
   creator,
   bpm,
   tracks,
+  timeSignature: requestedTimeSignature,
+  timeSignatureChanges: requestedTimeSignatureChanges,
 }: {
   title: string;
   creator?: string;
   bpm: number;
   tracks: MusicXmlTrack[];
+  timeSignature?: TimeSignature;
+  timeSignatureChanges?: TimeSignatureChange[];
 }) {
+  const timeSignature = normalizeTimeSignature(requestedTimeSignature);
+  const timeSignatureChanges = normalizeTimeSignatureChanges(
+    requestedTimeSignatureChanges,
+    timeSignature
+  );
   const populatedTracks = tracks.filter(hasTrackNotes);
-  const allNotes = populatedTracks.flatMap(collectRawNotes);
+  const allNotes = populatedTracks.flatMap((track) =>
+    collectRawNotes(track, timeSignatureChanges, timeSignature)
+  );
   const lastStep = allNotes.reduce(
     (latest, note) => Math.max(latest, note.start + note.duration),
     1
   );
-  const measureCount = Math.max(1, Math.ceil(lastStep / STEPS_PER_BAR));
+  const measureCount = getBarCountForSteps(timeSignatureChanges, timeSignature, lastStep);
   const partList = populatedTracks
     .map((track, index) => {
       const name = escapeXml(track.name);
@@ -460,7 +514,14 @@ export function buildMusicXml({
     })
     .join('');
   const parts = populatedTracks
-    .map((track, index) => renderPart(track, index, measureCount, bpm))
+    .map((track, index) => renderPart(
+      track,
+      index,
+      measureCount,
+      bpm,
+      timeSignature,
+      timeSignatureChanges
+    ))
     .join('');
   const creatorCredit = creator?.trim()
     ? `<creator type="composer">${escapeXml(`${creator.trim()} 작곡`)}</creator>`

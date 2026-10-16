@@ -50,10 +50,10 @@ const FORM_ROLE_OPTIONS: Array<{ key: SessionRole; label: string }> = [
 ];
 
 const SESSION_COVERS = [
-  '/landing-assets/shared-fallback-band.jpg',
-  '/landing-assets/shared-fallback-groove.jpg',
-  '/landing-assets/shared-fallback-jazz.jpg',
-  '/landing-assets/shared-fallback-film.jpg',
+  '/landing-assets/shared-fallback-band.webp',
+  '/landing-assets/shared-fallback-groove.webp',
+  '/landing-assets/shared-fallback-jazz.webp',
+  '/landing-assets/shared-fallback-film.webp',
 ];
 
 type SessionIconName = 'arrow' | 'calendar' | 'crown' | 'location' | 'message' | 'music' | 'plus' | 'search' | 'sparkle' | 'stats' | 'users' | 'wifi';

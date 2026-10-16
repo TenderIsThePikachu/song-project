@@ -20,27 +20,27 @@ const TRACK_DISPLAY: Record<string, { title: string; mood: string }> = {
 };
 
 const TRACK_IMAGE_MAP: Record<string, string> = {
-  'trend-1': '/landing-assets/night-loop.jpg',
-  'trend-2': '/landing-assets/frost-tower-riff.jpg',
-  'trend-3': '/landing-assets/emotional-bridge.jpg',
-  'trend-4': '/landing-assets/midnight-hook.jpg',
-  'trend-5': '/landing-assets/deep-house-line.jpg',
-  'trend-6': '/landing-assets/shared-fallback-film.jpg',
-  'trend-7': '/landing-assets/shared-fallback-dream.jpg',
-  'trend-8': '/landing-assets/shared-fallback-groove.jpg',
-  'latest-1': '/landing-assets/shared-fallback-pink-sketch.jpg',
-  'latest-2': '/landing-assets/shared-fallback-band.jpg',
-  'latest-3': '/landing-assets/shared-fallback-ballad.jpg',
-  'latest-4': '/landing-assets/shared-fallback-jazz.jpg',
+  'trend-1': '/landing-assets/cover-citypop-night.webp',
+  'trend-2': '/landing-assets/night-loop.webp',
+  'trend-3': '/landing-assets/emotional-bridge.webp',
+  'trend-4': '/landing-assets/midnight-hook.webp',
+  'trend-5': '/landing-assets/deep-house-line.webp',
+  'trend-6': '/landing-assets/cover-film-projector.webp',
+  'trend-7': '/landing-assets/shared-fallback-dream.webp',
+  'trend-8': '/landing-assets/shared-fallback-groove.webp',
+  'latest-1': '/landing-assets/shared-fallback-band.webp',
+  'latest-2': '/landing-assets/collab-bass-drums.webp',
+  'latest-3': '/landing-assets/cover-classic-piano.webp',
+  'latest-4': '/landing-assets/cover-jazz-sax.webp',
 };
 
 const COLLAB_SHOWCASE = [
-  { title: 'Midnight Session', role: '보컬 · 기타 모집', image: '/seed-images/music/citypop.svg' },
-  { title: '봄밤 데모', role: '피아노 · 믹스 파트너', image: '/seed-images/music/canon.svg' },
-  { title: 'Neon Drive', role: '베이스 · 드럼', image: '/seed-images/music/game-theme.svg' },
-  { title: '별처럼 남아', role: '작사 · 편곡', image: '/seed-images/music/film-ost.svg' },
-  { title: '우리의 동네', role: '프로듀서 모집', image: '/seed-images/music/stand-by-me.svg' },
-  { title: 'Down Town Loop', role: '신스 · 기타', image: '/seed-images/music/pop.svg' },
+  { title: 'Midnight Session', role: '보컬 · 기타 모집', image: '/landing-assets/collab-vocal-guitar.webp' },
+  { title: '봄밤 데모', role: '피아노 · 믹스 파트너', image: '/landing-assets/collab-piano-mix.webp' },
+  { title: 'Neon Drive', role: '베이스 · 드럼', image: '/landing-assets/collab-bass-drums.webp' },
+  { title: '별처럼 남아', role: '작사 · 편곡', image: '/landing-assets/collab-songwriting.webp' },
+  { title: '우리의 동네', role: '프로듀서 모집', image: '/landing-assets/collab-producer.webp' },
+  { title: 'Down Town Loop', role: '신스 · 기타', image: '/landing-assets/collab-synth-guitar.webp' },
 ] as const;
 
 const HOT_CHART_DETAILS: Record<string, {

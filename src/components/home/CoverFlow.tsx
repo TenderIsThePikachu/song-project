@@ -37,8 +37,11 @@ function formatTime(seconds: number) {
 }
 
 function getFallbackDuration(trackId: string) {
-  const hash = Array.from(trackId).reduce((sum, character) => sum + character.charCodeAt(0), 0);
-  return 105 + (hash % 106);
+  const hash = Array.from(trackId).reduce(
+    (value, character) => Math.imul(value ^ character.charCodeAt(0), 16777619) >>> 0,
+    2166136261
+  );
+  return 105 + (hash % 141);
 }
 
 function getWaveform(trackId: string, count: number) {
@@ -47,6 +50,16 @@ function getWaveform(trackId: string, count: number) {
     seed = (seed * 9301 + 49297 + index * 17) % 233280;
     return 22 + Math.round((seed / 233280) * 70);
   });
+}
+
+function getPreviewProgress(trackId: string) {
+  const hash = Array.from(trackId).reduce(
+    (sum, character, index) => sum + character.charCodeAt(0) * (index + 5),
+    23
+  );
+  const positions = [0.18, 0.34, 0.52, 0.64, 0.76, 0.86];
+  const base = positions[hash % positions.length];
+  return Math.min(0.88, base + ((hash >>> 3) % 5) / 100);
 }
 
 function Waveform({ trackId, progress, compact = false }: { trackId: string; progress: number; compact?: boolean }) {
@@ -135,6 +148,17 @@ export default function CoverFlow({
   const selectedTrack = tracks[selectedIndex];
   const isSelectedPlaying = playingTrackId === selectedTrack.id && isPlaying;
   const progress = duration > 0 ? Math.min(1, currentTime / duration) : 0;
+  const paginationIndexes = useMemo(() => {
+    const maximumDots = 7;
+    if (tracks.length <= maximumDots) return tracks.map((_, index) => index);
+
+    const halfWindow = Math.floor(maximumDots / 2);
+    const start = Math.min(
+      Math.max(0, selectedIndex - halfWindow),
+      tracks.length - maximumDots
+    );
+    return Array.from({ length: maximumDots }, (_, index) => start + index);
+  }, [selectedIndex, tracks]);
 
   useEffect(() => {
     onMoveRef.current = onMove;
@@ -187,7 +211,9 @@ export default function CoverFlow({
           if (Math.abs(offset) > 4) return null;
           const isCenter = offset === 0;
           const trackIsPlaying = playingTrackId === track.id && isPlaying;
-          const cardDuration = isCenter ? duration : getFallbackDuration(track.id);
+          const cardDuration = isCenter && duration > 0 ? duration : getFallbackDuration(track.id);
+          const cardProgress = playingTrackId === track.id ? progress : getPreviewProgress(track.id);
+          const cardCurrentTime = cardDuration * cardProgress;
 
           return (
             <article
@@ -215,11 +241,11 @@ export default function CoverFlow({
                 <button type="button" className="main-cover-title" onClick={() => onOpen(track)}>{track.title}</button>
                 <span className="main-cover-artist">{track.creatorName}</span>
                 <span className="main-cover-progression" aria-hidden={!isCenter}>{track.progression}</span>
-                <Waveform trackId={track.id} progress={isCenter ? progress : 0} compact={!isCenter} />
+                <Waveform trackId={track.id} progress={cardProgress} compact={!isCenter} />
 
                 <div className="main-cover-player-zone">
                   <div className="main-center-player" aria-hidden={!isCenter}>
-                    <div className="main-cover-time-row"><span>{formatTime(currentTime)}</span><span>{formatTime(cardDuration)}</span></div>
+                    <div className="main-cover-time-row"><span>{formatTime(cardCurrentTime)}</span><span>{formatTime(cardDuration)}</span></div>
                     <button
                       type="button"
                       className="main-cover-progress"
@@ -230,7 +256,7 @@ export default function CoverFlow({
                         onSeek((event.clientX - bounds.left) / bounds.width);
                       }}
                     >
-                      <i style={{ width: `${progress * 100}%` }} />
+                      <i style={{ width: `${cardProgress * 100}%` }} />
                     </button>
                     <div className="main-cover-controls">
                       <button type="button" className={isShuffle ? 'is-active' : undefined} aria-pressed={isShuffle} onClick={(event) => { event.stopPropagation(); onToggleShuffle(); }} aria-label="셔플"><PlayerIcon name="shuffle" /></button>
@@ -252,7 +278,7 @@ export default function CoverFlow({
                     </div>
                   </div>
                   <div className="main-side-play-row" aria-hidden={isCenter}>
-                    <span>0:00</span>
+                    <span>{formatTime(cardCurrentTime)}</span>
                     <button
                       type="button"
                       tabIndex={isCenter ? -1 : 0}
@@ -276,7 +302,9 @@ export default function CoverFlow({
       <button type="button" className="main-cover-arrow is-right" onClick={() => requestMove(1)} aria-label="다음 곡"><ChevronIcon direction="right" /></button>
 
       <div className="main-cover-pagination" aria-label="추천 음악 페이지">
-        {tracks.map((track, index) => (
+        {paginationIndexes.map((index) => {
+          const track = tracks[index];
+          return (
           <button
             type="button"
             key={track.id}
@@ -284,7 +312,8 @@ export default function CoverFlow({
             onClick={() => requestSelect(index)}
             aria-label={`${index + 1}번째 곡`}
           />
-        ))}
+          );
+        })}
       </div>
     </section>
   );

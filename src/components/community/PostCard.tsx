@@ -3,9 +3,9 @@ import type { Post } from '../../types/community';
 type PostCardProps = { post: Post; rank: number; onClick: () => void };
 
 const ROW_IMAGES = [
-  '/landing-assets/emotional-bridge.jpg', '/landing-assets/shared-fallback-pink-sketch.jpg',
-  '/landing-assets/shared-fallback-dream.jpg', '/landing-assets/shared-fallback-film.jpg',
-  '/landing-assets/shared-fallback-groove.jpg', '/landing-assets/shared-fallback-jazz.jpg',
+  '/landing-assets/emotional-bridge.webp', '/landing-assets/shared-fallback-pink-sketch.webp',
+  '/landing-assets/shared-fallback-dream.webp', '/landing-assets/shared-fallback-film.webp',
+  '/landing-assets/shared-fallback-groove.webp', '/landing-assets/shared-fallback-jazz.webp',
 ];
 
 function formatRelativeTime(timestamp: number) {

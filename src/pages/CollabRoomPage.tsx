@@ -9,8 +9,8 @@ import {
   type CollabStatus,
 } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
-import { useSessionRecruitStore } from '../store/sessionRecruitStore';
-import { getRecruitUrlFromSketch } from '../utils/songSketchDna';
+import type { SongProject } from '../store/songStore';
+import { isLocalDevelopmentHost, LOCAL_COLLAB_GUEST } from '../utils/localEnvironment';
 import {
   getCollabMemberColor,
   getCollabMemberInitial,
@@ -65,7 +65,9 @@ export default function CollabRoomPage() {
   const navigate = useNavigate();
   const { projectId: routeProjectId } = useParams<{ projectId: string }>();
   const projectId = routeProjectId;
-  const user = useAuthStore((state) => state.user);
+  const authenticatedUser = useAuthStore((state) => state.user);
+  const isLocalHost = isLocalDevelopmentHost();
+  const user = authenticatedUser ?? (isLocalHost ? LOCAL_COLLAB_GUEST : null);
   const projects = useCollabStore((state) => state.projects);
   const messages = useCollabStore((state) => state.messages);
   const tasks = useCollabStore((state) => state.tasks);
@@ -73,6 +75,8 @@ export default function CollabRoomPage() {
   const connectionStatus = useCollabStore((state) => state.connectionStatus);
   const connectionError = useCollabStore((state) => state.connectionError);
   const initializeRealtime = useCollabStore((state) => state.initializeRealtime);
+  const joinProject = useCollabStore((state) => state.joinProject);
+  const updateComposerSnapshot = useCollabStore((state) => state.updateComposerSnapshot);
   const setCollabMemberColor = useCollabStore((state) => state.setMemberColor);
   const addMessage = useCollabStore((state) => state.addMessage);
   const addTask = useCollabStore((state) => state.addTask);
@@ -83,14 +87,15 @@ export default function CollabRoomPage() {
   const leavePresence = useCollabStore((state) => state.leavePresence);
   const composerProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
-  const recruitPosts = useSessionRecruitStore((state) => state.posts);
-  const seedSessionRecruit = useSessionRecruitStore((state) => state.seedSessionRecruit);
 
   const [messageDraft, setMessageDraft] = useState('');
   const [taskDraft, setTaskDraft] = useState('');
   const [presenceNow, setPresenceNow] = useState(() => Date.now());
   const [roomError, setRoomError] = useState('');
   const [isHistoryOpen, setIsHistoryOpen] = useState(false);
+  const [isJoiningLocalGuest, setIsJoiningLocalGuest] = useState(false);
+  const [localGuestJoinFailed, setLocalGuestJoinFailed] = useState(false);
+  const [isOpeningComposer, setIsOpeningComposer] = useState(false);
 
   useEffect(() => {
     void initializeRealtime().catch(console.error);
@@ -100,13 +105,8 @@ export default function CollabRoomPage() {
     void seedLibrary().catch(console.error);
   }, [seedLibrary]);
 
-  useEffect(() => {
-    void seedSessionRecruit().catch(console.error);
-  }, [seedSessionRecruit]);
-
   const project = projects.find((item) => item.id === projectId) ?? null;
   const linkedProject = composerProjects.find((item) => item.id === project?.sourceProjectId) ?? null;
-  const linkedRecruitPost = recruitPosts.find((post) => post.collabProjectId === projectId) ?? null;
 
   const projectMessages = useMemo(
     () =>
@@ -155,6 +155,36 @@ export default function CollabRoomPage() {
     : isCollabMemberColor(storedMemberColor)
       ? storedMemberColor
       : getCollabMemberColor(`${projectId}:${user?.email ?? ''}`).accent;
+
+  useEffect(() => {
+    if (
+      !projectId ||
+      !project ||
+      !isLocalHost ||
+      !user ||
+      isMember ||
+      isJoiningLocalGuest ||
+      localGuestJoinFailed
+    ) return;
+
+    setIsJoiningLocalGuest(true);
+    void joinProject(projectId, user)
+      .catch((error) => {
+        console.error(error);
+        setLocalGuestJoinFailed(true);
+        setRoomError(error instanceof Error ? error.message : '로컬 작업실에 들어가지 못했습니다.');
+      })
+      .finally(() => setIsJoiningLocalGuest(false));
+  }, [
+    isJoiningLocalGuest,
+    isLocalHost,
+    isMember,
+    joinProject,
+    localGuestJoinFailed,
+    project,
+    projectId,
+    user,
+  ]);
 
   useEffect(() => {
     if (!projectId || !user || !currentMember) return;
@@ -234,6 +264,19 @@ export default function CollabRoomPage() {
     );
   }
 
+  if (isLocalHost && !isMember && !localGuestJoinFailed) {
+    return (
+      <div className="collab-room-page">
+        <SiteHeader activeSection="collab" />
+        <main className="collab-room-shell">
+          <section className="collab-room-missing">
+            <strong>로컬 작업실에 들어가는 중입니다.</strong>
+          </section>
+        </main>
+      </div>
+    );
+  }
+
   if (!user || !isMember) {
     return (
       <div className="collab-room-page">
@@ -241,20 +284,8 @@ export default function CollabRoomPage() {
         <main className="collab-room-shell">
           <section className="collab-room-missing">
             <strong>승인된 멤버만 작업실에 들어갈 수 있습니다.</strong>
-            <span>
-              {linkedRecruitPost
-                ? '팀원 모집글에서 원하는 파트로 지원한 뒤 방장의 승인을 받아주세요.'
-                : '아직 연결된 팀원 모집글이 없습니다. 방장이 모집을 시작하면 지원할 수 있습니다.'}
-            </span>
-            {user && linkedRecruitPost ? (
-              <button
-                type="button"
-                className="collab-primary-button"
-                onClick={() => navigate(`/community/sessions/${linkedRecruitPost.id}`)}
-              >
-                모집글에서 지원하기
-              </button>
-            ) : !user ? (
+            <span>이 작업실은 승인된 멤버만 들어갈 수 있습니다.</span>
+            {!user ? (
               <button type="button" className="collab-primary-button" onClick={() => navigate('/login')}>
                 로그인하기
               </button>
@@ -268,11 +299,53 @@ export default function CollabRoomPage() {
     );
   }
 
-  const handleOpenComposer = () => {
-    const snapshot = project.snapshot ?? linkedProject?.project;
-    if (!snapshot) return;
+  const handleOpenComposer = async () => {
+    if (!user || !canEdit || isOpeningComposer) return;
 
-    navigate(`/composer?collab=${project.id}`);
+    const existingSnapshot = project.snapshot ?? linkedProject?.project;
+
+    try {
+      setIsOpeningComposer(true);
+      setRoomError('');
+
+      if (!existingSnapshot) {
+        const initialSnapshot: SongProject = {
+          version: 2,
+          compositionMode: 'standard',
+          timeSignature: { beats: 4, beatType: 4 },
+          timeSignatureChanges: [{ bar: 0, beats: 4, beatType: 4 }],
+          bpm: project.bpm,
+          tempoAutomation: [],
+          steps: project.steps,
+          noteLyrics: {},
+          barLyrics: [''],
+          lyricsStartBar: 1,
+          tracks: {
+            melody: [],
+            violin: [],
+            saxophone: [],
+            guitar: [],
+            drums: [],
+            bass: [],
+          },
+          extraTracks: [],
+        };
+
+        await updateComposerSnapshot(project.id, {
+          snapshot: initialSnapshot,
+          email: user.email,
+          name: user.name,
+          baseRevision: project.snapshotRevision,
+        });
+      }
+
+      navigate(`/composer?collab=${project.id}`);
+    } catch (error) {
+      console.error(error);
+      setRoomError(error instanceof Error ? error.message : '작곡 화면을 열지 못했습니다.');
+    } finally {
+      setIsOpeningComposer(false);
+    }
   };
 
   const handleSendMessage = async () => {
@@ -528,22 +601,14 @@ export default function CollabRoomPage() {
                 <button
                   type="button"
                   className="collab-primary-button collab-composer-button"
-                  onClick={handleOpenComposer}
-                  disabled={!linkedProject && !project.snapshot}
+                  onClick={() => void handleOpenComposer()}
+                  disabled={!canEdit || isOpeningComposer}
                 >
-                  <RoomIcon name="music" /> 작곡 화면 열기
+                  <RoomIcon name="music" /> {isOpeningComposer ? '작곡 화면 여는 중' : '작곡 화면 열기'}
                 </button>
 
                 <button type="button" className="collab-secondary-button" onClick={() => navigate('/collab')}>
                   <RoomIcon name="list" /> 협업 목록으로
-                </button>
-
-                <button
-                  type="button"
-                  className="collab-secondary-button"
-                  onClick={() => navigate(getRecruitUrlFromSketch(project.title, project.genre, 'vocal,instrument,drums,bass', project.id))}
-                >
-                  <RoomIcon name="users" /> 팀원 모집하기
                 </button>
 
                 <button type="button" className="collab-leave-button" onClick={() => navigate('/collab')}><RoomIcon name="exit" /> 나가기</button>

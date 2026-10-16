@@ -5,6 +5,7 @@ import { useAuthStore } from '../store/authStore';
 import { useCollabStore, type CollabProject, type CollabStatus } from '../store/collabStore';
 import { useComposerLibraryStore, type ComposerProjectRecord } from '../store/composerLibraryStore';
 import { useSongStore } from '../store/songStore';
+import { formatTimeSignature, type TimeSignatureBeatType } from '../utils/timeSignature';
 import './ProjectLibraryPage.css';
 
 type LibraryTab = 'all' | 'recent' | 'shared' | 'collab';
@@ -39,6 +40,17 @@ const NEW_PROJECT_GENRES = [
   { value: 'lofi', label: '로파이' },
 ] as const;
 
+const COMMON_TIME_SIGNATURES = [
+  { beats: 4, beatType: 4 },
+  { beats: 3, beatType: 4 },
+  { beats: 2, beatType: 4 },
+  { beats: 6, beatType: 8 },
+  { beats: 9, beatType: 8 },
+  { beats: 12, beatType: 8 },
+  { beats: 5, beatType: 4 },
+  { beats: 7, beatType: 8 },
+] as const;
+
 function LibraryIcon({ name }: { name: 'music' | 'share' | 'users' | 'info' | 'search' | 'edit' | 'chevron' }) {
   const paths: Record<typeof name, ReactNode> = {
     music: <><path d="M9 18V5l10-2v13" /><circle cx="6" cy="18" r="3" /><circle cx="16" cy="16" r="3" /></>,
@@ -58,7 +70,7 @@ function formatDate(value: number) {
 }
 
 function getProjectMeta(project: ComposerProjectRecord) {
-  return `${project.genre} · ${project.bpm} BPM · ${project.steps} steps`;
+  return `${project.genre} · ${project.bpm} BPM · ${formatTimeSignature(project.project.timeSignature ?? { beats: 4, beatType: 4 })}`;
 }
 
 export default function ProjectLibraryPage() {
@@ -80,6 +92,8 @@ export default function ProjectLibraryPage() {
   const [newProjectTitle, setNewProjectTitle] = useState('');
   const [newProjectBpm, setNewProjectBpm] = useState(120);
   const [newProjectGenre, setNewProjectGenre] = useState('ballad');
+  const [newProjectBeats, setNewProjectBeats] = useState(4);
+  const [newProjectBeatType, setNewProjectBeatType] = useState<TimeSignatureBeatType>(4);
 
   useEffect(() => {
     void seedLibrary().catch(console.error);
@@ -174,6 +188,8 @@ export default function ProjectLibraryPage() {
     setNewProjectTitle('');
     setNewProjectBpm(120);
     setNewProjectGenre('ballad');
+    setNewProjectBeats(4);
+    setNewProjectBeatType(4);
     setIsCreateDialogOpen(true);
   };
   const handleCreateProject = () => {
@@ -182,6 +198,8 @@ export default function ProjectLibraryPage() {
       title: newProjectTitle.trim() || '제목 없는 곡',
       bpm: String(newProjectBpm),
       genre: newProjectGenre,
+      beats: String(newProjectBeats),
+      beatType: String(newProjectBeatType),
     });
     setIsCreateDialogOpen(false);
     navigate(`/composer?${params.toString()}`);
@@ -222,7 +240,7 @@ export default function ProjectLibraryPage() {
     <div className="library-page">
       <SiteHeader activeSection="composer" />
       <main className="library-shell">
-        <section className="library-hero"><div><span>COMPOSING STUDIO</span><h1>나의 작곡 스튜디오</h1><p>새로운 곡을 시작하거나 저장한 작곡을 다시 열어 이어서 완성해보세요.</p></div><button type="button" className="library-primary-button" onClick={handleOpenCreateDialog}><b>+</b> 새 작곡 만들기</button></section>
+        <section className="library-hero"><div><span>MUSIC STUDIO</span><h1>나의 음악 스튜디오</h1><p>새로운 음악을 시작하거나 저장한 곡을 다시 열어 이어서 완성해보세요.</p></div><button type="button" className="library-primary-button" onClick={handleOpenCreateDialog}><b>+</b> 새 음악 설정</button></section>
         <section className="library-summary" aria-label="프로젝트 요약">
           <button type="button" className={activeTab === 'all' || activeTab === 'recent' ? 'is-active' : ''} onClick={() => setActiveTab('recent')}><i><LibraryIcon name="music" /></i><span><b>내 작업</b><strong>{counts.work}<small>개</small></strong><em>내가 만든 작곡 프로젝트</em></span><LibraryIcon name="chevron" /></button>
           <button type="button" className={activeTab === 'shared' ? 'is-active' : ''} onClick={() => setActiveTab('shared')}><i><LibraryIcon name="share" /></i><span><b>공유됨</b><strong>{counts.shared}<small>개</small></strong><em>다른 사용자와 공유한 곡</em></span><LibraryIcon name="chevron" /></button>
@@ -233,7 +251,7 @@ export default function ProjectLibraryPage() {
         <section className="library-toolbar"><div className="library-tabs" role="tablist" aria-label="내 음악 필터">{(Object.keys(tabLabels) as LibraryTab[]).map((tab) => <button key={tab} type="button" role="tab" aria-selected={activeTab === tab} className={activeTab === tab ? 'is-active' : ''} onClick={() => setActiveTab(tab)}>{tabLabels[tab]}</button>)}</div><div className="library-tools"><label><LibraryIcon name="search" /><input value={query} onChange={(event) => setQuery(event.target.value)} placeholder="작업 제목, 아티스트명으로 검색하세요..." /></label><select value={sortOrder} onChange={(event) => setSortOrder(event.target.value as SortOrder)} aria-label="정렬"><option value="latest">최신순</option><option value="oldest">오래된순</option><option value="title">제목순</option></select></div></section>
         <section className="library-list" aria-label={tabLabels[activeTab]}>
           {isLoading ? <div className="library-loading">작업 목록을 불러오는 중입니다.</div> : entries.map((entry) => entry.kind === 'project' ? renderProjectCard(entry.project) : renderCollabCard(entry.project))}
-          {!isLoading && !entries.length ? <div className="library-empty"><i><LibraryIcon name="music" /></i><strong>{query ? '검색 결과가 없습니다.' : '아직 저장한 작업이 없습니다.'}</strong><span>{query ? '검색어를 바꾸거나 다른 분류를 확인해보세요.' : '지금 바로 첫 번째 곡을 만들어보세요.'}</span><div><button type="button" className="is-primary" onClick={handleOpenCreateDialog}><b>+</b> 새 작곡 만들기</button><button type="button" onClick={() => navigate('/composer')}><LibraryIcon name="edit" /> 스튜디오로 이동</button></div></div> : null}
+          {!isLoading && !entries.length ? <div className="library-empty"><i><LibraryIcon name="music" /></i><strong>{query ? '검색 결과가 없습니다.' : '아직 저장한 작업이 없습니다.'}</strong><span>{query ? '검색어를 바꾸거나 다른 분류를 확인해보세요.' : '지금 바로 첫 번째 곡을 만들어보세요.'}</span><div><button type="button" className="is-primary" onClick={handleOpenCreateDialog}><b>+</b> 새 음악 설정</button><button type="button" onClick={() => navigate('/composer')}><LibraryIcon name="edit" /> 스튜디오로 이동</button></div></div> : null}
         </section>
       </main>
       {isCreateDialogOpen ? (
@@ -319,6 +337,60 @@ export default function ProjectLibraryPage() {
                       {tempo}
                     </button>
                   ))}
+                </div>
+              </fieldset>
+
+              <fieldset className="library-create-signature">
+                <legend>박자표</legend>
+                <div className="library-create-signature-presets" aria-label="자주 쓰는 박자표">
+                  {COMMON_TIME_SIGNATURES.map((signature) => {
+                    const active =
+                      newProjectBeats === signature.beats &&
+                      newProjectBeatType === signature.beatType;
+                    return (
+                      <button
+                        key={`${signature.beats}-${signature.beatType}`}
+                        type="button"
+                        className={active ? 'is-active' : ''}
+                        onClick={() => {
+                          setNewProjectBeats(signature.beats);
+                          setNewProjectBeatType(signature.beatType);
+                        }}
+                      >
+                        {signature.beats}/{signature.beatType}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="library-create-signature-custom">
+                  <label>
+                    <span>분자</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={32}
+                      value={newProjectBeats}
+                      onChange={(event) =>
+                        setNewProjectBeats(
+                          Math.min(32, Math.max(1, Number(event.target.value) || 1))
+                        )
+                      }
+                    />
+                  </label>
+                  <span aria-hidden="true">/</span>
+                  <label>
+                    <span>분모</span>
+                    <select
+                      value={newProjectBeatType}
+                      onChange={(event) =>
+                        setNewProjectBeatType(Number(event.target.value) as TimeSignatureBeatType)
+                      }
+                    >
+                      {[2, 4, 8, 16].map((beatType) => (
+                        <option key={beatType} value={beatType}>{beatType}</option>
+                      ))}
+                    </select>
+                  </label>
                 </div>
               </fieldset>
 

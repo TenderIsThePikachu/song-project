@@ -67,7 +67,7 @@ const INITIAL_NOTIFICATIONS: AppNotification[] = [
     kind: 'collab',
     title: '협업 모집 알림',
     body: '모집글 지원과 승인 상태를 여기서 확인할 수 있습니다.',
-    route: '/community/sessions',
+    route: '/collab',
     createdAt: new Date('2026-03-22T07:20:00+09:00').getTime(),
     isRead: false,
     actorName: 'songmaker',

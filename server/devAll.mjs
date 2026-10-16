@@ -13,6 +13,9 @@ const viteBinPath = join(rootDir, 'node_modules', 'vite', 'bin', 'vite.js');
 
 loadServerEnv();
 
+// Local development starts with useful community content without affecting deployment data.
+process.env.COMMUNITY_DEMO_SEED ??= 'true';
+
 if (!existsSync(viteBinPath)) {
   console.error('[dev:all] Vite 실행 파일을 찾지 못했습니다. 먼저 npm install 상태를 확인해 주세요.');
   process.exit(1);

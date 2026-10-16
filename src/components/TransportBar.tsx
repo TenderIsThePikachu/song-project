@@ -14,6 +14,15 @@ import { useAuthStore } from '../store/authStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import { COLLAB_MEMBER_COLOR_OPTIONS } from '../utils/collabMemberColor.ts';
 import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
+import {
+  TIME_SIGNATURE_BEAT_TYPES,
+  formatTimeSignature,
+  getBarCountForSteps,
+  getBarInfoAtIndex,
+  getBarInfoAtStep,
+  getTimeSignatureAtStep,
+  type TimeSignatureBeatType,
+} from '../utils/timeSignature.ts';
 import './TransportBar.css';
 
 const DEFAULT_AI_TEMPLATE = `분위기:
@@ -24,7 +33,6 @@ const DEFAULT_AI_TEMPLATE = `분위기:
 강조하고 싶은 요소:`;
 
 const SAVE_BACKUP_STORAGE_KEY = 'song-maker-project-backups';
-const BAR_LENGTH = 16;
 const GO_TO_FIRST_BAR_EVENT = 'composer-go-to-first-bar';
 
 const GENRE_GROUPS = [
@@ -379,6 +387,10 @@ export const TransportBar = ({
   const bpm = useSongStore((state) => state.bpm);
   const setBpm = useSongStore((state) => state.setBpm);
   const steps = useSongStore((state) => state.steps);
+  const timeSignature = useSongStore((state) => state.timeSignature);
+  const timeSignatureChanges = useSongStore((state) => state.timeSignatureChanges);
+  const setTimeSignatureChange = useSongStore((state) => state.setTimeSignatureChange);
+  const removeTimeSignatureChange = useSongStore((state) => state.removeTimeSignatureChange);
   const isPlaying = useSongStore((state) => state.isPlaying);
   const setPlaying = useSongStore((state) => state.setPlaying);
   const currentStep = useSongStore((state) => state.currentStep);
@@ -409,6 +421,17 @@ export const TransportBar = ({
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
+  const [isMeterPanelOpen, setIsMeterPanelOpen] = useState(false);
+  const currentBarInfo = getBarInfoAtStep(timeSignatureChanges, timeSignature, currentStep);
+  const currentTimeSignature = getTimeSignatureAtStep(
+    timeSignatureChanges,
+    timeSignature,
+    currentStep
+  );
+  const [meterBeats, setMeterBeats] = useState(currentTimeSignature.beats);
+  const [meterBeatType, setMeterBeatType] = useState<TimeSignatureBeatType>(
+    currentTimeSignature.beatType
+  );
 
   const filledLyricBars = barLyrics.flatMap((line, index) =>
     line.trim() ? [{ text: line.trim(), bar: lyricsStartBar + index }] : []
@@ -544,10 +567,10 @@ export const TransportBar = ({
   const [backingTrackVolume] = useState(0.7);
   const [backingTrackSourceBpm] = useState(bpm);
   const [playbackBar, setPlaybackBar] = useState(
-    () => Math.floor(currentStep / BAR_LENGTH) + 1
+    () => getBarInfoAtStep(timeSignatureChanges, timeSignature, currentStep).index + 1
   );
 
-  const currentBar = isPlaying ? playbackBar : Math.floor(currentStep / BAR_LENGTH) + 1;
+  const currentBar = isPlaying ? playbackBar : currentBarInfo.index + 1;
   const currentCollabMember = collabMembers.find((member) => member.isCurrent);
   const onlineCollaboratorCount = collabMembers.filter(
     (member) => member.isOnline && !member.isCurrent
@@ -563,7 +586,13 @@ export const TransportBar = ({
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, [isCollabMenuOpen]);
-  const totalBars = Math.max(1, Math.ceil(steps / BAR_LENGTH));
+  const totalBars = getBarCountForSteps(timeSignatureChanges, timeSignature, steps);
+
+  useEffect(() => {
+    if (!isMeterPanelOpen) return;
+    setMeterBeats(currentTimeSignature.beats);
+    setMeterBeatType(currentTimeSignature.beatType);
+  }, [currentTimeSignature.beatType, currentTimeSignature.beats, isMeterPanelOpen]);
 
   useEffect(() => {
     setEditableSongTitle(songTitle);
@@ -646,9 +675,7 @@ export const TransportBar = ({
       const previousStep = previousPlaybackStepRef.current;
       previousPlaybackStepRef.current = step;
 
-      if (step % BAR_LENGTH === 0) {
-        setPlaybackBar(Math.floor(step / BAR_LENGTH) + 1);
-      }
+      setPlaybackBar(getBarInfoAtStep(timeSignatureChanges, timeSignature, step).index + 1);
 
       if (!backingTrackName) return;
       const loopRestarted = loopRange
@@ -666,7 +693,7 @@ export const TransportBar = ({
 
     window.addEventListener('composer-playhead-step', handlePlaybackStep);
     return () => window.removeEventListener('composer-playhead-step', handlePlaybackStep);
-  }, [backingTrackName, backingTrackSourceBpm, loopRange, setCurrentStep]);
+  }, [backingTrackName, backingTrackSourceBpm, loopRange, setCurrentStep, timeSignature, timeSignatureChanges]);
 
   const createProjectSnapshot = (): SongProject => {
     return buildSongProjectSnapshot(useSongStore.getState());
@@ -738,7 +765,7 @@ export const TransportBar = ({
         ? Math.min(loopEnd, Math.max(loopStart, currentStep))
         : Math.min(steps - 1, Math.max(0, currentStep));
       setCurrentStep(startStep);
-      setPlaybackBar(Math.floor(startStep / BAR_LENGTH) + 1);
+      setPlaybackBar(getBarInfoAtStep(timeSignatureChanges, timeSignature, startStep).index + 1);
       previousPlaybackStepRef.current = startStep;
       await preparePlaybackEngine(startStep);
       Tone.Transport.bpm.value = bpm;
@@ -1075,6 +1102,115 @@ export const TransportBar = ({
           <strong className="transport-value">
             {currentBar}/{totalBars}
           </strong>
+          <div className="transport-meter-control">
+            <button
+              type="button"
+              className={`transport-meter-button${isMeterPanelOpen ? ' is-open' : ''}`}
+              title="현재 마디부터 박자 변경"
+              aria-expanded={isMeterPanelOpen}
+              onClick={() => setIsMeterPanelOpen((open) => !open)}
+            >
+              {formatTimeSignature(currentTimeSignature)}
+            </button>
+            {isMeterPanelOpen ? (
+              <div className="transport-meter-popover" role="dialog" aria-label="변박 설정">
+                <strong>{currentBarInfo.index + 1}마디부터 박자 변경</strong>
+                <div className="transport-meter-fields">
+                  <label>
+                    <span>박</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={32}
+                      value={meterBeats}
+                      onChange={(event) =>
+                        setMeterBeats(Math.min(32, Math.max(1, Number(event.target.value) || 1)))
+                      }
+                    />
+                  </label>
+                  <span aria-hidden="true">/</span>
+                  <label>
+                    <span>음표</span>
+                    <select
+                      value={meterBeatType}
+                      onChange={(event) =>
+                        setMeterBeatType(Number(event.target.value) as TimeSignatureBeatType)
+                      }
+                    >
+                      {TIME_SIGNATURE_BEAT_TYPES.map((beatType) => (
+                        <option key={beatType} value={beatType}>{beatType}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="transport-meter-list" aria-label="변박 목록">
+                  {timeSignatureChanges.map((change) => {
+                    const changeBar = getBarInfoAtIndex(
+                      timeSignatureChanges,
+                      timeSignature,
+                      change.bar
+                    );
+                    return (
+                      <div
+                        key={`${change.bar}-${change.beats}-${change.beatType}`}
+                        className={change.bar === currentBarInfo.index ? 'is-current' : ''}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentStep(changeBar.start);
+                            setIsMeterPanelOpen(false);
+                          }}
+                        >
+                          <span>{change.bar + 1}마디</span>
+                          <strong>{formatTimeSignature(change)}</strong>
+                        </button>
+                        {change.bar > 0 ? (
+                          <button
+                            type="button"
+                            className="transport-meter-remove"
+                            aria-label={`${change.bar + 1}마디 변박 삭제`}
+                            title="변박 삭제"
+                            onClick={() => removeTimeSignatureChange(changeBar.start)}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="transport-meter-actions">
+                  {currentBarInfo.start > 0 && timeSignatureChanges.some(
+                    (change) => change.bar === currentBarInfo.index
+                  ) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeTimeSignatureChange(currentBarInfo.start);
+                        setIsMeterPanelOpen(false);
+                      }}
+                    >
+                      변경 삭제
+                    </button>
+                  ) : <span />}
+                  <button
+                    type="button"
+                    className="is-primary"
+                    onClick={() => {
+                      setTimeSignatureChange(currentBarInfo.start, {
+                        beats: meterBeats,
+                        beatType: meterBeatType,
+                      });
+                      setIsMeterPanelOpen(false);
+                    }}
+                  >
+                    적용
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className={`transport-status-chip${lyricsActive ? ' is-active' : ''}`}
