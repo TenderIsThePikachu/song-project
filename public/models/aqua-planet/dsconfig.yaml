@@ -1,0 +1,32 @@
+phonemes: dsmain/phonemes.json
+languages: dsmain/languages.json
+use_lang_id: true
+acoustic: dsmain/acoustic.onnx
+hidden_size: 256
+vocoder: pc_nsf_hifigan_44.1k_hop512_128bin_2025.02
+speakers:
+- dsmain/embeds/acoustic/base
+augmentation_args:
+  random_pitch_shifting:
+    range:
+    - -5.0
+    - 5.0
+use_key_shift_embed: true
+use_speed_embed: true
+use_energy_embed: false
+use_breathiness_embed: false
+use_voicing_embed: false
+use_tension_embed: true
+use_continuous_acceleration: true
+use_variable_depth: true
+max_depth: 0.6
+sample_rate: 44100
+hop_size: 512
+win_size: 2048
+fft_size: 2048
+num_mel_bins: 128
+mel_fmin: 40
+mel_fmax: 16000
+mel_base: e
+mel_scale: slaney
+singer_type: diffsinger

@@ -1,0 +1,7 @@
+name=Aqua Planet DS 1.0_T
+Version: 1.0_Tention_250621
+author=@comet_UTAU (Twitter) / cometutau@gmail.com
+sample=A_SAMPLE_PoleyBungee.wav
+Voice: Comet (@comet_UTAU)
+Web: https://cometutau.wixsite.com/utau-aqua-planet
+Web2: cometutau.wixsite.com/comet-home

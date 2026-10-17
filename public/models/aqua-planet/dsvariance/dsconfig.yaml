@@ -1,0 +1,15 @@
+phonemes: ../dsmain/phonemes.json
+languages: ../dsmain/languages.json
+linguistic: ../dsmain/linguistic.onnx
+variance: variance.onnx
+use_continuous_acceleration: true
+sample_rate: 44100
+hop_size: 512
+predict_dur: true
+predict_voicing: false
+predict_tension: true
+predict_energy: false
+predict_breathiness: false
+use_lang_id: true
+speakers:
+- ../dsmain/embeds/variance/base

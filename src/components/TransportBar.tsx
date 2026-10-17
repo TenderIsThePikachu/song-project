@@ -13,6 +13,7 @@ import { useSongStore, buildSongProjectSnapshot } from '../store/songStore.ts';
 import { useAuthStore } from '../store/authStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import { COLLAB_MEMBER_COLOR_OPTIONS } from '../utils/collabMemberColor.ts';
+import { fetchAiMusic } from '../utils/aiSong.ts';
 import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
 import {
   TIME_SIGNATURE_BEAT_TYPES,
@@ -419,6 +420,7 @@ export const TransportBar = ({
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
+  const [isGeneratingComposition, setIsGeneratingComposition] = useState(false);
   const [isMeterPanelOpen, setIsMeterPanelOpen] = useState(false);
   const currentBarInfo = getBarInfoAtStep(timeSignatureChanges, timeSignature, currentStep);
   const currentTimeSignature = getTimeSignatureAtStep(
@@ -960,6 +962,47 @@ export const TransportBar = ({
       alert(`공유에 실패했습니다.\n\n${message}`);
     } finally {
       setIsUploadingShareCover(false);
+    }
+  };
+
+  const handleAiGenerate = async () => {
+    const summary = aiSummary.trim();
+    const details = aiDetails.trim();
+
+    if (!summary && !details) {
+      alert('AI에게 전달할 분위기나 조건을 적어 주세요.');
+      return;
+    }
+
+    const prompt = [
+      summary ? `한 줄 설명: ${summary}` : '',
+      details ? `상세 요청:\n${details}` : '',
+      [
+        '현재 프로젝트 설정:',
+        `- BPM: ${bpm}`,
+        `- Steps: ${steps}`,
+        `- Melody Volume: ${volumes.melody}`,
+        `- Drums Volume: ${volumes.drums}`,
+        `- Bass Volume: ${volumes.bass}`,
+        `- Guitar Volume: ${volumes.guitar}`,
+      ].join('\n'),
+    ]
+      .filter(Boolean)
+      .join('\n\n');
+
+    setIsGeneratingComposition(true);
+    try {
+      const generatedProject = await fetchAiMusic(prompt);
+      useSongStore.getState().loadProject(generatedProject);
+      setIsAiPanelOpen(false);
+      alert('AI 작곡 데모 곡을 불러왔습니다.');
+    } catch (error) {
+      console.error('AI composition generation failed:', error);
+      const message =
+        error instanceof Error ? error.message : 'AI 생성 요청을 처리하지 못했습니다.';
+      alert(`AI 생성에 실패했습니다.\n\n${message}`);
+    } finally {
+      setIsGeneratingComposition(false);
     }
   };
 
@@ -1615,9 +1658,10 @@ export const TransportBar = ({
               <button
                 type="button"
                 className="transport-button transport-button--accent transport-ai-submit is-open"
-                onClick={() => alert('작곡 AI 생성 서버가 아직 연결되지 않았습니다.')}
+                onClick={() => void handleAiGenerate()}
+                disabled={isGeneratingComposition}
               >
-                ✦ AI로 생성
+                {isGeneratingComposition ? '생성 중...' : '✦ AI로 생성'}
               </button>
             </div>
           </section>

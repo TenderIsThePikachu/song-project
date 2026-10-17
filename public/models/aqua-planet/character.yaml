@@ -1,0 +1,12 @@
+default_phonemizer: OpenUtau.Core.DiffSinger.DiffSingerPhonemizer
+singer_type: diffsinger
+subbanks:
+- color: '01: base'
+  suffix: dsmain/embeds/acoustic/base
+
+text_file_encoding: utf-8
+
+image: OMAKE\A_Planet DS_01_S.png
+portrait: OMAKE\Aqua Planet DS 1.0_Standing_default+BG.png
+portrait_opacity: 0.45
+portrait_height: 800

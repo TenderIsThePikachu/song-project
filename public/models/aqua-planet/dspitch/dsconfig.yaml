@@ -1,0 +1,13 @@
+phonemes: ../dsmain/phonemes.json
+languages: ../dsmain/languages.json
+linguistic: ../dsmain/linguistic.onnx
+predict_dur: true
+pitch: pitch.onnx
+use_expr: true
+use_continuous_acceleration: true
+sample_rate: 44100
+hop_size: 512
+use_lang_id: true
+speakers:
+- ../dsmain/embeds/variance/base
+use_note_rest: true
