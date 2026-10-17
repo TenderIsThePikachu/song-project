@@ -48,6 +48,10 @@ function getInitial(value: string) {
   return value.trim().slice(0, 1).toUpperCase() || '?';
 }
 
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
+}
+
 function getConnectionLabel(status: ReturnType<typeof useCollabStore.getState>['connectionStatus']) {
   if (status === 'connected') return '실시간 서버 연결됨';
   if (status === 'connecting') return '실시간 서버 연결 중';
@@ -79,6 +83,7 @@ export default function CollabPage() {
   const [isManagingProject, setIsManagingProject] = useState(false);
   const [isCreateDialogOpen, setIsCreateDialogOpen] = useState(false);
   const [creatingProjectId, setCreatingProjectId] = useState<string | null>(null);
+  const [openingProjectId, setOpeningProjectId] = useState<string | null>(null);
 
   useEffect(() => {
     void initializeRealtime().catch(console.error);
@@ -185,25 +190,28 @@ export default function CollabPage() {
       return;
     }
 
-    const isMember = project.members.some((member) => member.email === user.email);
+    const normalizedUserEmail = normalizeEmail(user.email);
+    const isMember = project.members.some(
+      (member) => normalizeEmail(member.email) === normalizedUserEmail
+    );
     if (isMember) {
       navigate(`/collab/${project.id}`);
       return;
     }
 
-    if (isLocalHost) {
-      try {
-        setActionError('');
-        await joinProject(project.id, user);
-        navigate(`/collab/${project.id}`);
-      } catch (error) {
-        console.error(error);
-        setActionError(error instanceof Error ? error.message : '로컬 작업실에 들어가지 못했습니다.');
-      }
-      return;
-    }
+    if (openingProjectId) return;
 
-    setActionError('이 작업실은 승인된 멤버만 열 수 있습니다.');
+    try {
+      setOpeningProjectId(project.id);
+      setActionError('');
+      await joinProject(project.id, user);
+      navigate(`/collab/${project.id}`);
+    } catch (error) {
+      console.error(error);
+      setActionError(error instanceof Error ? error.message : '협업 작업실에 들어가지 못했습니다.');
+    } finally {
+      setOpeningProjectId(null);
+    }
   };
 
   const handleCreateFromFirstProject = () => {
@@ -338,7 +346,12 @@ export default function CollabPage() {
 
             <div className="collab-project-list">
               {sortedProjects.length ? sortedProjects.map((project, index) => {
-                const isMember = user ? project.members.some((member) => member.email === user.email) : false;
+                const isMember = user
+                  ? project.members.some(
+                      (member) => normalizeEmail(member.email) === normalizeEmail(user.email)
+                    )
+                  : false;
+                const isOpening = openingProjectId === project.id;
                 const isOwner = user
                   ? project.ownerEmail.trim().toLowerCase() === user.email.trim().toLowerCase()
                   : false;
@@ -350,7 +363,12 @@ export default function CollabPage() {
 
                 return (
                   <article className="collab-project-card" key={project.id}>
-                    <button type="button" className="collab-project-main" onClick={() => void handleOpenProject(project)}>
+                    <button
+                      type="button"
+                      className="collab-project-main"
+                      onClick={() => void handleOpenProject(project)}
+                      disabled={isOpening}
+                    >
                       <img className="collab-project-cover" src={COLLAB_COVERS[index % COLLAB_COVERS.length]} alt="" />
                       <span className="collab-project-copy">
                         <strong>{project.title}</strong>
@@ -412,12 +430,10 @@ export default function CollabPage() {
                     <button
                       type="button"
                       className="collab-card-open"
-                      onClick={() => handleOpenProject(project)}
-                      disabled={!isMember && !isLocalHost}
+                      onClick={() => void handleOpenProject(project)}
+                      disabled={isOpening}
                     >
-                      {isMember || isLocalHost
-                        ? '작업실 열기'
-                        : '멤버 전용'}
+                      {isOpening ? '입장 중' : isMember ? '작업실 열기' : '참여하고 열기'}
                     </button>
                   </article>
                 );

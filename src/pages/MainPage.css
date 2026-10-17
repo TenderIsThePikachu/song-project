@@ -6,7 +6,6 @@
   font-family: Pretendard, 'Pretendard Variable', 'Noto Sans KR', 'Malgun Gothic', sans-serif;
 }
 
-html body .main-page,
 html[data-theme='light'] body .main-page { background: #ffffff !important; }
 
 .main-page *,
@@ -422,6 +421,120 @@ html[data-theme='light'] body .main-page { background: #ffffff !important; }
   font-size: 12px !important;
   font-weight: 900 !important;
   line-height: 1 !important;
+}
+
+html[data-theme='dark'] body .main-page {
+  background: #0b0f15 !important;
+  color: #eef3fa;
+}
+
+html[data-theme='dark'] .main-recommendation-heading h1 {
+  color: #f4f7fc;
+}
+
+html[data-theme='dark'] .main-recommendation-heading p {
+  color: #93a1b5;
+}
+
+html[data-theme='dark'] .main-cover-card {
+  border-color: #283242;
+  background: #141a23;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, .42);
+}
+
+html[data-theme='dark'] .main-cover-title {
+  color: #f2f6fb;
+}
+
+html[data-theme='dark'] .main-cover-artist,
+html[data-theme='dark'] .main-cover-time-row,
+html[data-theme='dark'] .main-side-play-row {
+  color: #93a2b7;
+}
+
+html[data-theme='dark'] .main-cover-progression {
+  color: #c0cbda;
+}
+
+html[data-theme='dark'] .main-cover-wave i {
+  background: #344052;
+}
+
+html[data-theme='dark'] .main-cover-progress::before {
+  background: #334052;
+}
+
+html[data-theme='dark'] .main-cover-controls button,
+html[data-theme='dark'] .main-side-play-row button {
+  color: #dce5f1;
+}
+
+html[data-theme='dark'] .main-cover-controls button:hover,
+html[data-theme='dark'] .main-cover-controls button.is-active {
+  background: #202c38;
+  color: #55d9b5;
+}
+
+html[data-theme='dark'] .main-cover-controls button.is-play {
+  background: #11b98d;
+  color: #ffffff;
+}
+
+html[data-theme='dark'] .main-side-play-row button {
+  background: #35445a;
+}
+
+html[data-theme='dark'] .main-cover-arrow {
+  border-color: #303b4b;
+  background: #171e28;
+  box-shadow: 0 10px 28px rgba(0, 0, 0, .34);
+  color: #edf3fb;
+}
+
+html[data-theme='dark'] .main-cover-pagination button {
+  background: #394559;
+}
+
+html[data-theme='dark'] .main-cover-pagination button.is-active {
+  background: #20c79b;
+}
+
+html[data-theme='dark'] .main-trending {
+  border-color: #283242;
+  background: #121821;
+  box-shadow: 0 14px 38px rgba(0, 0, 0, .34);
+}
+
+html[data-theme='dark'] .main-trending-heading,
+html[data-theme='dark'] .main-trending-item {
+  color: #edf3fa;
+}
+
+html[data-theme='dark'] .main-trending-heading i {
+  border-color: #344052;
+  color: #e4ebf5;
+}
+
+html[data-theme='dark'] .main-trending-heading span,
+html[data-theme='dark'] .main-trending-item b,
+html[data-theme='dark'] .main-trending-item small {
+  color: #8998ad;
+}
+
+html[data-theme='dark'] .main-trending-item {
+  border-left-color: #2b3545;
+}
+
+html[data-theme='dark'] .main-trending-item:hover {
+  background: #19232d;
+}
+
+html[data-theme='dark'] .main-empty-state {
+  color: #edf3fa;
+}
+
+html[data-theme='dark'] .main-empty-state span {
+  color: #93a1b5;
 }
 
 @media (max-width: 1180px) {

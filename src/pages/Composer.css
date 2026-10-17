@@ -2233,6 +2233,7 @@
 
 .composer-drum-step-number {
   appearance: none;
+  position: relative;
   border: 0;
   display: flex;
   align-items: center;
@@ -2246,6 +2247,23 @@
   font-size: 0;
   font-weight: 700;
   cursor: pointer;
+}
+
+.composer-drum-bar-number {
+  display: inline-flex;
+  align-items: baseline;
+  gap: 5px;
+  color: #e6edf7;
+  font-size: 12px;
+  font-weight: 800;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+.composer-drum-bar-number small {
+  color: #73dfc0;
+  font-size: 9px;
+  font-weight: 800;
 }
 
 .composer-drum-step-number.is-current,
@@ -3490,7 +3508,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 }
 
 .composer-roll-shell .piano-roll-cell.is-melody.is-sharp:not(.is-active) {
-  background: rgba(255, 255, 255, .018);
+  background: rgba(255, 255, 255, .045);
 }
 
 .composer-roll-shell .piano-roll-cell.is-melody.is-locked {

@@ -430,6 +430,56 @@ export function getMusicShareSnapshot() {
   };
 }
 
+export function updateMusicShareTrack(payload) {
+  const trackId = normalizeText(payload.trackId);
+  const creatorEmail = normalizeEmail(payload.creatorEmail);
+  const existingTrack = state.sharedTracks.find((item) => item.id === trackId);
+  const sharedProject = state.projects.find((item) => item.id === trackId && item.isShared);
+  const track = existingTrack ?? (sharedProject ? {
+    id: sharedProject.id,
+    title: sharedProject.title,
+    progression: `${sharedProject.steps} steps · ${sharedProject.bpm} BPM`,
+    reference: `${sharedProject.creatorName} 공유`,
+    category: 'pop',
+    tags: ['공유곡'],
+    palette: 'linear-gradient(180deg, rgba(57, 72, 87, 0.96), rgba(24, 30, 39, 0.98))',
+    createdAt: sharedProject.createdAt,
+    creatorName: sharedProject.creatorName,
+    creatorEmail: sharedProject.creatorEmail,
+    isSharedProject: true,
+    projectId: sharedProject.id,
+    project: sharedProject.project,
+    imageUrl: sharedProject.coverImageUrl,
+  } : null);
+
+  if (!track) throw new Error('수정할 공유곡을 찾을 수 없습니다.');
+  if (!creatorEmail || normalizeEmail(track.creatorEmail) !== creatorEmail) {
+    throw new Error('본인이 올린 공유곡만 수정할 수 있습니다.');
+  }
+
+  const allowedCategories = new Set(Object.keys(MUSIC_SHARE_DEFAULT_IMAGES));
+  const category = normalizeText(payload.category, track.category);
+  const nextTrack = {
+    ...track,
+    title: normalizeText(payload.title, track.title),
+    reference: normalizeText(payload.reference),
+    progression: normalizeText(payload.progression),
+    category: allowedCategories.has(category) ? category : track.category,
+    tags: Array.isArray(payload.tags)
+      ? payload.tags.map((tag) => normalizeText(tag)).filter(Boolean).slice(0, 10)
+      : track.tags,
+    youtubeUrl: normalizeText(payload.youtubeUrl),
+    updatedAt: Date.now(),
+  };
+
+  state = {
+    ...state,
+    sharedTracks: [nextTrack, ...state.sharedTracks.filter((item) => item.id !== trackId)],
+  };
+  saveState();
+  return getMusicShareSnapshot();
+}
+
 export function saveMusicShareImageFile(payload) {
   ensureUploadDirs();
   const ext = extname(payload.fileName || '').toLowerCase() || '.jpg';

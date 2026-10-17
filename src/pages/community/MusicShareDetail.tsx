@@ -14,17 +14,22 @@ import { useAuthStore } from '../../store/authStore';
 import { useComposerLibraryStore } from '../../store/composerLibraryStore';
 import { useMusicShareStore } from '../../store/musicShareStore';
 import { useNotificationStore } from '../../store/notificationStore';
+import { useShortsStore } from '../../store/shortsStore';
 import { useSongStore } from '../../store/songStore';
 import { getProjectFromSharedTrack } from '../../utils/songSketchDna';
 import './MusicShareDetail.css';
 
-function formatCount(value: number) {
-  if (value >= 10000) {
-    return `${(value / 10000).toFixed(1)}만`;
-  }
-
-  return value.toLocaleString('ko-KR');
-}
+const EDIT_CATEGORY_OPTIONS: Array<{ value: MusicShareTrackCard['category']; label: string }> = [
+  { value: 'classic', label: '클래식' },
+  { value: 'pop', label: '팝' },
+  { value: 'ballad', label: '발라드' },
+  { value: 'jazz', label: '재즈' },
+  { value: 'citypop', label: '시티팝' },
+  { value: 'ost', label: 'OST' },
+  { value: 'anime', label: '애니메이션' },
+  { value: 'game', label: '게임' },
+  { value: 'rock', label: '록' },
+];
 
 function formatDate(value: number) {
   return new Date(value).toLocaleDateString('ko-KR');
@@ -46,12 +51,27 @@ function downloadBlob(blob: Blob, filename: string) {
   URL.revokeObjectURL(url);
 }
 
+function normalizeText(value?: string) {
+  return value?.trim().toLocaleLowerCase('ko-KR') ?? '';
+}
+
+function syncShortAudioToVideo(video: HTMLVideoElement, audio: HTMLAudioElement) {
+  const targetTime = Number.isFinite(audio.duration) && audio.duration > 0
+    ? video.currentTime % audio.duration
+    : video.currentTime;
+
+  if (Math.abs(audio.currentTime - targetTime) > 0.3) {
+    audio.currentTime = targetTime;
+  }
+}
+
 export default function MusicShareDetail() {
   const { trackId } = useParams<{ trackId: string }>();
   const navigate = useNavigate();
   const user = useAuthStore((state) => state.user);
   const projects = useComposerLibraryStore((state) => state.projects);
   const deleteTrack = useMusicShareStore((state) => state.deleteTrack);
+  const updateTrack = useMusicShareStore((state) => state.updateTrack);
   const favoriteTrackIdsByUser = useComposerLibraryStore((state) => state.favoriteTrackIdsByUser);
   const toggleFavoriteTrack = useComposerLibraryStore((state) => state.toggleFavoriteTrack);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
@@ -65,14 +85,27 @@ export default function MusicShareDetail() {
   const recordTrackDownload = useMusicShareStore((state) => state.recordTrackDownload);
   const recordTrackOpen = useMusicShareStore((state) => state.recordTrackOpen);
   const seedMusicShare = useMusicShareStore((state) => state.seedMusicShare);
+  const shorts = useShortsStore((state) => state.shorts);
+  const seedShorts = useShortsStore((state) => state.seedShorts);
   const loadProject = useSongStore((state) => state.loadProject);
   const pushNotification = useNotificationStore((state) => state.pushNotification);
   const [commentInput, setCommentInput] = useState('');
   const [feedbackBar, setFeedbackBar] = useState('1');
   const [isPreviewPreparing, setIsPreviewPreparing] = useState(false);
   const [isPreviewPlaying, setIsPreviewPlaying] = useState(false);
+  const [isEditOpen, setIsEditOpen] = useState(false);
+  const [isSavingEdit, setIsSavingEdit] = useState(false);
+  const [editError, setEditError] = useState('');
+  const [editTitle, setEditTitle] = useState('');
+  const [editReference, setEditReference] = useState('');
+  const [editProgression, setEditProgression] = useState('');
+  const [editCategory, setEditCategory] = useState<MusicShareTrackCard['category']>('pop');
+  const [editTags, setEditTags] = useState('');
+  const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewAudioUrlRef = useRef('');
+  const linkedShortVideoRef = useRef<HTMLVideoElement | null>(null);
+  const linkedShortAudioRef = useRef<HTMLAudioElement | null>(null);
 
   // 여기서 seedLibrary와 seedMusicShare가 사용됩니다. (에러 방지)
   useEffect(() => {
@@ -82,7 +115,10 @@ export default function MusicShareDetail() {
     void seedMusicShare().catch((error) => {
       console.error(error);
     });
-  }, [seedLibrary, seedMusicShare]);
+    void seedShorts().catch((error) => {
+      console.error(error);
+    });
+  }, [seedLibrary, seedMusicShare, seedShorts]);
 
   const trackLibrary = useMemo(
     () => [
@@ -96,7 +132,9 @@ export default function MusicShareDetail() {
     [projects, serverTracks]
   );
 
-  const track = trackLibrary.find((item) => item.id === trackId) ?? null;
+  const track = serverTracks.find((item) => item.id === trackId)
+    ?? trackLibrary.find((item) => item.id === trackId)
+    ?? null;
   const trackImageUrl = track ? getMusicShareTrackImage(track) : '';
   const metrics = track ? trackMetricsById[track.id] ?? { likeCount: 0, viewCount: 0, downloadCount: 0 } : null;
   
@@ -116,6 +154,30 @@ export default function MusicShareDetail() {
     if (!track) return null;
     return projects.find((item) => item.id === track.projectId)?.project ?? track.project ?? null;
   }, [projects, track]);
+  const linkedShort = useMemo(() => {
+    if (!track) return null;
+
+    const normalizedTrackTitle = normalizeText(track.title);
+    const normalizedTrackCreatorEmail = normalizeText(track.creatorEmail);
+
+    return [...shorts]
+      .filter((short) => {
+        if (!short.videoUrl) return false;
+        if (short.visibility === 'private' && short.creatorEmail !== user?.email) return false;
+
+        const hasMatchingId =
+          short.musicShareTrackId === track.id ||
+          short.musicProjectId === track.id ||
+          Boolean(track.projectId && short.musicProjectId === track.projectId);
+        const hasMatchingIdentity =
+          Boolean(normalizedTrackTitle) &&
+          normalizeText(short.musicProjectTitle) === normalizedTrackTitle &&
+          (!normalizedTrackCreatorEmail || normalizeText(short.creatorEmail) === normalizedTrackCreatorEmail);
+
+        return hasMatchingId || hasMatchingIdentity;
+      })
+      .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null;
+  }, [shorts, track, user?.email]);
 
   useEffect(() => {
     return () => {
@@ -249,6 +311,11 @@ export default function MusicShareDetail() {
   };
 
   const handleOpenYouTube = () => {
+    if (track.youtubeUrl && /^https?:\/\//i.test(track.youtubeUrl)) {
+      window.open(track.youtubeUrl, '_blank', 'noopener,noreferrer');
+      return;
+    }
+
     const query = encodeURIComponent(`${track.title} ${track.creatorName}`);
     window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank', 'noopener,noreferrer');
   };
@@ -268,7 +335,70 @@ export default function MusicShareDetail() {
     alert('공유 링크를 복사했습니다.');
   };
 
-const isOwner = user && track && user.name === track.creatorName;
+const isOwner = Boolean(
+  user &&
+  track &&
+  (track.creatorEmail
+    ? normalizeText(user.email) === normalizeText(track.creatorEmail)
+    : user.name === track.creatorName)
+);
+
+const handleOpenEdit = () => {
+  if (!isOwner) return;
+  setEditTitle(track.title);
+  setEditReference(track.reference);
+  setEditProgression(track.progression);
+  setEditCategory(track.category);
+  setEditTags(track.tags.join(', '));
+  setEditYoutubeUrl(track.youtubeUrl ?? '');
+  setEditError('');
+  setIsEditOpen(true);
+};
+
+const handleSaveEdit = async (event: React.FormEvent<HTMLFormElement>) => {
+  event.preventDefault();
+  if (!user || !isOwner || isSavingEdit) return;
+
+  const title = editTitle.trim();
+  if (!title) {
+    setEditError('곡 제목을 입력해 주세요.');
+    return;
+  }
+
+  const youtubeUrl = editYoutubeUrl.trim();
+  if (youtubeUrl) {
+    try {
+      const parsedUrl = new URL(youtubeUrl);
+      const hostname = parsedUrl.hostname.replace(/^www\./, '').toLowerCase();
+      if (!['youtube.com', 'm.youtube.com', 'music.youtube.com', 'youtu.be'].includes(hostname)) {
+        throw new Error('invalid host');
+      }
+    } catch {
+      setEditError('올바른 유튜브 링크를 입력해 주세요.');
+      return;
+    }
+  }
+
+  setIsSavingEdit(true);
+  setEditError('');
+  try {
+    await updateTrack({
+      trackId: track.id,
+      creatorEmail: user.email,
+      title,
+      reference: editReference.trim(),
+      progression: editProgression.trim(),
+      category: editCategory,
+      tags: editTags.split(',').map((tag) => tag.trim()).filter(Boolean),
+      youtubeUrl,
+    });
+    setIsEditOpen(false);
+  } catch (error) {
+    setEditError(error instanceof Error ? error.message : '공유곡을 수정하지 못했습니다.');
+  } finally {
+    setIsSavingEdit(false);
+  }
+};
 
 const handleDeleteTrack = async () => {
   // 🌟 [에러 2 해결] user나 track 데이터가 없으면 아예 함수 실행을 막습니다.
@@ -360,25 +490,6 @@ const handleDeleteTrack = async () => {
               <span>진행과 레퍼런스를 기준으로 바로 열어볼 수 있습니다.</span>
             </div>
 
-            <div className="music-share-detail-info-grid">
-              <div className="music-share-detail-info-card">
-                <span>조회수</span>
-                <strong>{formatCount(metrics.viewCount)}</strong>
-              </div>
-              <div className="music-share-detail-info-card">
-                <span>좋아요</span>
-                <strong>{formatCount(metrics.likeCount)}</strong>
-              </div>
-              <div className="music-share-detail-info-card">
-                <span>댓글</span>
-                <strong>{formatCount(comments.length)}</strong>
-              </div>
-              <div className="music-share-detail-info-card">
-                <span>다운로드</span>
-                <strong>{formatCount(metrics.downloadCount)}</strong>
-              </div>
-            </div>
-
             <div className="music-share-detail-tags">
               {track.tags?.map((tag) => (
                 <span key={tag}>#{tag}</span>
@@ -406,18 +517,55 @@ const handleDeleteTrack = async () => {
                 {getGenreLabel(track.category)} · {track.progression}
               </p>
 
-              <button
-                type="button"
-                className="music-share-detail-player-preview"
-                onClick={() => void handleTogglePreview()}
-                disabled={isPreviewPreparing}
-                aria-label={isPreviewPlaying ? '미리듣기 일시정지' : '미리듣기 재생'}
-              >
-                <span className={`music-share-detail-preview-play${isPreviewPlaying ? ' is-playing' : ''}`}>
-                  <i aria-hidden="true" />
-                </span>
-                {isPreviewPreparing ? <b>미리듣기 준비 중</b> : null}
-              </button>
+              {linkedShort?.videoUrl ? (
+                <div className="music-share-detail-player-preview has-short-video">
+                  <video
+                    ref={linkedShortVideoRef}
+                    src={linkedShort.videoUrl}
+                    controls
+                    playsInline
+                    preload="metadata"
+                    aria-label={`${linkedShort.title} 숏폼 영상`}
+                    muted={Boolean(linkedShort.audioUrl)}
+                    onPlay={(event) => {
+                      const audio = linkedShortAudioRef.current;
+                      if (!audio) return;
+                      syncShortAudioToVideo(event.currentTarget, audio);
+                      void audio.play().catch(() => undefined);
+                    }}
+                    onPause={() => linkedShortAudioRef.current?.pause()}
+                    onSeeked={(event) => {
+                      const audio = linkedShortAudioRef.current;
+                      if (audio) syncShortAudioToVideo(event.currentTarget, audio);
+                    }}
+                    onTimeUpdate={(event) => {
+                      const audio = linkedShortAudioRef.current;
+                      if (audio) syncShortAudioToVideo(event.currentTarget, audio);
+                    }}
+                  />
+                  {linkedShort.audioUrl ? (
+                    <audio
+                      ref={linkedShortAudioRef}
+                      src={linkedShort.audioUrl}
+                      preload="metadata"
+                      aria-hidden="true"
+                    />
+                  ) : null}
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  className="music-share-detail-player-preview"
+                  onClick={() => void handleTogglePreview()}
+                  disabled={isPreviewPreparing}
+                  aria-label={isPreviewPlaying ? '미리듣기 일시정지' : '미리듣기 재생'}
+                >
+                  <span className={`music-share-detail-preview-play${isPreviewPlaying ? ' is-playing' : ''}`}>
+                    <i aria-hidden="true" />
+                  </span>
+                  {isPreviewPreparing ? <b>미리듣기 준비 중</b> : null}
+                </button>
+              )}
 
               <button type="button" className="music-share-detail-service-link" onClick={handleOpenYouTube}>
                 <span className="music-share-detail-youtube-icon" aria-hidden="true"><i /></span>
@@ -430,6 +578,7 @@ const handleDeleteTrack = async () => {
                   {saved ? '추가됨' : '추가'}
                 </button>
                 <button type="button" onClick={() => void handleShareTrack()}>공유</button>
+                {isOwner ? <button type="button" onClick={handleOpenEdit}>수정</button> : null}
               </div>
             </section>
 
@@ -515,6 +664,37 @@ const handleDeleteTrack = async () => {
           </article>
         </section>
       </main>
+
+      {isEditOpen ? (
+        <div className="music-share-edit-overlay" role="presentation" onMouseDown={() => !isSavingEdit && setIsEditOpen(false)}>
+          <form
+            className="music-share-edit-dialog"
+            aria-label="공유곡 수정"
+            onSubmit={handleSaveEdit}
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <header>
+              <div><span>MY SHARED MUSIC</span><strong>공유곡 수정</strong></div>
+              <button type="button" aria-label="수정 창 닫기" onClick={() => setIsEditOpen(false)} disabled={isSavingEdit}>×</button>
+            </header>
+
+            <label><span>곡 제목</span><input value={editTitle} onChange={(event) => setEditTitle(event.target.value)} maxLength={80} /></label>
+            <div className="music-share-edit-row">
+              <label><span>장르</span><select value={editCategory} onChange={(event) => setEditCategory(event.target.value as MusicShareTrackCard['category'])}>{EDIT_CATEGORY_OPTIONS.map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select></label>
+              <label><span>코드 진행</span><input value={editProgression} onChange={(event) => setEditProgression(event.target.value)} maxLength={120} /></label>
+            </div>
+            <label><span>곡 설명</span><textarea value={editReference} onChange={(event) => setEditReference(event.target.value)} maxLength={300} /></label>
+            <label><span>태그</span><input value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder="발라드, 감성, 피아노" /></label>
+            <label><span>유튜브 링크</span><input type="url" value={editYoutubeUrl} onChange={(event) => setEditYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." /></label>
+
+            {editError ? <p className="music-share-edit-error">{editError}</p> : null}
+            <footer>
+              <button type="button" onClick={() => setIsEditOpen(false)} disabled={isSavingEdit}>취소</button>
+              <button type="submit" className="is-primary" disabled={isSavingEdit}>{isSavingEdit ? '저장 중...' : '저장'}</button>
+            </footer>
+          </form>
+        </div>
+      ) : null}
     </div>
   );
 }

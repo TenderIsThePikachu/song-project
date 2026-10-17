@@ -27,6 +27,7 @@ export type MusicShareSnapshot = {
     creatorName: string;
     creatorEmail?: string;
     imageUrl?: string;
+    youtubeUrl?: string;
     likeCount?: number;
     viewCount?: number;
     downloadCount?: number;
@@ -321,6 +322,49 @@ export async function deleteTrackOnServer(payload: { trackId: string }) {
   const commentsQuery = query(collection(db, 'music_share_comments'), where('trackId', '==', payload.trackId));
   const commentsSnap = await getDocs(commentsQuery);
   commentsSnap.forEach((commentDoc) => { deleteDoc(commentDoc.ref); });
+
+  return { snapshot: await fetchMusicShareBootstrap() };
+}
+
+export type UpdateMusicShareTrackPayload = {
+  trackId: string;
+  creatorEmail: string;
+  title: string;
+  reference: string;
+  progression: string;
+  category: string;
+  tags: string[];
+  youtubeUrl?: string;
+};
+
+export async function updateMusicShareTrackOnServer(
+  payload: UpdateMusicShareTrackPayload
+): Promise<{ snapshot: MusicShareSnapshot }> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: MusicShareSnapshot }>(
+      `/api/music-share/tracks/${encodeURIComponent(payload.trackId)}/update`,
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+  }
+
+  const trackRef = doc(db, 'music_share_tracks', payload.trackId);
+  const trackSnapshot = await getDoc(trackRef);
+  if (!trackSnapshot.exists()) throw new Error('수정할 공유곡을 찾을 수 없습니다.');
+
+  const ownerEmail = String(trackSnapshot.data().creatorEmail ?? '').trim().toLowerCase();
+  if (!ownerEmail || ownerEmail !== payload.creatorEmail.trim().toLowerCase()) {
+    throw new Error('본인이 올린 공유곡만 수정할 수 있습니다.');
+  }
+
+  await updateDoc(trackRef, {
+    title: payload.title.trim(),
+    reference: payload.reference.trim(),
+    progression: payload.progression.trim(),
+    category: payload.category,
+    tags: payload.tags,
+    youtubeUrl: payload.youtubeUrl?.trim() || '',
+    updatedAt: Date.now(),
+  });
 
   return { snapshot: await fetchMusicShareBootstrap() };
 }

@@ -39,6 +39,7 @@ import {
   serveMusicShareUpload,
   toggleFavoriteTrack,
   toggleTrackLike,
+  updateMusicShareTrack,
 } from './libraryService.mjs';
 import {
   addCommunityComment,
@@ -1987,6 +1988,16 @@ const server = createServer(async (request, response) => {
       const body = await readBody(request);
       maybeRequireSession(request, body.userEmail);
       const snapshot = recordTrackOpen(body);
+      writeJson(response, 200, { snapshot });
+      return;
+    }
+
+    const musicShareUpdateMatch = pathname.match(/^\/api\/music-share\/tracks\/([^/]+)\/update$/);
+    if (request.method === 'POST' && musicShareUpdateMatch) {
+      const body = await readBody(request);
+      body.trackId = decodeURIComponent(musicShareUpdateMatch[1]);
+      maybeRequireSession(request, body.creatorEmail);
+      const snapshot = updateMusicShareTrack(body);
       writeJson(response, 200, { snapshot });
       return;
     }

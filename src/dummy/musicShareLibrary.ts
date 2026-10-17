@@ -27,6 +27,7 @@ export type MusicShareTrackCard = {
   projectId?: string;
   creatorEmail?: string;
   imageUrl?: string;
+  youtubeUrl?: string;
   project?: SongProject;
 };
 

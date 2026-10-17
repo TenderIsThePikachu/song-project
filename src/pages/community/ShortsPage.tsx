@@ -4,6 +4,7 @@ import { useNavigate } from 'react-router-dom';
 import SiteHeader from '../../components/layout/SiteHeader';
 import { exportSongProjectAsMp3 } from '../../audio/engine';
 import { useAuthStore } from '../../store/authStore';
+import { useCollabStore } from '../../store/collabStore';
 import { useComposerLibraryStore, type ComposerProjectRecord } from '../../store/composerLibraryStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useShortsStore } from '../../store/shortsStore';
@@ -21,6 +22,13 @@ import { uploadShortAudioOnServer, uploadShortVideoOnServer } from '../../utils/
 import './ShortsPage.css';
 
 type ShortsFilter = 'all' | 'mine' | 'liked';
+
+type SelectableMusicProject = Pick<
+  ComposerProjectRecord,
+  'id' | 'title' | 'bpm' | 'steps' | 'updatedAt' | 'project'
+> & {
+  source: 'studio' | 'collab';
+};
 
 type ShortsFormState = {
   title: string;
@@ -148,7 +156,7 @@ function formatFileSize(bytes: number) {
   return `${Math.max(1, Math.round(bytes / 1024))}KB`;
 }
 
-function getProjectDurationLabel(project: ComposerProjectRecord) {
+function getProjectDurationLabel(project: SelectableMusicProject) {
   const durationSeconds = Math.max(1, Math.ceil((project.steps * 60) / (project.bpm * 4)));
   const minutes = Math.floor(durationSeconds / 60);
   const seconds = String(durationSeconds % 60).padStart(2, '0');
@@ -158,6 +166,16 @@ function getProjectDurationLabel(project: ComposerProjectRecord) {
 function getProjectAudioFileName(title: string) {
   const safeTitle = title.trim().replace(/[\\/:*?"<>|]/g, '-').replace(/\s+/g, ' ') || '내 음악';
   return `${safeTitle}.mp3`;
+}
+
+function syncAttachedAudio(video: HTMLVideoElement, audio: HTMLAudioElement) {
+  const targetTime = Number.isFinite(audio.duration) && audio.duration > 0
+    ? video.currentTime % audio.duration
+    : video.currentTime;
+
+  if (Math.abs(audio.currentTime - targetTime) > 0.3) {
+    audio.currentTime = targetTime;
+  }
 }
 
 function createFormState(short?: ShortItem, resolvedVideoUrl?: string): ShortsFormState {
@@ -195,6 +213,9 @@ export default function ShortsPage() {
   const libraryProjects = useComposerLibraryStore((state) => state.projects);
   const libraryStatus = useComposerLibraryStore((state) => state.bootstrapStatus);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
+  const collabProjects = useCollabStore((state) => state.projects);
+  const collabConnectionStatus = useCollabStore((state) => state.connectionStatus);
+  const initializeCollabRealtime = useCollabStore((state) => state.initializeRealtime);
   const musicShareTracks = useMusicShareStore((state) => state.tracks);
   const seedMusicShare = useMusicShareStore((state) => state.seedMusicShare);
   const shorts = useShortsStore((state) => state.shorts);
@@ -249,7 +270,10 @@ export default function ShortsPage() {
     void seedMusicShare().catch((error) => {
       console.error(error);
     });
-  }, [seedLibrary, seedMusicShare, user]);
+    void initializeCollabRealtime().catch((error) => {
+      console.error(error);
+    });
+  }, [initializeCollabRealtime, seedLibrary, seedMusicShare, user]);
 
   const findMusicShareTrackId = useCallback(
     (musicProjectId?: string, musicProjectTitle?: string, creatorEmail?: string) => {
@@ -272,10 +296,43 @@ export default function ShortsPage() {
   );
 
   const myMusicProjects = useMemo(
-    () => libraryProjects
-      .filter((project) => project.creatorEmail === user?.email)
-      .sort((left, right) => right.updatedAt - left.updatedAt),
-    [libraryProjects, user?.email]
+    () => {
+      const normalizedUserEmail = user?.email.trim().toLowerCase();
+      if (!normalizedUserEmail) return [];
+
+      const studioProjects: SelectableMusicProject[] = libraryProjects
+        .filter((project) => project.creatorEmail.trim().toLowerCase() === normalizedUserEmail)
+        .map((project) => ({
+          id: project.id,
+          title: project.title,
+          bpm: project.bpm,
+          steps: project.steps,
+          updatedAt: project.updatedAt,
+          project: project.project,
+          source: 'studio',
+        }));
+
+      const collaborationProjects: SelectableMusicProject[] = collabProjects.flatMap((project) => {
+        const isMember = project.members.some(
+          (member) => member.email.trim().toLowerCase() === normalizedUserEmail
+        );
+        if (!isMember || !project.snapshot) return [];
+
+        return [{
+          id: `collab:${project.id}`,
+          title: project.title,
+          bpm: project.bpm,
+          steps: project.steps,
+          updatedAt: project.updatedAt,
+          project: project.snapshot,
+          source: 'collab',
+        }];
+      });
+
+      return [...studioProjects, ...collaborationProjects]
+        .sort((left, right) => right.updatedAt - left.updatedAt);
+    },
+    [collabProjects, libraryProjects, user?.email]
   );
 
   const filteredShorts = useMemo(() => {
@@ -697,7 +754,7 @@ export default function ShortsPage() {
     }
   };
 
-  const handleSelectLibraryMusic = async (project: ComposerProjectRecord) => {
+  const handleSelectLibraryMusic = async (project: SelectableMusicProject) => {
     if (preparingMusicProjectId) return;
 
     setPreparingMusicProjectId(project.id);
@@ -1138,6 +1195,21 @@ export default function ShortsPage() {
                             loop
                             playsInline
                             preload={isActive ? 'metadata' : 'none'}
+                            onPlay={(event) => {
+                              const audio = audioRefs.current[index];
+                              if (!audio) return;
+                              syncAttachedAudio(event.currentTarget, audio);
+                              void audio.play().catch(() => undefined);
+                            }}
+                            onPause={() => audioRefs.current[index]?.pause()}
+                            onSeeked={(event) => {
+                              const audio = audioRefs.current[index];
+                              if (audio) syncAttachedAudio(event.currentTarget, audio);
+                            }}
+                            onTimeUpdate={(event) => {
+                              const audio = audioRefs.current[index];
+                              if (audio) syncAttachedAudio(event.currentTarget, audio);
+                            }}
                           />
                         ) : (
                           <div className="shorts-reel-placeholder">{short.durationLabel}</div>
@@ -1148,12 +1220,11 @@ export default function ShortsPage() {
                             ref={(node) => {
                               audioRefs.current[index] = node;
                             }}
-                            className="shorts-reel-audio"
+                            className="shorts-reel-attached-audio"
                             src={resolvedAudioUrl}
-                            controls
-                            controlsList="nodownload"
                             loop
                             preload={isActive ? 'metadata' : 'none'}
+                            aria-hidden="true"
                           />
                         ) : null}
 
@@ -1164,12 +1235,6 @@ export default function ShortsPage() {
                             {short.visibility === 'public' ? '공개' : '비공개'}
                           </span>
                           <span className="shorts-reel-chip">{short.durationLabel}</span>
-                          {resolvedAudioUrl ? (
-                            <span className="shorts-reel-chip shorts-reel-audio-chip">
-                              {short.musicProjectTitle || 'MP3'}
-                            </span>
-                          ) : null}
-
                           {isOwnShort ? (
                             <div className="shorts-reel-editor-actions">
                               <button
@@ -1530,7 +1595,7 @@ export default function ShortsPage() {
                 </div>
 
                 <div className="shorts-music-list">
-                  {libraryStatus === 'loading' ? (
+                  {libraryStatus === 'loading' || collabConnectionStatus === 'connecting' ? (
                     <div className="shorts-music-status">내 음악을 불러오는 중...</div>
                   ) : myMusicProjects.length ? (
                     myMusicProjects.map((project) => {
@@ -1546,7 +1611,10 @@ export default function ShortsPage() {
                         >
                           <span>
                             <strong>{project.title}</strong>
-                            <small>{project.bpm} BPM / {getProjectDurationLabel(project)}</small>
+                            <small>
+                              {project.source === 'collab' ? '합작 / ' : ''}
+                              {project.bpm} BPM / {getProjectDurationLabel(project)}
+                            </small>
                           </span>
                           <em>{isPreparing ? '음원 만드는 중...' : isSelected ? '설정됨' : '노래 설정'}</em>
                         </button>

@@ -8,6 +8,8 @@ import {
   recordTrackViewOnServer,
   toggleTrackLikeOnServer,
   deleteTrackOnServer,
+  updateMusicShareTrackOnServer,
+  type UpdateMusicShareTrackPayload,
   type MusicShareSnapshot,
 } from '../utils/libraryApi';
 import type { MusicShareTrackCard } from '../dummy/musicShareLibrary';
@@ -51,6 +53,7 @@ type MusicShareState = {
   recordTrackDownload: (trackId: string, userEmail?: string) => Promise<void>;
   recordTrackOpen: (trackId: string, userEmail: string) => Promise<void>;
   deleteTrack: (trackId: string) => Promise<void>;
+  updateTrack: (payload: UpdateMusicShareTrackPayload) => Promise<void>;
 };
 
 let musicShareBootstrapPromise: Promise<void> | null = null;
@@ -147,6 +150,7 @@ export function normalizeMusicShareTrack(
     projectId: asString(track.projectId) || undefined,
     creatorEmail: asString(track.creatorEmail) || undefined,
     imageUrl: asString(track.imageUrl) || undefined,
+    youtubeUrl: asString(track.youtubeUrl) || undefined,
     project,
   };
 }
@@ -430,6 +434,10 @@ export const useMusicShareStore = create<MusicShareState>()(
       },
       deleteTrack: async (trackId) => {
         const response = await deleteTrackOnServer({ trackId });
+        applySnapshot(response.snapshot);
+      },
+      updateTrack: async (payload) => {
+        const response = await updateMusicShareTrackOnServer(payload);
         applySnapshot(response.snapshot);
       },
     }),

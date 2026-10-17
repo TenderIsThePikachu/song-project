@@ -60,6 +60,8 @@
   z-index: 1;
 }
 
+.collab-hero-art { pointer-events: none; }
+
 .collab-hero-copy {
   align-self: center;
   min-width: 0;
@@ -89,6 +91,8 @@
 }
 
 .collab-hero-actions {
+  position: relative;
+  z-index: 2;
   display: flex;
   flex-wrap: wrap;
   gap: 10px;
@@ -335,14 +339,15 @@
 }
 
 .collab-project-card:hover { border-color: #b9e8da; box-shadow: 0 12px 26px rgba(35, 103, 84, 0.08); }
-.collab-project-main { display: grid; min-width: 0; padding: 0 0 34px; grid-template-columns: 86px minmax(0, 1fr); gap: 16px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.collab-project-main { position: relative; z-index: 1; display: grid; min-width: 0; padding: 0 0 34px; grid-template-columns: 86px minmax(0, 1fr); gap: 16px; border: 0; background: transparent; color: inherit; text-align: left; cursor: pointer; }
+.collab-project-main:disabled { cursor: wait; }
 .collab-project-cover { width: 86px; height: 86px; border-radius: 12px; object-fit: cover; }
 .collab-project-copy { display: grid; align-content: start; min-width: 0; }
 .collab-project-copy > strong { overflow: hidden; color: #15213b; font-size: 17px; font-weight: 900; text-overflow: ellipsis; white-space: nowrap; }
 .collab-project-copy > small { overflow: hidden; margin-top: 6px; color: #77879d; font-size: 12px; line-height: 1.5; text-overflow: ellipsis; white-space: nowrap; }
 .collab-project-meta { display: flex; flex-wrap: wrap; gap: 7px; margin-top: 12px; }
 .collab-project-meta i { display: inline-flex; align-items: center; min-height: 25px; padding: 0 10px; border: 1px solid #dbe5ef; border-radius: 999px; background: #f5f8fc; color: #50617a; font-size: 10px; font-style: normal; font-weight: 800; }
-.collab-project-side { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; align-items: center; gap: 8px; }
+.collab-project-side { position: relative; z-index: 2; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-content: start; align-items: center; gap: 8px; }
 .collab-status-chip { display: inline-flex; align-items: center; justify-self: start; min-height: 27px; padding: 0 12px; border-radius: 999px; font-size: 10px; font-weight: 850; }
 .collab-status-chip.is-working { background: #ddf8ee; color: #119170; }
 .collab-status-chip.is-planning { background: #edf3f9; color: #64758d; }
@@ -387,13 +392,14 @@
 .collab-project-menu button:hover { background: #f1f6f8; }
 .collab-project-menu button.is-danger { color: #d64856; }
 .collab-project-menu button.is-danger:hover { background: #fff0f2; }
-.collab-project-progress { position: absolute; right: 80px; bottom: 16px; display: grid; width: 310px; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 10px; }
+.collab-project-progress { position: absolute; right: 128px; bottom: 16px; display: grid; width: 262px; grid-template-columns: 52px minmax(0, 1fr); align-items: center; gap: 10px; pointer-events: none; }
 .collab-project-progress > span { display: grid; }
 .collab-project-progress strong { color: #17233d; font-size: 12px; }
 .collab-project-progress small { display: none; }
 .collab-project-progress > i { height: 7px; overflow: hidden; border-radius: 999px; background: #e7edf3; }
 .collab-project-progress b { display: block; height: 100%; border-radius: inherit; background: #20bd91; }
-.collab-card-open { position: absolute; right: 16px; bottom: 13px; min-height: 30px; padding: 0 13px; border: 0; background: #effaf7; color: #13896d; font-size: 10px; opacity: 0; pointer-events: none; }
+.collab-card-open { position: absolute; z-index: 3; right: 16px; bottom: 13px; min-height: 30px; padding: 0 13px; border: 0; background: #effaf7; color: #13896d; font-size: 10px; }
+.collab-card-open:disabled { cursor: wait; opacity: 0.65; }
 
 .collab-manage-overlay {
   position: fixed;
@@ -565,7 +571,7 @@ html[data-theme='dark'] .collab-manage-actions button:not(.is-primary):not(.is-d
   .collab-project-card { grid-template-columns: 1fr; }
   .collab-project-side { position: absolute; top: 16px; right: 16px; width: 150px; }
   .collab-project-copy { padding-right: 120px; }
-  .collab-project-progress { right: 16px; left: 118px; width: auto; }
+  .collab-project-progress { right: 128px; left: 118px; width: auto; }
 }
 
 @media (max-width: 560px) {
@@ -581,5 +587,5 @@ html[data-theme='dark'] .collab-manage-actions button:not(.is-primary):not(.is-d
   .collab-project-copy { padding-right: 0; }
   .collab-project-copy > small { white-space: normal; }
   .collab-project-side { position: static; width: auto; }
-  .collab-project-progress { right: 16px; left: 98px; width: auto; }
+  .collab-project-progress { right: 128px; left: 98px; width: auto; }
 }

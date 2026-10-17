@@ -298,6 +298,11 @@ const tabOrder: ComposerTab[] = [
   'bass',
 ];
 const DEFAULT_OPEN_TABS: ComposerTab[] = ['melody', 'drums'];
+const DEFAULT_OPEN_EXTRA_TRACK_IDS = [LYRICS_MELODY_TRACK_ID];
+const DEFAULT_ARRANGEMENT_TRACK_ORDER = [
+  `extra-${LYRICS_MELODY_TRACK_ID}`,
+  ...DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`),
+];
 
 function includeDefaultComposerTabs(tabs: ComposerTab[]) {
   return [...new Set([...DEFAULT_OPEN_TABS, ...tabs])];
@@ -722,11 +727,11 @@ function isPitchedTab(tab: ComposerTab): tab is PitchedTab {
 }
 
 function readComposerTabDraft() {
-  const defaultTrackOrder = DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`);
+  const defaultTrackOrder = DEFAULT_ARRANGEMENT_TRACK_ORDER;
   if (typeof window === 'undefined') {
     return {
       openTabs: DEFAULT_OPEN_TABS,
-      openExtraTrackIds: [] as string[],
+      openExtraTrackIds: DEFAULT_OPEN_EXTRA_TRACK_IDS,
       arrangementTrackOrder: defaultTrackOrder,
       activeTrackId: null as string | null,
     };
@@ -741,27 +746,36 @@ function readComposerTabDraft() {
       : [];
 
     const normalizedOpenTabs = includeDefaultComposerTabs(openTabs);
-    const openExtraTrackIds: string[] = Array.isArray(parsed?.openExtraTrackIds)
+    const storedExtraTrackIds: string[] = Array.isArray(parsed?.openExtraTrackIds)
       ? parsed.openExtraTrackIds.filter((value: unknown): value is string => typeof value === 'string')
       : [];
+    const openExtraTrackIds = [
+      ...DEFAULT_OPEN_EXTRA_TRACK_IDS,
+      ...storedExtraTrackIds.filter((id) => !DEFAULT_OPEN_EXTRA_TRACK_IDS.includes(id)),
+    ];
     const fallbackTrackOrder = [
-      ...normalizedOpenTabs.filter((tab) => tab !== 'lyrics').map((tab) => `primary-${tab}`),
       ...openExtraTrackIds.map((id) => `extra-${id}`),
+      ...normalizedOpenTabs.filter((tab) => tab !== 'lyrics').map((tab) => `primary-${tab}`),
+    ];
+    const storedTrackOrder: string[] = Array.isArray(parsed?.arrangementTrackOrder)
+      ? parsed.arrangementTrackOrder.filter((value: unknown): value is string => typeof value === 'string')
+      : [];
+    const arrangementTrackOrder = [
+      ...DEFAULT_ARRANGEMENT_TRACK_ORDER.filter((id) => !storedTrackOrder.includes(id)),
+      ...storedTrackOrder,
     ];
 
     return {
       openTabs: normalizedOpenTabs,
       openExtraTrackIds,
-      arrangementTrackOrder: Array.isArray(parsed?.arrangementTrackOrder)
-        ? parsed.arrangementTrackOrder.filter((value: unknown): value is string => typeof value === 'string')
-        : fallbackTrackOrder,
+      arrangementTrackOrder: arrangementTrackOrder.length ? arrangementTrackOrder : fallbackTrackOrder,
       activeTrackId:
         typeof parsed?.activeTrackId === 'string' ? parsed.activeTrackId : null,
     };
   } catch {
     return {
       openTabs: DEFAULT_OPEN_TABS,
-      openExtraTrackIds: [] as string[],
+      openExtraTrackIds: DEFAULT_OPEN_EXTRA_TRACK_IDS,
       arrangementTrackOrder: defaultTrackOrder,
       activeTrackId: null as string | null,
     };
@@ -1078,11 +1092,11 @@ export function Composer() {
   }, [compositionMode]);
 
   const [openExtraTrackIds, setOpenExtraTrackIds] = useState<string[]>(
-    () => (newProjectRequested ? [] : readComposerTabDraft().openExtraTrackIds)
+    () => (newProjectRequested ? DEFAULT_OPEN_EXTRA_TRACK_IDS : readComposerTabDraft().openExtraTrackIds)
   );
   const [arrangementTrackOrder, setArrangementTrackOrder] = useState<string[]>(
     () => newProjectRequested
-      ? DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`)
+      ? DEFAULT_ARRANGEMENT_TRACK_ORDER
       : readComposerTabDraft().arrangementTrackOrder
   );
   const [activeTrackId, setActiveTrackId] = useState<string | null>(
@@ -1341,14 +1355,14 @@ export function Composer() {
       COMPOSER_TAB_STORAGE_KEY,
       JSON.stringify({
         openTabs: DEFAULT_OPEN_TABS,
-        openExtraTrackIds: [],
-        arrangementTrackOrder: DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`),
+        openExtraTrackIds: DEFAULT_OPEN_EXTRA_TRACK_IDS,
+        arrangementTrackOrder: DEFAULT_ARRANGEMENT_TRACK_ORDER,
         activeTrackId: null,
       })
     );
     setOpenTabsState(DEFAULT_OPEN_TABS);
-    setOpenExtraTrackIds([]);
-    setArrangementTrackOrder(DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`));
+    setOpenExtraTrackIds(DEFAULT_OPEN_EXTRA_TRACK_IDS);
+    setArrangementTrackOrder(DEFAULT_ARRANGEMENT_TRACK_ORDER);
     setActiveTrackId(null);
     setVisitedTabs([]);
 
@@ -3135,9 +3149,18 @@ export function Composer() {
       }
     });
     const extraTrackIds = state.extraTracks.map((track) => track.id);
-    const nextPrimaryTabs: ComposerTab[] = hasMelodyOnlyResult
-      ? (primaryTabs.includes('melody') ? ['melody'] : [])
-      : primaryTabs;
+    const hasAnyTrackData =
+      primaryTabs.length > 0 ||
+      state.extraTracks.some(
+        (track) => track.id !== LYRICS_MELODY_TRACK_ID && hasAnyGridNotes(track.grid)
+      );
+    const nextPrimaryTabs: ComposerTab[] = state.compositionMode === 'soloPiano'
+      ? ['melody']
+      : !hasAnyTrackData
+        ? DEFAULT_OPEN_TABS
+        : hasMelodyOnlyResult
+          ? (primaryTabs.includes('melody') ? ['melody'] : [])
+          : primaryTabs;
 
     if (preserveActiveTab) {
       setOpenTabsState((current) => [
@@ -5374,6 +5397,21 @@ export function Composer() {
     );
   };
 
+  const renderDrumBarNumber = (col: number) => {
+    const barInfo = getBarInfoAtStep(timeSignatureChanges, timeSignature, col);
+    if (barInfo.offset !== 0) return null;
+
+    const meterChange = timeSignatureChanges.find((change) => change.bar === barInfo.index);
+    return (
+      <span className="composer-drum-bar-number" aria-hidden="true">
+        {barInfo.index + 1}
+        {barInfo.index > 0 && meterChange ? (
+          <small>{formatTimeSignature(meterChange)}</small>
+        ) : null}
+      </span>
+    );
+  };
+
   const renderExtraDrumSequencer = (track: ExtraInstrumentTrack) => (
     <section className="composer-drum-shell" key={`${track.id}-drums`}>
       <div className="composer-drum-panel">
@@ -5416,6 +5454,7 @@ export function Composer() {
                     aria-label={`${col + 1}번 위치까지 반복`}
                     title={`${col + 1}번 위치까지 반복`}
                   >
+                    {renderDrumBarNumber(col)}
                     <span className="sr-only">{col + 1}</span>
                   </button>
                 ))}
@@ -5531,15 +5570,9 @@ export function Composer() {
           onCollabColorChange={handleCollabColorChange}
           onPlayStarted={() => setPlayedTutorialOnce(true)}
           onProjectReset={() => {
-            const defaultExtraTrackIds = [LYRICS_MELODY_TRACK_ID];
-            const defaultArrangementOrder = [
-              `extra-${LYRICS_MELODY_TRACK_ID}`,
-              ...DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`),
-            ];
-
             setOpenTabsState(DEFAULT_OPEN_TABS);
-            setOpenExtraTrackIds(defaultExtraTrackIds);
-            setArrangementTrackOrder(defaultArrangementOrder);
+            setOpenExtraTrackIds(DEFAULT_OPEN_EXTRA_TRACK_IDS);
+            setArrangementTrackOrder(DEFAULT_ARRANGEMENT_TRACK_ORDER);
             setActiveTrackId(null);
             setVisitedTabs([]);
             setMutedArrangementTracks(new Set());
@@ -5552,8 +5585,8 @@ export function Composer() {
               COMPOSER_TAB_STORAGE_KEY,
               JSON.stringify({
                 openTabs: DEFAULT_OPEN_TABS,
-                openExtraTrackIds: defaultExtraTrackIds,
-                arrangementTrackOrder: defaultArrangementOrder,
+                openExtraTrackIds: DEFAULT_OPEN_EXTRA_TRACK_IDS,
+                arrangementTrackOrder: DEFAULT_ARRANGEMENT_TRACK_ORDER,
                 activeTrackId: null,
               })
             );
@@ -6874,6 +6907,7 @@ export function Composer() {
                           aria-label={`${col + 1}번 위치까지 반복`}
                           title={`${col + 1}번 위치까지 반복`}
                         >
+                          {renderDrumBarNumber(col)}
                           <span className="sr-only">{col + 1}</span>
                         </button>
                       ))}
