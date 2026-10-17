@@ -15,7 +15,7 @@ import { useComposerLibraryStore } from '../../store/composerLibraryStore';
 import { useMusicShareStore } from '../../store/musicShareStore';
 import { useNotificationStore } from '../../store/notificationStore';
 import { useSongStore } from '../../store/songStore';
-import { getProjectFromSharedTrack, getRecruitUrlFromSketch } from '../../utils/songSketchDna';
+import { getProjectFromSharedTrack } from '../../utils/songSketchDna';
 import './MusicShareDetail.css';
 
 function formatCount(value: number) {
@@ -268,10 +268,6 @@ export default function MusicShareDetail() {
     alert('공유 링크를 복사했습니다.');
   };
 
-  const handleRecruitFromTrack = () => {
-    navigate(getRecruitUrlFromSketch(track.title, track.category, 'vocal,instrument,drums,bass'));
-  };
-
 const isOwner = user && track && user.name === track.creatorName;
 
 const handleDeleteTrack = async () => {
@@ -458,13 +454,6 @@ const handleDeleteTrack = async () => {
                 onClick={handleOpenComposer}
               >
                 작곡 화면에서 열기
-              </button>
-              <button
-                type="button"
-                className="music-share-detail-button"
-                onClick={handleRecruitFromTrack}
-              >
-                파트 모집 연결
               </button>
             </div>
           </article>

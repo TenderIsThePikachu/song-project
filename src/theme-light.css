@@ -134,9 +134,21 @@ html[data-theme="light"] .composer-track-add-group button:hover {
 html[data-theme="light"] .composer-arrangement-lanes {
   scrollbar-color: rgba(159, 173, 191, .78) transparent;
   background-color: #f8fafc;
-  background-image:
-    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-major-span, 6.25%) - 1px), #dbe4ed calc(var(--arrangement-major-span, 6.25%) - 1px), #dbe4ed var(--arrangement-major-span, 6.25%)),
-    repeating-linear-gradient(to right, transparent 0, transparent calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(89, 106, 128, .07) calc(var(--arrangement-minor-span, 1.5625%) - 1px), rgba(89, 106, 128, .07) var(--arrangement-minor-span, 1.5625%));
+  background-image: none;
+}
+
+html[data-theme="light"] .composer-arrangement-grid i {
+  background: rgba(96, 112, 137, .08);
+}
+
+html[data-theme="light"] .composer-arrangement-grid i.is-major {
+  width: 1px;
+  background: rgba(96, 112, 137, .2);
+}
+
+html[data-theme="light"] .composer-arrangement-grid i.is-meter-change {
+  width: 2px;
+  background: rgba(24, 185, 148, .55);
 }
 
 html[data-theme="light"] .composer-arrangement-lanes::-webkit-scrollbar-track,
@@ -3823,18 +3835,18 @@ html[data-theme="light"] .piano-roll-grid--melody {
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 2 - 1px),
-      rgba(71, 91, 122, 0.12) calc(var(--piano-step-span) * 2 - 1px) calc(var(--piano-step-span) * 2)
+      transparent 0 calc(var(--piano-unit-span) - 1px),
+      rgba(71, 91, 122, 0.12) calc(var(--piano-unit-span) - 1px) var(--piano-unit-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
-      rgba(62, 111, 177, 0.2) calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+      transparent 0 calc(var(--piano-beat-span) - 1px),
+      rgba(62, 111, 177, 0.24) calc(var(--piano-beat-span) - 1px) var(--piano-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 8 - 1px),
-      rgba(179, 126, 32, 0.26) calc(var(--piano-step-span) * 8 - 1px) calc(var(--piano-step-span) * 8)
+      transparent 0 calc(var(--piano-bar-span) - 2px),
+      rgba(35, 48, 72, 0.34) calc(var(--piano-bar-span) - 2px) var(--piano-bar-span)
     ),
     #ffffff !important;
 }
@@ -3972,23 +3984,23 @@ html[data-theme="light"] :is(
   background-image:
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 2 - 1px),
-      rgba(71, 91, 122, 0.12) calc(var(--sequencer-step-span) * 2 - 1px) calc(var(--sequencer-step-span) * 2 + 1px)
+      transparent 0 calc(var(--sequencer-unit-span) - 1px),
+      rgba(71, 91, 122, 0.12) calc(var(--sequencer-unit-span) - 1px) var(--sequencer-unit-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 4 - 1px),
-      rgba(62, 111, 177, 0.2) calc(var(--sequencer-step-span) * 4 - 1px) calc(var(--sequencer-step-span) * 4 + 1px)
+      transparent 0 calc(var(--sequencer-beat-span) - 1px),
+      rgba(62, 111, 177, 0.24) calc(var(--sequencer-beat-span) - 1px) var(--sequencer-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 8 - 1px),
-      rgba(179, 126, 32, 0.24) calc(var(--sequencer-step-span) * 8 - 1px) calc(var(--sequencer-step-span) * 8 + 1px)
+      transparent 0 calc(var(--sequencer-group-span) - 1px),
+      rgba(179, 126, 32, 0.28) calc(var(--sequencer-group-span) - 1px) var(--sequencer-group-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--sequencer-step-span) * 16 - 1px),
-      rgba(35, 48, 72, 0.3) calc(var(--sequencer-step-span) * 16 - 1px) calc(var(--sequencer-step-span) * 16 + 1px)
+      transparent 0 calc(var(--sequencer-bar-span) - 2px),
+      rgba(35, 48, 72, 0.36) calc(var(--sequencer-bar-span) - 2px) var(--sequencer-bar-span)
     ) !important;
 }
 
@@ -5028,13 +5040,13 @@ html[data-theme="light"] .composer-roll-shell .piano-roll-grid--melody {
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
-      #e1e8f0 calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+      transparent 0 calc(var(--piano-beat-span) - 1px),
+      #e1e8f0 calc(var(--piano-beat-span) - 1px) var(--piano-beat-span)
     ),
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 16 - 1px),
-      #bdcad8 calc(var(--piano-step-span) * 16 - 1px) calc(var(--piano-step-span) * 16)
+      transparent 0 calc(var(--piano-bar-span, 384px) - 1px),
+      #bdcad8 calc(var(--piano-bar-span, 384px) - 1px) var(--piano-bar-span, 384px)
     ),
     #fbfcfe !important;
 }
@@ -5043,8 +5055,8 @@ html[data-theme="light"] .composer-roll-shell .piano-roll-step-header--melody {
   background:
     repeating-linear-gradient(
       to right,
-      transparent 0 calc(var(--piano-step-span) * 4 - 1px),
-      #d8e1eb calc(var(--piano-step-span) * 4 - 1px) calc(var(--piano-step-span) * 4)
+      transparent 0 calc(var(--piano-beat-span) - 1px),
+      #d8e1eb calc(var(--piano-beat-span) - 1px) var(--piano-beat-span)
     ),
     #f5f8fb !important;
 }
@@ -5070,7 +5082,7 @@ html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody.is-half
 }
 
 html[data-theme="light"] .composer-roll-shell .piano-roll-cell.is-melody.is-bar {
-  box-shadow: inset 1px 0 0 #aebdcd !important;
+  box-shadow: inset 3px 0 0 #aebdcd !important;
 }
 
 html[data-theme="light"] .composer-roll-shell .piano-roll-note-block {

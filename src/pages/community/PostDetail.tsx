@@ -93,9 +93,9 @@ function AuthorIcon() {
 }
 
 const DETAIL_POPULAR_IMAGES = [
-  '/landing-assets/shared-fallback-film.jpg',
-  '/landing-assets/shared-fallback-groove.jpg',
-  '/landing-assets/shared-fallback-dream.jpg',
+  '/landing-assets/shared-fallback-film.webp',
+  '/landing-assets/shared-fallback-groove.webp',
+  '/landing-assets/shared-fallback-dream.webp',
 ];
 
 const categoryToneMap: Record<string, string> = {

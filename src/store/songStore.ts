@@ -39,6 +39,18 @@ import {
   VIOLIN_NOTES,
   VIOLIN_ROWS
 } from '../constants/composer.ts';
+import {
+  DEFAULT_TIME_SIGNATURE,
+  getBarInfoAtIndex,
+  getBarInfoAtStep,
+  getStepsPerBar,
+  normalizeTimeSignature,
+  normalizeTimeSignatureChanges,
+  removeTimeSignatureChange,
+  upsertTimeSignatureChange,
+  type TimeSignature,
+  type TimeSignatureChange,
+} from '../utils/timeSignature.ts';
 
 const BAR_LENGTH = 16;
 export const FIXED_BAR_COUNT = 40;
@@ -121,6 +133,8 @@ type BarClipboard = {
 
 type SongHistorySnapshot = {
   compositionMode: 'standard' | 'soloPiano';
+  timeSignature: TimeSignature;
+  timeSignatureChanges: TimeSignatureChange[];
   bpm: number;
   tempoAutomation: TempoAutomationPoint[];
   steps: number;
@@ -146,6 +160,8 @@ type SongHistorySnapshot = {
 
 export type SongState = {
   compositionMode: 'standard' | 'soloPiano';
+  timeSignature: TimeSignature;
+  timeSignatureChanges: TimeSignatureChange[];
   bpm: number;
   tempoAutomation: TempoAutomationPoint[];
   steps: number;
@@ -208,6 +224,9 @@ export type SongState = {
   undo: () => void;
   redo: () => void;
   setInstrumentVolume: (instrument: InstrumentKey, volume: number) => void;
+  setTimeSignature: (timeSignature: TimeSignature) => void;
+  setTimeSignatureChange: (step: number, timeSignature: TimeSignature) => void;
+  removeTimeSignatureChange: (step: number) => void;
   setBpm: (bpm: number) => void;
   setSteps: (steps: number) => void;
   setCurrentStep: (step: number) => void;
@@ -224,6 +243,8 @@ export type SongState = {
 export type SongProject = {
   version: 2;
   compositionMode?: 'standard' | 'soloPiano';
+  timeSignature?: TimeSignature;
+  timeSignatureChanges?: TimeSignatureChange[];
   bpm: number;
   tempoAutomation?: TempoAutomationPoint[];
   steps: number;
@@ -245,6 +266,8 @@ export type SongProject = {
 type SongProjectSnapshotInput = Pick<
   SongState,
   | 'compositionMode'
+  | 'timeSignature'
+  | 'timeSignatureChanges'
   | 'bpm'
   | 'tempoAutomation'
   | 'steps'
@@ -591,9 +614,15 @@ function normalizeLyricsStartBar(value: unknown) {
   return Math.max(1, Math.min(FIXED_BAR_COUNT, bar));
 }
 
-function getMelodyNotesInBar(melody: boolean[][], barIndex: number) {
-  const start = barIndex * BAR_LENGTH;
-  const end = start + BAR_LENGTH;
+function getMelodyNotesInBar(
+  melody: boolean[][],
+  barIndex: number,
+  timeSignatureChanges?: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature = DEFAULT_TIME_SIGNATURE
+) {
+  const bar = getBarInfoAtIndex(timeSignatureChanges, timeSignature, barIndex);
+  const start = bar.start;
+  const end = bar.end;
   const notes: Array<{ row: number; col: number }> = [];
 
   melody.forEach((rowValues, row) => {
@@ -610,13 +639,20 @@ function getMelodyNotesInBar(melody: boolean[][], barIndex: number) {
   );
 }
 
-function getLastMelodyBarIndex(melody: boolean[][]) {
+function getLastMelodyBarIndex(
+  melody: boolean[][],
+  timeSignatureChanges?: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature = DEFAULT_TIME_SIGNATURE
+) {
   let lastBarIndex = -1;
 
   melody.forEach((rowValues) => {
     for (let col = rowValues.length - 1; col >= 0; col -= 1) {
       if (rowValues[col]) {
-        lastBarIndex = Math.max(lastBarIndex, Math.floor(col / BAR_LENGTH));
+        lastBarIndex = Math.max(
+          lastBarIndex,
+          getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index
+        );
         break;
       }
     }
@@ -629,7 +665,9 @@ function mapBarLyricsToMelodyNotes(
   currentLyrics: Record<string, string>,
   melody: boolean[][],
   barLyrics: string[],
-  lyricsStartBar: number
+  lyricsStartBar: number,
+  timeSignatureChanges?: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature = DEFAULT_TIME_SIGNATURE
 ) {
   const nextLyrics = { ...currentLyrics };
   const firstBarIndex = lyricsStartBar - 1;
@@ -637,7 +675,7 @@ function mapBarLyricsToMelodyNotes(
 
   Object.keys(nextLyrics).forEach((key) => {
     const col = Number(key.split('-')[1]);
-    const barIndex = Math.floor(col / BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (Number.isFinite(col) && barIndex >= firstBarIndex && barIndex <= lastBarIndex) {
       delete nextLyrics[key];
     }
@@ -645,7 +683,12 @@ function mapBarLyricsToMelodyNotes(
 
   barLyrics.forEach((line, lineIndex) => {
     const tokens = line.trim().split(/\s+/).filter(Boolean);
-    const notes = getMelodyNotesInBar(melody, firstBarIndex + lineIndex);
+    const notes = getMelodyNotesInBar(
+      melody,
+      firstBarIndex + lineIndex,
+      timeSignatureChanges,
+      timeSignature
+    );
     notes.forEach((note, noteIndex) => {
       const token =
         noteIndex === notes.length - 1
@@ -669,10 +712,12 @@ function areLyricMapsEqual(left: Record<string, string>, right: Record<string, s
 function deriveBarLyricsFromMelodyNotes(
   melody: boolean[][],
   noteLyrics: Record<string, string>,
-  lyricsStartBar: number
+  lyricsStartBar: number,
+  timeSignatureChanges?: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature = DEFAULT_TIME_SIGNATURE
 ) {
   const lines = Array.from({ length: FIXED_BAR_COUNT - lyricsStartBar + 1 }, (_, index) =>
-    getMelodyNotesInBar(melody, lyricsStartBar - 1 + index)
+    getMelodyNotesInBar(melody, lyricsStartBar - 1 + index, timeSignatureChanges, timeSignature)
       .map((note) => noteLyrics[`${note.row}-${note.col}`] ?? '')
       .filter(Boolean)
       .join(' ')
@@ -846,6 +891,8 @@ function setTimedNote(
 function createHistorySnapshot(state: Pick<
   SongState,
   | 'compositionMode'
+  | 'timeSignature'
+  | 'timeSignatureChanges'
   | 'bpm'
   | 'tempoAutomation'
   | 'steps'
@@ -870,6 +917,12 @@ function createHistorySnapshot(state: Pick<
 >): SongHistorySnapshot {
   return {
     compositionMode: state.compositionMode,
+    timeSignature: normalizeTimeSignature(state.timeSignature),
+    timeSignatureChanges: normalizeTimeSignatureChanges(
+      state.timeSignatureChanges,
+      state.timeSignature,
+      state.steps
+    ),
     bpm: state.bpm,
     tempoAutomation: normalizeTempoAutomation(state.tempoAutomation, state.steps, state.bpm),
     steps: state.steps,
@@ -894,16 +947,22 @@ function createHistorySnapshot(state: Pick<
   };
 }
 
-function getCurrentBarRange(currentStep: number, steps: number) {
+function getCurrentBarRange(
+  currentStep: number,
+  steps: number,
+  timeSignatureChanges?: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature = DEFAULT_TIME_SIGNATURE
+) {
   const safeStep = clampStep(currentStep, steps);
-  const start = Math.floor(safeStep / BAR_LENGTH) * BAR_LENGTH;
-  const end = Math.min(start + BAR_LENGTH - 1, steps - 1);
+  const bar = getBarInfoAtStep(timeSignatureChanges, timeSignature, safeStep);
+  const start = bar.start;
+  const end = Math.min(bar.end - 1, steps - 1);
 
   return {
     start,
     end,
     length: end - start + 1,
-    index: Math.floor(safeStep / BAR_LENGTH),
+    index: bar.index,
   };
 }
 
@@ -920,12 +979,13 @@ function pasteBar(
   source: boolean[][],
   start: number,
   steps: number,
-  mode: 'replace' | 'clear'
+  mode: 'replace' | 'clear',
+  barLength = source[0]?.length ?? BAR_LENGTH
 ) {
   const next = cloneMatrix(target);
 
   next.forEach((row, rowIndex) => {
-    for (let offset = 0; offset < BAR_LENGTH && start + offset < steps; offset += 1) {
+    for (let offset = 0; offset < barLength && start + offset < steps; offset += 1) {
       if (mode === 'clear') {
         row[start + offset] = false;
         continue;
@@ -938,11 +998,17 @@ function pasteBar(
   return next;
 }
 
-function pasteLengthBar(target: number[][], source: number[][], start: number, steps: number) {
+function pasteLengthBar(
+  target: number[][],
+  source: number[][],
+  start: number,
+  steps: number,
+  barLength = source[0]?.length ?? BAR_LENGTH
+) {
   const next = cloneLengthMatrix(target);
 
   next.forEach((row, rowIndex) => {
-    for (let offset = 0; offset < BAR_LENGTH && start + offset < steps; offset += 1) {
+    for (let offset = 0; offset < barLength && start + offset < steps; offset += 1) {
       row[start + offset] = Number(source[rowIndex]?.[offset] ?? 0);
     }
   });
@@ -1177,6 +1243,12 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
   return {
     version: 2,
     compositionMode: state.compositionMode,
+    timeSignature: normalizeTimeSignature(state.timeSignature),
+    timeSignatureChanges: normalizeTimeSignatureChanges(
+      state.timeSignatureChanges,
+      state.timeSignature,
+      state.steps
+    ),
     bpm: state.bpm,
     tempoAutomation: normalizeTempoAutomation(state.tempoAutomation, state.steps, state.bpm),
     steps: state.steps,
@@ -1228,6 +1300,12 @@ function restoreHistorySnapshot(
 ): Partial<SongState> {
   return {
     compositionMode: snapshot.compositionMode,
+    timeSignature: normalizeTimeSignature(snapshot.timeSignature),
+    timeSignatureChanges: normalizeTimeSignatureChanges(
+      snapshot.timeSignatureChanges,
+      snapshot.timeSignature,
+      snapshot.steps
+    ),
     bpm: snapshot.bpm,
     tempoAutomation: normalizeTempoAutomation(snapshot.tempoAutomation, snapshot.steps, snapshot.bpm),
     steps: snapshot.steps,
@@ -1398,6 +1476,8 @@ export const useSongStore = create<SongState>()(
   persist(
     (set, get) => ({
   compositionMode: 'standard',
+  timeSignature: { ...DEFAULT_TIME_SIGNATURE },
+  timeSignatureChanges: [{ bar: 0, ...DEFAULT_TIME_SIGNATURE }],
   bpm: 100,
   tempoAutomation: [],
   steps: DEFAULT_STEPS,
@@ -1671,7 +1751,6 @@ export const useSongStore = create<SongState>()(
 
   addAiVocalTrack: (voice) => {
     const state = get();
-    const guideTrack = state.extraTracks.find((track) => track.id === LYRICS_MELODY_TRACK_ID);
     const track = createEmptyExtraTrack(
       'melody',
       state.steps,
@@ -1680,13 +1759,6 @@ export const useSongStore = create<SongState>()(
       `AI 보컬 · ${voice === 'female' ? '여성' : '남성'}`,
       72
     );
-
-    if (guideTrack) {
-      track.grid = cloneMatrix(guideTrack.grid);
-      track.melodyLengths = cloneLengthMatrix(
-        guideTrack.melodyLengths ?? createEmptyLengthMatrix(track.grid.length, state.steps)
-      );
-    }
 
     set((current) =>
       buildHistoryUpdate(current, {
@@ -1904,7 +1976,12 @@ export const useSongStore = create<SongState>()(
 
   copyCurrentBar: () => {
     const state = get();
-    const range = getCurrentBarRange(state.currentStep, state.steps);
+    const range = getCurrentBarRange(
+      state.currentStep,
+      state.steps,
+      state.timeSignatureChanges,
+      state.timeSignature
+    );
 
     set({
       barClipboard: {
@@ -1938,7 +2015,12 @@ export const useSongStore = create<SongState>()(
         return {};
       }
 
-      const range = getCurrentBarRange(state.currentStep, state.steps);
+      const range = getCurrentBarRange(
+        state.currentStep,
+        state.steps,
+        state.timeSignatureChanges,
+        state.timeSignature
+      );
 
       return buildHistoryUpdate(state, {
         melody: pasteBar(
@@ -2032,7 +2114,7 @@ export const useSongStore = create<SongState>()(
               supportsNoteLengths(track.instrument)
                 ? pasteLengthBar(
                     track.melodyLengths ?? createEmptyLengthMatrix(getInstrumentRows(track.instrument), state.steps),
-                    copiedTrack.melodyLengths ?? createEmptyLengthMatrix(getInstrumentRows(track.instrument), BAR_LENGTH),
+                    copiedTrack.melodyLengths ?? createEmptyLengthMatrix(getInstrumentRows(track.instrument), range.length),
                     range.start,
                     state.steps
                   )
@@ -2044,8 +2126,13 @@ export const useSongStore = create<SongState>()(
 
   duplicateCurrentBar: () =>
     set((state) => {
-      const range = getCurrentBarRange(state.currentStep, state.steps);
-      const nextStart = range.start + BAR_LENGTH;
+      const range = getCurrentBarRange(
+        state.currentStep,
+        state.steps,
+        state.timeSignatureChanges,
+        state.timeSignature
+      );
+      const nextStart = range.start + range.length;
 
       if (nextStart >= state.steps) {
         return {};
@@ -2159,59 +2246,64 @@ export const useSongStore = create<SongState>()(
 
   clearCurrentBar: () =>
     set((state) => {
-      const range = getCurrentBarRange(state.currentStep, state.steps);
+      const range = getCurrentBarRange(
+        state.currentStep,
+        state.steps,
+        state.timeSignatureChanges,
+        state.timeSignature
+      );
 
       return buildHistoryUpdate(state, {
-        melody: pasteBar(state.melody, [], range.start, state.steps, 'clear'),
+        melody: pasteBar(state.melody, [], range.start, state.steps, 'clear', range.length),
         melodyLengths: pasteLengthBar(
           state.melodyLengths,
-          createEmptyLengthMatrix(MELODY_ROWS, BAR_LENGTH),
+          createEmptyLengthMatrix(MELODY_ROWS, range.length),
           range.start,
           state.steps
         ),
         melodyVelocities: pasteLengthBar(
           state.melodyVelocities,
-          createEmptyVelocityMatrix(MELODY_ROWS, BAR_LENGTH),
+          createEmptyVelocityMatrix(MELODY_ROWS, range.length),
           range.start,
           state.steps
         ),
-        guitar: pasteBar(state.guitar, [], range.start, state.steps, 'clear'),
+        guitar: pasteBar(state.guitar, [], range.start, state.steps, 'clear', range.length),
         guitarLengths: pasteLengthBar(
           state.guitarLengths,
-          createEmptyLengthMatrix(GUITAR_ROWS, BAR_LENGTH),
+          createEmptyLengthMatrix(GUITAR_ROWS, range.length),
           range.start,
           state.steps
         ),
-        violin: pasteBar(state.violin, [], range.start, state.steps, 'clear'),
+        violin: pasteBar(state.violin, [], range.start, state.steps, 'clear', range.length),
         violinLengths: pasteLengthBar(
           state.violinLengths,
-          createEmptyLengthMatrix(VIOLIN_ROWS, BAR_LENGTH),
+          createEmptyLengthMatrix(VIOLIN_ROWS, range.length),
           range.start,
           state.steps
         ),
-        saxophone: pasteBar(state.saxophone, [], range.start, state.steps, 'clear'),
+        saxophone: pasteBar(state.saxophone, [], range.start, state.steps, 'clear', range.length),
         saxophoneLengths: pasteLengthBar(
           state.saxophoneLengths,
-          createEmptyLengthMatrix(SAXOPHONE_ROWS, BAR_LENGTH),
+          createEmptyLengthMatrix(SAXOPHONE_ROWS, range.length),
           range.start,
           state.steps
         ),
-        drums: pasteBar(state.drums, [], range.start, state.steps, 'clear'),
-        bass: pasteBar(state.bass, [], range.start, state.steps, 'clear'),
+        drums: pasteBar(state.drums, [], range.start, state.steps, 'clear', range.length),
+        bass: pasteBar(state.bass, [], range.start, state.steps, 'clear', range.length),
         bassLengths: pasteLengthBar(
           state.bassLengths,
-          createEmptyLengthMatrix(BASS_ROWS, BAR_LENGTH),
+          createEmptyLengthMatrix(BASS_ROWS, range.length),
           range.start,
           state.steps
         ),
         extraTracks: state.extraTracks.map((track) => ({
           ...track,
-          grid: pasteBar(track.grid, [], range.start, state.steps, 'clear'),
+          grid: pasteBar(track.grid, [], range.start, state.steps, 'clear', range.length),
           melodyLengths:
             supportsNoteLengths(track.instrument)
               ? pasteLengthBar(
                   track.melodyLengths ?? createEmptyLengthMatrix(getInstrumentRows(track.instrument), state.steps),
-                  createEmptyLengthMatrix(getInstrumentRows(track.instrument), BAR_LENGTH),
+                  createEmptyLengthMatrix(getInstrumentRows(track.instrument), range.length),
                   range.start,
                   state.steps
                 )
@@ -2222,7 +2314,12 @@ export const useSongStore = create<SongState>()(
 
   toggleLoopCurrentBar: () =>
     set((state) => {
-      const range = getCurrentBarRange(state.currentStep, state.steps);
+      const range = getCurrentBarRange(
+        state.currentStep,
+        state.steps,
+        state.timeSignatureChanges,
+        state.timeSignature
+      );
       const sameLoop =
         state.loopRange?.start === range.start && state.loopRange?.end === range.end;
 
@@ -2282,6 +2379,56 @@ export const useSongStore = create<SongState>()(
         [instrument]: clampVolume(volume),
       },
     })),
+
+  setTimeSignature: (timeSignature) =>
+    set((state) => {
+      const next = normalizeTimeSignature(timeSignature);
+      if (
+        state.timeSignature.beats === next.beats &&
+        state.timeSignature.beatType === next.beatType
+      ) {
+        return {};
+      }
+      return buildHistoryUpdate(state, {
+        timeSignature: next,
+        timeSignatureChanges: normalizeTimeSignatureChanges(
+          [
+            { bar: 0, ...next },
+            ...state.timeSignatureChanges.filter((change) => change.bar > 0),
+          ],
+          next,
+          state.steps
+        ),
+      });
+    }),
+
+  setTimeSignatureChange: (step, timeSignature) =>
+    set((state) => {
+      const nextChanges = upsertTimeSignatureChange(
+        state.timeSignatureChanges,
+        state.timeSignature,
+        step,
+        timeSignature,
+        state.steps
+      );
+      const nextBase = normalizeTimeSignature(nextChanges[0] ?? state.timeSignature);
+      return buildHistoryUpdate(state, {
+        timeSignature: nextBase,
+        timeSignatureChanges: nextChanges,
+      });
+    }),
+
+  removeTimeSignatureChange: (step) =>
+    set((state) => {
+      const nextChanges = removeTimeSignatureChange(
+        state.timeSignatureChanges,
+        state.timeSignature,
+        step,
+        state.steps
+      );
+      if (nextChanges.length === state.timeSignatureChanges.length) return {};
+      return buildHistoryUpdate(state, { timeSignatureChanges: nextChanges });
+    }),
 
   setBpm: (bpm) =>
     set((state) => {
@@ -2373,6 +2520,11 @@ export const useSongStore = create<SongState>()(
         bass,
         bassLengths,
         extraTracks,
+        timeSignatureChanges: normalizeTimeSignatureChanges(
+          state.timeSignatureChanges,
+          state.timeSignature,
+          steps
+        ),
         loopRange: normalizeLoopRange(state.loopRange, steps),
         barClipboard: null,
       });
@@ -2397,7 +2549,11 @@ export const useSongStore = create<SongState>()(
         delete nextLyrics[key];
       }
 
-      const barIndex = Math.floor(col / BAR_LENGTH);
+      const barIndex = getBarInfoAtStep(
+        state.timeSignatureChanges,
+        state.timeSignature,
+        col
+      ).index;
       const lineIndex = barIndex - (state.lyricsStartBar - 1);
       if (lineIndex < 0 || lineIndex >= state.barLyrics.length) {
         return { noteLyrics: nextLyrics };
@@ -2405,7 +2561,12 @@ export const useSongStore = create<SongState>()(
 
       const barLyrics = [...state.barLyrics];
       const lyricsMelody = getLyricsMelodyGrid(state.extraTracks, state.melody);
-      barLyrics[lineIndex] = getMelodyNotesInBar(lyricsMelody, barIndex)
+      barLyrics[lineIndex] = getMelodyNotesInBar(
+        lyricsMelody,
+        barIndex,
+        state.timeSignatureChanges,
+        state.timeSignature
+      )
         .map((note) => nextLyrics[`${note.row}-${note.col}`] ?? '')
         .filter(Boolean)
         .join(' ');
@@ -2421,7 +2582,9 @@ export const useSongStore = create<SongState>()(
           state.noteLyrics,
           getLyricsMelodyGrid(state.extraTracks, state.melody),
           barLyrics,
-          state.lyricsStartBar
+          state.lyricsStartBar,
+          state.timeSignatureChanges,
+          state.timeSignature
         ),
       };
     }),
@@ -2433,7 +2596,9 @@ export const useSongStore = create<SongState>()(
         state.noteLyrics,
         getLyricsMelodyGrid(state.extraTracks, state.melody),
         state.barLyrics.map(() => ''),
-        state.lyricsStartBar
+        state.lyricsStartBar,
+        state.timeSignatureChanges,
+        state.timeSignature
       );
       return {
         lyricsStartBar,
@@ -2441,7 +2606,9 @@ export const useSongStore = create<SongState>()(
           lyricsWithoutPreviousBars,
           getLyricsMelodyGrid(state.extraTracks, state.melody),
           state.barLyrics,
-          lyricsStartBar
+          lyricsStartBar,
+          state.timeSignatureChanges,
+          state.timeSignature
         ),
       };
     }),
@@ -2450,7 +2617,11 @@ export const useSongStore = create<SongState>()(
     set((state) => {
       const lyricsMelody = getLyricsMelodyGrid(state.extraTracks, state.melody);
       const firstBarIndex = state.lyricsStartBar - 1;
-      const lastMelodyBarIndex = getLastMelodyBarIndex(lyricsMelody);
+      const lastMelodyBarIndex = getLastMelodyBarIndex(
+        lyricsMelody,
+        state.timeSignatureChanges,
+        state.timeSignature
+      );
       const requiredLineCount = Math.max(1, lastMelodyBarIndex - firstBarIndex + 1);
       const barLyrics =
         state.barLyrics.length >= requiredLineCount
@@ -2463,7 +2634,9 @@ export const useSongStore = create<SongState>()(
         state.noteLyrics,
         lyricsMelody,
         barLyrics,
-        state.lyricsStartBar
+        state.lyricsStartBar,
+        state.timeSignatureChanges,
+        state.timeSignature
       );
       const didExtendBars = barLyrics !== state.barLyrics;
       return !didExtendBars && areLyricMapsEqual(noteLyrics, state.noteLyrics)
@@ -2475,6 +2648,8 @@ export const useSongStore = create<SongState>()(
     set((state) =>
       buildHistoryUpdate(state, {
         compositionMode: 'standard',
+        timeSignature: { ...DEFAULT_TIME_SIGNATURE },
+        timeSignatureChanges: [{ bar: 0, ...DEFAULT_TIME_SIGNATURE }],
         currentStep: 0,
         tempoAutomation: [],
         noteLyrics: {},
@@ -2498,9 +2673,18 @@ export const useSongStore = create<SongState>()(
 
     
   loadProject: (project) => {
-    const steps = FIXED_COMPOSER_STEPS;
+    const timeSignature = normalizeTimeSignature(project.timeSignature);
+    const steps =
+      typeof project.steps === 'number' && project.steps > 0
+        ? Math.floor(project.steps)
+        : getStepsPerBar(timeSignature) * FIXED_BAR_COUNT;
     const bpm = typeof project.bpm === 'number' && project.bpm > 0 ? project.bpm : 100;
     const tempoAutomation = normalizeTempoAutomation(project.tempoAutomation, steps, bpm);
+    const timeSignatureChanges = normalizeTimeSignatureChanges(
+      project.timeSignatureChanges,
+      timeSignature,
+      steps
+    );
     const grids = parseV2TracksToGrids(project, steps); // V2 파싱
 
     const lyricsStartBar = normalizeLyricsStartBar(project.lyricsStartBar);
@@ -2509,12 +2693,16 @@ export const useSongStore = create<SongState>()(
       : deriveBarLyricsFromMelodyNotes(
           getLyricsMelodyGrid(grids.extraTracks, grids.melody),
           project.noteLyrics ?? {},
-          lyricsStartBar
+          lyricsStartBar,
+          timeSignatureChanges,
+          timeSignature
         );
 
     set((state) =>
       buildHistoryUpdate(state, {
         compositionMode: project.compositionMode ?? 'standard',
+        timeSignature,
+        timeSignatureChanges,
         bpm,
         tempoAutomation,
         steps,
@@ -2556,9 +2744,18 @@ export const useSongStore = create<SongState>()(
   },
 
   applyRemoteProject: (project) => {
-    const steps = FIXED_COMPOSER_STEPS;
+    const timeSignature = normalizeTimeSignature(project.timeSignature);
+    const steps =
+      typeof project.steps === 'number' && project.steps > 0
+        ? Math.floor(project.steps)
+        : getStepsPerBar(timeSignature) * FIXED_BAR_COUNT;
     const bpm = typeof project.bpm === 'number' && project.bpm > 0 ? project.bpm : 100;
     const tempoAutomation = normalizeTempoAutomation(project.tempoAutomation, steps, bpm);
+    const timeSignatureChanges = normalizeTimeSignatureChanges(
+      project.timeSignatureChanges,
+      timeSignature,
+      steps
+    );
     const grids = parseV2TracksToGrids(project, steps); // V2 파싱
 
     const lyricsStartBar = normalizeLyricsStartBar(project.lyricsStartBar);
@@ -2567,11 +2764,15 @@ export const useSongStore = create<SongState>()(
       : deriveBarLyricsFromMelodyNotes(
           getLyricsMelodyGrid(grids.extraTracks, grids.melody),
           project.noteLyrics ?? {},
-          lyricsStartBar
+          lyricsStartBar,
+          timeSignatureChanges,
+          timeSignature
         );
 
     set((state) => ({
       compositionMode: project.compositionMode ?? 'standard',
+      timeSignature,
+      timeSignatureChanges,
       bpm,
       tempoAutomation,
       steps,
@@ -2618,6 +2819,8 @@ export const useSongStore = create<SongState>()(
       name: 'song-maker-composer-draft',
       partialize: (state) => ({
         compositionMode: state.compositionMode,
+        timeSignature: state.timeSignature,
+        timeSignatureChanges: state.timeSignatureChanges,
         bpm: state.bpm,
         tempoAutomation: state.tempoAutomation,
         steps: state.steps,

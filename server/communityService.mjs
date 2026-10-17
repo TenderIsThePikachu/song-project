@@ -282,6 +282,7 @@ async function loadState() {
 }
 
 const loadedState = await loadState();
+const shouldAddDemoSeed = COMMUNITY_DEMO_SEED_ENABLED && loadedState.posts.length === 0;
 const removedLegacySeedData =
   !COMMUNITY_DEMO_SEED_ENABLED &&
   loadedState.posts.some((post) => LEGACY_COMMUNITY_SEED_POST_IDS.has(post.id));
@@ -311,7 +312,9 @@ let state = removedLegacySeedData
         ])
       ),
     }
-  : loadedState;
+  : shouldAddDemoSeed
+    ? createSeedState()
+    : loadedState;
 
 function saveState() {
   if (getSqlDriver() === 'mysql') {
@@ -322,7 +325,7 @@ function saveState() {
   saveSqlState('community', state);
 }
 
-if (removedLegacySeedData) {
+if (removedLegacySeedData || shouldAddDemoSeed) {
   saveState();
 }
 

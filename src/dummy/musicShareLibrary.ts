@@ -31,20 +31,38 @@ export type MusicShareTrackCard = {
 };
 
 export const MUSIC_SHARE_FALLBACK_IMAGES = [
-  '/landing-assets/shared-fallback-band.jpg',
-  '/landing-assets/shared-fallback-film.jpg',
-  '/landing-assets/shared-fallback-pink-sketch.jpg',
-  '/landing-assets/shared-fallback-groove.jpg',
-  '/landing-assets/shared-fallback-dream.jpg',
-  '/landing-assets/shared-fallback-ballad.jpg',
-  '/landing-assets/shared-fallback-jazz.jpg',
-  '/landing-assets/shared-fallback-pink-sketch.jpg',
+  '/landing-assets/shared-fallback-band.webp',
+  '/landing-assets/shared-fallback-film.webp',
+  '/landing-assets/shared-fallback-pink-sketch.webp',
+  '/landing-assets/shared-fallback-groove.webp',
+  '/landing-assets/shared-fallback-dream.webp',
+  '/landing-assets/shared-fallback-ballad.webp',
+  '/landing-assets/shared-fallback-jazz.webp',
+  '/landing-assets/shared-fallback-pink-sketch.webp',
 ] as const;
 
-export function getMusicShareTrackImage(track: Pick<MusicShareTrackCard, 'id' | 'imageUrl'>) {
+const CATEGORY_COVER_IMAGES: Partial<Record<Exclude<MusicShareCategory, 'all'>, string>> = {
+  classic: '/landing-assets/cover-classic-piano.webp',
+  jazz: '/landing-assets/cover-jazz-sax.webp',
+  citypop: '/landing-assets/cover-citypop-night.webp',
+  ost: '/landing-assets/cover-film-projector.webp',
+  anime: '/landing-assets/shared-fallback-pink-sketch.webp',
+  game: '/landing-assets/night-loop.webp',
+  ballad: '/landing-assets/cover-classic-piano.webp',
+  pop: '/landing-assets/shared-fallback-band.webp',
+  rock: '/landing-assets/shared-fallback-film.webp',
+};
+
+export function getMusicShareTrackImage(
+  track: Pick<MusicShareTrackCard, 'id' | 'imageUrl'> & Partial<Pick<MusicShareTrackCard, 'category'>>
+) {
   const imageUrl = track.imageUrl?.trim();
   if (imageUrl) {
     return imageUrl;
+  }
+
+  if (track.category && CATEGORY_COVER_IMAGES[track.category]) {
+    return CATEGORY_COVER_IMAGES[track.category];
   }
 
   const hash = Array.from(track.id).reduce(
@@ -94,7 +112,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['입문', '감성'],
     palette:
       'linear-gradient(180deg, rgba(95,95,99,0.92) 0%, rgba(55,55,58,0.96) 100%)',
-    imageUrl: '/landing-assets/shared-fallback-film.jpg',
+    imageUrl: '/landing-assets/cover-classic-piano.webp',
     createdAt: new Date('2026-03-17T10:20:00+09:00').getTime(),
     creatorName: 'loopmaker',
   },
@@ -107,7 +125,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['발라드', '감성'],
     palette:
       'linear-gradient(180deg, rgba(89,89,94,0.92) 0%, rgba(51,51,54,0.96) 100%)',
-    imageUrl: '/landing-assets/shared-fallback-band.jpg',
+    imageUrl: '/landing-assets/shared-fallback-band.webp',
     createdAt: new Date('2026-03-18T08:10:00+09:00').getTime(),
     creatorName: 'chordnote',
   },
@@ -120,7 +138,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['감성', '입문'],
     palette:
       'linear-gradient(180deg, rgba(94,94,98,0.92) 0%, rgba(53,53,57,0.96) 100%)',
-    imageUrl: '/landing-assets/emotional-bridge.jpg',
+    imageUrl: '/landing-assets/emotional-bridge.webp',
     createdAt: new Date('2026-03-18T19:45:00+09:00').getTime(),
     creatorName: 'groovepark',
   },
@@ -133,7 +151,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['재즈', '입문'],
     palette:
       'linear-gradient(180deg, rgba(91,91,96,0.92) 0%, rgba(50,50,55,0.96) 100%)',
-    imageUrl: '/landing-assets/shared-fallback-jazz.jpg',
+    imageUrl: '/landing-assets/cover-jazz-sax.webp',
     createdAt: new Date('2026-03-19T11:05:00+09:00').getTime(),
     creatorName: 'bluekeys',
   },
@@ -146,7 +164,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['시티팝', '감성'],
     palette:
       'linear-gradient(180deg, rgba(96,96,101,0.92) 0%, rgba(54,54,58,0.96) 100%)',
-    imageUrl: '/landing-assets/deep-house-line.jpg',
+    imageUrl: '/landing-assets/cover-citypop-night.webp',
     createdAt: new Date('2026-03-19T20:10:00+09:00').getTime(),
     creatorName: 'nightsynth',
   },
@@ -159,7 +177,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['OST', '감성'],
     palette:
       'linear-gradient(180deg, rgba(95,95,100,0.92) 0%, rgba(52,52,56,0.96) 100%)',
-    imageUrl: '/landing-assets/shared-fallback-film.jpg',
+    imageUrl: '/landing-assets/cover-film-projector.webp',
     createdAt: new Date('2026-03-20T09:00:00+09:00').getTime(),
     creatorName: 'scenecomposer',
   },
@@ -172,7 +190,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['애니', 'OST'],
     palette:
       'linear-gradient(180deg, rgba(92,92,96,0.92) 0%, rgba(50,50,54,0.96) 100%)',
-    imageUrl: '/landing-assets/shared-fallback-pink-sketch.jpg',
+    imageUrl: '/landing-assets/shared-fallback-pink-sketch.webp',
     createdAt: new Date('2026-03-20T16:35:00+09:00').getTime(),
     creatorName: 'animechord',
   },
@@ -185,7 +203,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['게임', 'OST'],
     palette:
       'linear-gradient(180deg, rgba(87,87,90,0.92) 0%, rgba(48,48,52,0.96) 100%)',
-    imageUrl: '/landing-assets/shared-fallback-dream.jpg',
+    imageUrl: '/landing-assets/night-loop.webp',
     createdAt: new Date('2026-03-20T23:15:00+09:00').getTime(),
     creatorName: 'arcadescore',
   },
@@ -198,7 +216,7 @@ export const BASE_SHARED_TRACK_LIBRARY: MusicShareTrackCard[] = [
     tags: ['시험', '연습', '공유곡'],
     palette:
       'linear-gradient(180deg, rgba(68,86,102,0.92) 0%, rgba(31,37,45,0.96) 100%)',
-    imageUrl: '/landing-assets/shared-fallback-groove.jpg',
+    imageUrl: '/landing-assets/shared-fallback-dream.webp',
     createdAt: new Date('2026-05-09T09:00:00+09:00').getTime(),
     creatorName: 'songmaker',
   },
@@ -238,14 +256,14 @@ const GENRE_PALETTE_MAP: Record<string, string> = {
 };
 
 const SHARED_TRACK_IMAGE_MAP: Record<string, string> = {
-  'share-base-1': '/landing-assets/shared-fallback-film.jpg',
-  'share-base-2': '/landing-assets/shared-fallback-band.jpg',
-  'share-base-3': '/landing-assets/emotional-bridge.jpg',
-  'share-base-4': '/landing-assets/shared-fallback-jazz.jpg',
-  'share-base-5': '/landing-assets/deep-house-line.jpg',
-  'share-base-6': '/landing-assets/shared-fallback-film.jpg',
-  'share-base-7': '/landing-assets/shared-fallback-pink-sketch.jpg',
-  'share-base-8': '/landing-assets/shared-fallback-dream.jpg',
+  'share-base-1': '/landing-assets/shared-fallback-film.webp',
+  'share-base-2': '/landing-assets/shared-fallback-band.webp',
+  'share-base-3': '/landing-assets/emotional-bridge.webp',
+  'share-base-4': '/landing-assets/shared-fallback-jazz.webp',
+  'share-base-5': '/landing-assets/deep-house-line.webp',
+  'share-base-6': '/landing-assets/shared-fallback-film.webp',
+  'share-base-7': '/landing-assets/shared-fallback-pink-sketch.webp',
+  'share-base-8': '/landing-assets/shared-fallback-dream.webp',
 };
 
 export function getGenreLabel(genre: string) {
@@ -280,13 +298,19 @@ export function buildSharedTrackCard(
       project.coverImageUrl ||
       SHARED_TRACK_IMAGE_MAP[project.id] ||
       (category === 'classic'
-        ? '/seed-images/music/classic.svg'
+        ? '/landing-assets/cover-classic-piano.webp'
         : category === 'jazz'
-          ? '/seed-images/music/jazz.svg'
+          ? '/landing-assets/cover-jazz-sax.webp'
           : category === 'citypop'
-            ? '/seed-images/music/citypop.svg'
-            : category === 'ost' || category === 'anime' || category === 'game'
-              ? '/seed-images/music/screen.svg'
-              : '/seed-images/music/pop.svg'),
+            ? '/landing-assets/cover-citypop-night.webp'
+            : category === 'ost'
+              ? '/landing-assets/cover-film-projector.webp'
+              : category === 'anime'
+                ? '/landing-assets/shared-fallback-pink-sketch.webp'
+                : category === 'game'
+                  ? '/landing-assets/night-loop.webp'
+                  : category === 'ballad'
+                    ? '/landing-assets/cover-classic-piano.webp'
+                    : '/landing-assets/shared-fallback-band.webp'),
   };
 }

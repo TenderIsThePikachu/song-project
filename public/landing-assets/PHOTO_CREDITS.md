@@ -1,0 +1,26 @@
+# Photo credits
+
+The replacement music cover photographs are sourced from Unsplash and used under the Unsplash License.
+
+- `shared-fallback-film.jpg`: Caught In Joy (`ptVBlniJi50`)
+- `shared-fallback-band.jpg`: Wes Hicks (`MEL-jJnm7RQ`)
+- `shared-fallback-pink-sketch.jpg`: Leo Wieling (`bG8U3kaZltE`)
+- `shared-fallback-groove.jpg`: Mohammad Metri (`1oKxSKSOowE`)
+- `shared-fallback-dream.jpg`: Luis Gherasim (`aLPY2rRTYQI`)
+- `shared-fallback-ballad.jpg`: Dylan McLeod (`VRdZBLqnoMU`)
+- `shared-fallback-jazz.jpg`: Caught In Joy (`PukZSAi_K5o`)
+- `emotional-bridge.jpg`: Denis Bayer (`aRkGyl0COvw`)
+- `deep-house-line.jpg`: Lewis Guapo (`XJK8gdWpxWk`)
+- `night-loop.jpg`: Omid Armin (`0cbLoqUyz28`)
+- `frost-tower-riff.jpg`: Leo Wieling (`bG8U3kaZltE`)
+- `midnight-hook.jpg`: Mohammad Metri (`1oKxSKSOowE`)
+- `cover-classic-piano.jpg`: Annina Maria (`pOjSj5fPWK4`)
+- `cover-jazz-sax.jpg`: Jens Thekkeveettil (`dBWvUqBoOU8`)
+- `cover-citypop-night.jpg`: Derch (`4CMq1GxDSPA`)
+- `cover-film-projector.jpg`: Miguel Alcantara (`1xBN6IakqEo`)
+- `collab-vocal-guitar.jpg`: Joao Macedo (`-hEp_ReX9Aw`)
+- `collab-piano-mix.jpg`: Jean-Baptiste Ronssin (`76yPFVoJDRo`)
+- `collab-bass-drums.jpg`: Inspire Lens (`IG9fKY3oajQ`)
+- `collab-songwriting.jpg`: Jason Leung (`DQdVDMw5R6A`)
+- `collab-producer.jpg`: Techivation (`O3GUB4KWjYE`)
+- `collab-synth-guitar.jpg`: Ayotunde Agbede (`qsPZ3qTe9qk`)

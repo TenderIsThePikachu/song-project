@@ -10,7 +10,13 @@ import {
   renderAquaPlanetVocal,
 } from '../utils/vocalSynth';
 import {
+  deleteAiVocalAudio,
+  loadAiVocalAudio,
+  saveAiVocalAudio,
+} from '../utils/aiVocalAudioStorage.ts';
+import {
   initTransport,
+  getPlaybackStartDelaySeconds,
   preloadPlaybackEngine,
   playBassPreview,
   playDrumPreview,
@@ -38,6 +44,7 @@ import {
   BASS_CHORD_MAP,
   BASS_NOTES,
   CHICAGO_STREET_NOTES,
+  DRUM_TRACK_LABELS,
   DRUM_STEP_WIDTH,
   GLOCKENSPIEL_NOTES,
   GUITAR_ROWS,
@@ -54,6 +61,7 @@ import {
   VIOLIN_ROWS,
 } from '../constants/composer.ts';
 import { useAuthStore } from '../store/authStore.ts';
+import { isLocalDevelopmentHost, LOCAL_COLLAB_GUEST } from '../utils/localEnvironment.ts';
 import {
   COLLAB_PRESENCE_PING_INTERVAL_MS,
   COLLAB_PRESENCE_TIMEOUT_MS,
@@ -61,13 +69,13 @@ import {
   COLLAB_SESSION_COLOR,
   COLLAB_SESSION_ID,
   getCollabNoteColorKey,
-  type CollabComposerHistoryEntry,
   type CollabComposerInstrument,
   type CollabComposerOperation,
   useCollabStore,
 } from '../store/collabStore.ts';
 import {
   DRUM_ROWS,
+  FIXED_BAR_COUNT,
   LYRICS_MELODY_TRACK_ID,
   buildSongProjectSnapshot,
   type ExtraInstrumentTrack,
@@ -75,6 +83,19 @@ import {
   type SongProject,
   useSongStore,
 } from '../store/songStore.ts';
+import {
+  getBeatSteps,
+  formatTimeSignature,
+  getBarCountForSteps,
+  getBarInfoAtIndex,
+  getBarInfoAtStep,
+  getPrimaryBeatSteps,
+  getStepsPerBar,
+  getTimeSignatureAtStep,
+  normalizeTimeSignature,
+  type TimeSignature,
+  type TimeSignatureChange,
+} from '../utils/timeSignature.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import {
   useUIStore,
@@ -86,6 +107,7 @@ import './Composer.css';
 
 type ComposerTab = ComposerTabKey;
 const EMPTY_COLLAB_NOTE_COLORS: Record<string, string> = {};
+const EMPTY_COLLAB_NOTE_AUTHORS: Record<string, string> = {};
 type OptimisticCollabNoteColors = Record<string, string | null>;
 const COLLAB_CURSOR_SEND_INTERVAL_MS = 100;
 const COLLAB_CURSOR_VISIBLE_MS = 12_000;
@@ -153,16 +175,15 @@ type TabPickerGroup = {
 };
 
 const chordOptions = ['C', 'D', 'E', 'F', 'G', 'A', 'B'] as const;
-const melodyNoteLengthOptions = [
+const baseMelodyNoteLengthOptions = [
   { label: '1/16', steps: 1 },
   { label: '1/8', steps: 2 },
   { label: '1/4', steps: 4 },
   { label: '1/2', steps: 8 },
-  { label: '1 Bar', steps: 16 },
 ] as const;
-type MelodyNoteLengthSteps = (typeof melodyNoteLengthOptions)[number]['steps'];
+type MelodyNoteLengthSteps = number;
 type ComposerNotepadMode = 'lyrics' | 'memo';
-type CollabPanelTab = 'activity' | 'members' | 'chat';
+type CollabPanelTab = 'members' | 'chat';
 type PianoEditTool = 'select' | 'pencil' | 'eraser' | 'marquee' | 'zoom';
 type ArrangementClipLayout = {
   start: number;
@@ -290,7 +311,8 @@ function getLyricsBarLines(value: string) {
 function distributeLyricsIntoMelodyBars(
   value: string,
   melodyNotes: ReadonlyArray<{ col: number }>,
-  lyricsStartBar: number
+  lyricsStartBar: number,
+  getBarIndexAtStep: (step: number) => number
 ) {
   const explicitLines = getLyricsBarLines(value).map((line) => line.trim());
   const populatedLineIndexes = explicitLines.flatMap((line, index) =>
@@ -310,7 +332,7 @@ function distributeLyricsIntoMelodyBars(
   const noteColumnsByLine = new Map<number, Set<number>>();
 
   melodyNotes.forEach(({ col }) => {
-    const lineIndex = Math.floor(col / COLLAB_BAR_LENGTH) - firstBarIndex;
+    const lineIndex = getBarIndexAtStep(col) - firstBarIndex;
     if (lineIndex < 0) return;
     const columns = noteColumnsByLine.get(lineIndex) ?? new Set<number>();
     columns.add(col);
@@ -361,7 +383,6 @@ const tabPickerGroups: TabPickerGroup[] = [
     options: ['videoOverlay', 'airInstrument'],
   },
 ];
-const COLLAB_BAR_LENGTH = 16;
 
 function getCollabInstrumentForTab(tab: ComposerTab): CollabComposerInstrument {
   if (tab === 'lyrics') {
@@ -552,6 +573,13 @@ type ArrangementTrackDefinition = {
   silent?: boolean;
 };
 
+type AiVocalAudioClip = {
+  url: string;
+  duration: number;
+  voice: 'female' | 'male';
+  audio: HTMLAudioElement;
+};
+
 const arrangementTrackIcons: Record<InstrumentComposerTab, string> = {
   melody: '🎵',
   violin: '🎻',
@@ -740,10 +768,20 @@ function readComposerTabDraft() {
   }
 }
 
-function getSubdivisionClassName(col: number) {
-  return `${col % 2 === 0 ? ' is-eighth' : ''}${col % 4 === 0 ? ' is-quarter' : ''}${
-    col % 8 === 0 ? ' is-half' : ''
-  }${col % 16 === 0 ? ' is-bar' : ''}`;
+function getSubdivisionClassName(
+  col: number,
+  timeSignatureChanges: readonly TimeSignatureChange[],
+  timeSignature: TimeSignature
+) {
+  const bar = getBarInfoAtStep(timeSignatureChanges, timeSignature, col);
+  const stepsPerBar = bar.length;
+  const beatSteps = getBeatSteps(bar.timeSignature);
+  const primaryBeatSteps = getPrimaryBeatSteps(bar.timeSignature);
+  const offset = col - bar.start;
+  const hasMidBarGroup = stepsPerBar >= primaryBeatSteps * 4;
+  return `${offset % beatSteps === 0 ? ' is-eighth' : ''}${offset % primaryBeatSteps === 0 ? ' is-quarter' : ''}${
+    hasMidBarGroup && offset % (primaryBeatSteps * 2) === 0 ? ' is-half' : ''
+  }${offset === 0 ? ' is-bar' : ''}`;
 }
 
 function isSharpNote(note: unknown) {
@@ -753,13 +791,17 @@ function isSharpNote(note: unknown) {
 export function Composer() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const user = useAuthStore((state) => state.user);
+  const collabId = searchParams.get('collab');
+  const authenticatedUser = useAuthStore((state) => state.user);
+  const user = authenticatedUser ?? (collabId && isLocalDevelopmentHost() ? LOCAL_COLLAB_GUEST : null);
   const tutorialCompletedByEmail = useAuthStore(
     (state) => state.profilesByEmail[user?.email ?? '']?.composerTutorialCompleted ?? false
   );
   const markComposerTutorialCompleted = useAuthStore((state) => state.markComposerTutorialCompleted);
   const {
     compositionMode,
+    timeSignature,
+    timeSignatureChanges,
     bpm,
     tempoAutomation,
     steps,
@@ -801,6 +843,7 @@ export function Composer() {
     currentStep,
     setCurrentStep,
     setBpm,
+    setTimeSignature,
     setSteps,
     setMelodyLyric,
     setBarLyrics,
@@ -827,13 +870,11 @@ export function Composer() {
   const leavePresence = useCollabStore((state) => state.leavePresence);
   const presenceByProject = useCollabStore((state) => state.presenceByProject);
   const composerLocksByProject = useCollabStore((state) => state.composerLocksByProject);
-  const composerHistoryByProject = useCollabStore((state) => state.composerHistoryByProject);
   const collabMessages = useCollabStore((state) => state.messages);
   const addCollabMessage = useCollabStore((state) => state.addMessage);
   const libraryProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
   const saveLibraryProject = useComposerLibraryStore((state) => state.saveProject);
-  const collabId = searchParams.get('collab');
   const projectId = searchParams.get('project');
   const newProjectRequested = searchParams.get('new') === '1';
   const requestedNewProjectTitle = (searchParams.get('title') ?? '').trim().slice(0, 60);
@@ -842,6 +883,26 @@ export function Composer() {
     ? Math.min(200, Math.max(60, requestedNewProjectBpmValue))
     : 120;
   const requestedNewProjectGenre = searchParams.get('genre') || 'ballad';
+  const requestedNewProjectTimeSignature = normalizeTimeSignature({
+    beats: Number(searchParams.get('beats')),
+    beatType: Number(searchParams.get('beatType')),
+  });
+  const activeTimeSignature = getTimeSignatureAtStep(
+    timeSignatureChanges,
+    timeSignature,
+    currentStep
+  );
+  const stepsPerBar = getStepsPerBar(activeTimeSignature);
+  const beatSteps = getBeatSteps(activeTimeSignature);
+  const primaryBeatSteps = getPrimaryBeatSteps(activeTimeSignature);
+  const groupSteps = stepsPerBar >= primaryBeatSteps * 4 ? primaryBeatSteps * 2 : stepsPerBar;
+  const melodyNoteLengthOptions = useMemo(
+    () => [
+      ...baseMelodyNoteLengthOptions.filter((option) => option.steps !== stepsPerBar),
+      { label: '1 Bar', steps: stepsPerBar },
+    ],
+    [stepsPerBar]
+  );
   const configuredNewProjectRef = useRef(false);
   const tutorialRequested = false;
   const requestedGuideStep = Number(searchParams.get('guideStep') ?? '0');
@@ -850,6 +911,7 @@ export function Composer() {
     [collabId, projects]
   );
   const serverCollabNoteColors = collabProject?.noteColors ?? EMPTY_COLLAB_NOTE_COLORS;
+  const serverCollabNoteAuthors = collabProject?.noteAuthors ?? EMPTY_COLLAB_NOTE_AUTHORS;
   const [optimisticCollabNoteColors, setOptimisticCollabNoteColors] =
     useState<OptimisticCollabNoteColors>({});
 
@@ -868,6 +930,21 @@ export function Composer() {
     });
     return merged;
   }, [optimisticCollabNoteColors, serverCollabNoteColors]);
+  const collabNoteAuthorNames = useMemo(() => {
+    const membersByEmail = new Map(
+      (collabProject?.members ?? []).map((member) => [
+        member.email.trim().toLowerCase(),
+        member.name,
+      ])
+    );
+
+    return Object.fromEntries(
+      Object.entries(serverCollabNoteAuthors).map(([key, email]) => {
+        const normalizedEmail = email.trim().toLowerCase();
+        return [key, membersByEmail.get(normalizedEmail) || email];
+      })
+    );
+  }, [collabProject?.members, serverCollabNoteAuthors]);
 
   useEffect(() => {
     setOptimisticCollabNoteColors((current) => {
@@ -1024,12 +1101,14 @@ export function Composer() {
   const [mutedArrangementTracks, setMutedArrangementTracks] = useState<Set<string>>(
     () => new Set()
   );
+  const [aiVocalAudioClips, setAiVocalAudioClips] = useState<Record<string, AiVocalAudioClip>>({});
+  const aiVocalAudioClipsRef = useRef<Record<string, AiVocalAudioClip>>({});
+  const loadingAiVocalTrackIdsRef = useRef(new Set<string>());
+  const aiVocalPlaybackTimerRef = useRef<number | null>(null);
   const [openTrackMenuId, setOpenTrackMenuId] = useState<string | null>(null);
   const [hiddenArrangementTrackIds, setHiddenArrangementTrackIds] = useState<Set<string>>(
     () => new Set()
   );
-  const [pendingAiVocalTrackId, setPendingAiVocalTrackId] =
-  useState<string | null>(null);
   const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(false);
   const pianoEditTool: PianoEditTool = 'pencil';
   const [pianoZoom, setPianoZoom] = useState(1);
@@ -1141,7 +1220,7 @@ export function Composer() {
   const [isScoreViewerOpen, setIsScoreViewerOpen] = useState(false);
   const closeScoreViewer = useCallback(() => setIsScoreViewerOpen(false), []);
   const [isCollabPanelOpen, setIsCollabPanelOpen] = useState(false);
-  const [collabPanelTab, setCollabPanelTab] = useState<CollabPanelTab>('activity');
+  const [collabPanelTab, setCollabPanelTab] = useState<CollabPanelTab>('chat');
   const [collabMessageDraft, setCollabMessageDraft] = useState('');
   const [collabMessageError, setCollabMessageError] = useState('');
   const [isSendingCollabMessage, setIsSendingCollabMessage] = useState(false);
@@ -1162,15 +1241,28 @@ export function Composer() {
     guitar: 0,
     bass: 0,
   });
-  const arrangementBarCount = Math.max(1, Math.ceil(steps / COLLAB_BAR_LENGTH));
-  const arrangementTimelineBars = useMemo(
-    () =>
-      Array.from(
-        { length: Math.ceil(arrangementBarCount / 4) },
-        (_, index) => index * 4 + 1
-      ),
-    [arrangementBarCount]
+  const arrangementBarCount = getBarCountForSteps(timeSignatureChanges, timeSignature, steps);
+  const arrangementBars = useMemo(
+    () => Array.from({ length: arrangementBarCount }, (_, index) => {
+      const bar = getBarInfoAtIndex(timeSignatureChanges, timeSignature, index);
+      const nextMajorBar = getBarInfoAtIndex(
+        timeSignatureChanges,
+        timeSignature,
+        Math.min(arrangementBarCount, index + 4)
+      );
+      return {
+        ...bar,
+        left: Math.min(100, (bar.start / Math.max(1, steps)) * 100),
+        majorWidth: Math.max(
+          0,
+          ((Math.min(steps, nextMajorBar.start) - bar.start) / Math.max(1, steps)) * 100
+        ),
+        meterChange: timeSignatureChanges.some((change) => change.bar === index && index > 0),
+      };
+    }),
+    [arrangementBarCount, steps, timeSignature, timeSignatureChanges]
   );
+  const arrangementTimelineBars = arrangementBars.filter((bar) => bar.index % 4 === 0);
   const [pitchedRollScrollTop, setPitchedRollScrollTop] = useState<Record<string, number>>({});
   const tutorialAdvanceTimeoutRef = useRef<number | null>(null);
   const lastAutoAdvancedStepRef = useRef<number | null>(null);
@@ -1237,6 +1329,8 @@ export function Composer() {
     configuredNewProjectRef.current = true;
     clear();
     setBpm(requestedNewProjectBpm);
+    setTimeSignature(requestedNewProjectTimeSignature);
+    setSteps(FIXED_BAR_COUNT * getStepsPerBar(requestedNewProjectTimeSignature));
     setProjectGenre(requestedNewProjectGenre);
     setNotepadDraft({
       title: requestedNewProjectTitle || '제목 없는 곡',
@@ -1286,9 +1380,12 @@ export function Composer() {
     newProjectRequested,
     requestedNewProjectBpm,
     requestedNewProjectGenre,
+    requestedNewProjectTimeSignature,
     requestedNewProjectTitle,
     saveLibraryProject,
     setBpm,
+    setSteps,
+    setTimeSignature,
     user?.email,
     user?.name,
   ]);
@@ -1370,7 +1467,10 @@ export function Composer() {
   }, [arrangementVisibleTracks.length, isArrangementCollapsed]);
   const scoreViewerParts = useMemo(
     () => arrangementVisibleTracks
-      .filter((track) => track.trackId !== LYRICS_MELODY_TRACK_ID)
+      .filter(
+        (track) =>
+          track.trackId !== LYRICS_MELODY_TRACK_ID && !track.label.startsWith('AI 보컬')
+      )
       .map((track) => ({
         id: track.key ?? track.id,
         trackId: track.trackId,
@@ -1382,6 +1482,87 @@ export function Composer() {
   const activeExtraTrack = useMemo(
     () => extraTracks.find((track) => track.id === activeTrackId) ?? null,
     [activeTrackId, extraTracks]
+  );
+  const activeAiVocalClip =
+    activeExtraTrack?.label.startsWith('AI 보컬')
+      ? aiVocalAudioClips[activeExtraTrack.id]
+      : undefined;
+
+  useEffect(() => {
+    aiVocalAudioClipsRef.current = aiVocalAudioClips;
+  }, [aiVocalAudioClips]);
+
+  useEffect(() => {
+    const liveTrackIds = new Set(extraTracks.map((track) => track.id));
+    const removedEntries = Object.entries(aiVocalAudioClips).filter(
+      ([trackId]) => !liveTrackIds.has(trackId)
+    );
+    if (!removedEntries.length) return;
+
+    removedEntries.forEach(([, clip]) => {
+      clip.audio.pause();
+      URL.revokeObjectURL(clip.url);
+    });
+    removedEntries.forEach(([trackId]) => {
+      void deleteAiVocalAudio(trackId).catch((error) => {
+        console.error('[AI Vocal] stored audio cleanup failed:', error);
+      });
+    });
+    setAiVocalAudioClips((current) =>
+      Object.fromEntries(Object.entries(current).filter(([trackId]) => liveTrackIds.has(trackId)))
+    );
+  }, [aiVocalAudioClips, extraTracks]);
+
+  useEffect(() => {
+    extraTracks
+      .filter((track) => track.label.startsWith('AI 보컬'))
+      .forEach((track) => {
+        if (aiVocalAudioClips[track.id] || loadingAiVocalTrackIdsRef.current.has(track.id)) {
+          return;
+        }
+
+        loadingAiVocalTrackIdsRef.current.add(track.id);
+        void loadAiVocalAudio(track.id)
+          .then(async (blob) => {
+            if (!blob || !useSongStore.getState().extraTracks.some((item) => item.id === track.id)) {
+              return;
+            }
+
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            const duration = await new Promise<number>((resolve) => {
+              const finish = () => resolve(Number.isFinite(audio.duration) ? audio.duration : 0);
+              audio.addEventListener('loadedmetadata', finish, { once: true });
+              audio.addEventListener('error', () => resolve(0), { once: true });
+            });
+
+            setAiVocalAudioClips((current) => ({
+              ...current,
+              [track.id]: {
+                url,
+                duration,
+                voice: track.label.includes('남성') ? 'male' : 'female',
+                audio,
+              },
+            }));
+          })
+          .catch((error) => {
+            console.error('[AI Vocal] stored audio restore failed:', error);
+          })
+          .finally(() => {
+            loadingAiVocalTrackIdsRef.current.delete(track.id);
+          });
+      });
+  }, [aiVocalAudioClips, extraTracks]);
+
+  useEffect(
+    () => () => {
+      Object.values(aiVocalAudioClipsRef.current).forEach((clip) => {
+        clip.audio.pause();
+        URL.revokeObjectURL(clip.url);
+      });
+    },
+    []
   );
   const getArrangementTrackData = useCallback(
     (track: ArrangementTrackDefinition) => {
@@ -1459,7 +1640,7 @@ export function Composer() {
     (count, note) =>
       Math.max(
         count,
-        Math.floor(note.col / COLLAB_BAR_LENGTH) - lyricsStartBar + 1
+        getBarInfoAtStep(timeSignatureChanges, timeSignature, note.col).index - lyricsStartBar + 1
       ),
     0
   );
@@ -1506,14 +1687,15 @@ export function Composer() {
     const nextLines = distributeLyricsIntoMelodyBars(
       lyricsText,
       melodyLyricNotes,
-      lyricsStartBar
+      lyricsStartBar,
+      (step) => getBarInfoAtStep(timeSignatureChanges, timeSignature, step).index
     );
     commitLyricsBarLines(nextLines);
     const firstMelodyLine = melodyLyricNotes.length
-      ? Math.max(0, Math.floor(melodyLyricNotes[0].col / COLLAB_BAR_LENGTH) - lyricsStartBar + 1)
+      ? Math.max(0, getBarInfoAtStep(timeSignatureChanges, timeSignature, melodyLyricNotes[0].col).index - lyricsStartBar + 1)
       : 0;
     setSelectedLyricsBar(firstMelodyLine);
-  }, [commitLyricsBarLines, lyricsStartBar, lyricsText, melodyLyricNotes]);
+  }, [commitLyricsBarLines, lyricsStartBar, lyricsText, melodyLyricNotes, timeSignature, timeSignatureChanges]);
 
   const handleFillEmptyLyricsBars = useCallback(() => {
     const nextLength = Math.max(lyricsBarLines.length, arrangementBarCount - lyricsStartBar + 1);
@@ -1561,17 +1743,17 @@ export function Composer() {
       ];
       commitLyricsBarLines(nextLines);
       setSelectedLyricsBar(targetIndex);
-      setCurrentStep((lyricsStartBar + targetIndex - 1) * COLLAB_BAR_LENGTH);
+      setCurrentStep(getBarInfoAtIndex(timeSignatureChanges, timeSignature, lyricsStartBar + targetIndex - 1).start);
     },
-    [commitLyricsBarLines, lyricsBarLines, lyricsStartBar, selectedLyricsBar, setCurrentStep]
+    [commitLyricsBarLines, lyricsBarLines, lyricsStartBar, selectedLyricsBar, setCurrentStep, timeSignature, timeSignatureChanges]
   );
 
   const handleSelectLyricsBar = useCallback(
     (index: number) => {
       setSelectedLyricsBar(index);
-      setCurrentStep((lyricsStartBar + index - 1) * COLLAB_BAR_LENGTH);
+      setCurrentStep(getBarInfoAtIndex(timeSignatureChanges, timeSignature, lyricsStartBar + index - 1).start);
     },
-    [lyricsStartBar, setCurrentStep]
+    [lyricsStartBar, setCurrentStep, timeSignature, timeSignatureChanges]
   );
 
   useEffect(() => {
@@ -1579,12 +1761,12 @@ export function Composer() {
       return;
     }
 
-    const currentBar = Math.floor(currentStep / COLLAB_BAR_LENGTH) + 1;
+    const currentBar = getBarInfoAtStep(timeSignatureChanges, timeSignature, currentStep).index + 1;
     const nextIndex = currentBar - lyricsStartBar;
     if (nextIndex >= 0 && nextIndex < lyricsBarLines.length) {
       setSelectedLyricsBar(nextIndex);
     }
-  }, [currentStep, isLyricsWorkspaceOpen, lyricsBarLines.length, lyricsStartBar]);
+  }, [currentStep, isLyricsWorkspaceOpen, lyricsBarLines.length, lyricsStartBar, timeSignature, timeSignatureChanges]);
 
   useEffect(() => {
     if (activeTab === 'lyrics' || isArrangementCollapsed) {
@@ -1861,6 +2043,72 @@ export function Composer() {
   }, [isPlaying]);
 
   useEffect(() => {
+    Object.entries(aiVocalAudioClips).forEach(([trackId, clip]) => {
+      const track = extraTracks.find((item) => item.id === trackId);
+      const arrangementId = `added-extra-${trackId}`;
+      clip.audio.volume = mutedArrangementTracks.has(arrangementId)
+        ? 0
+        : Math.min(1, Math.max(0, (track?.volume ?? 72) / 100));
+    });
+  }, [aiVocalAudioClips, extraTracks, mutedArrangementTracks]);
+
+  useEffect(() => {
+    if (aiVocalPlaybackTimerRef.current !== null) {
+      window.clearTimeout(aiVocalPlaybackTimerRef.current);
+      aiVocalPlaybackTimerRef.current = null;
+    }
+
+    const clips = Object.values(aiVocalAudioClips);
+    if (!isPlaying) {
+      clips.forEach((clip) => clip.audio.pause());
+      return undefined;
+    }
+
+    const state = useSongStore.getState();
+    clips.forEach((clip) => {
+      clip.audio.pause();
+      clip.audio.currentTime = Math.min(
+        clip.duration,
+        state.currentStep * (60 / Math.max(1, state.bpm) / 4)
+      );
+    });
+    aiVocalPlaybackTimerRef.current = window.setTimeout(() => {
+      aiVocalPlaybackTimerRef.current = null;
+      clips.forEach((clip) => void clip.audio.play().catch(() => undefined));
+    }, getPlaybackStartDelaySeconds() * 1000);
+
+    return () => {
+      if (aiVocalPlaybackTimerRef.current !== null) {
+        window.clearTimeout(aiVocalPlaybackTimerRef.current);
+        aiVocalPlaybackTimerRef.current = null;
+      }
+    };
+  }, [aiVocalAudioClips, isPlaying]);
+
+  useEffect(() => {
+    let previousStep = currentStep;
+    const handleAiVocalLoop = (event: Event) => {
+      const step = (event as CustomEvent<{ step?: number }>).detail?.step;
+      if (!isPlayingRef.current || typeof step !== 'number') return;
+
+      if (step < previousStep) {
+        const liveBpm = useSongStore.getState().bpm;
+        Object.values(aiVocalAudioClipsRef.current).forEach((clip) => {
+          clip.audio.currentTime = Math.min(
+            clip.duration,
+            step * (60 / Math.max(1, liveBpm) / 4)
+          );
+          void clip.audio.play().catch(() => undefined);
+        });
+      }
+      previousStep = step;
+    };
+
+    window.addEventListener('composer-playhead-step', handleAiVocalLoop);
+    return () => window.removeEventListener('composer-playhead-step', handleAiVocalLoop);
+  }, [currentStep]);
+
+  useEffect(() => {
     const renderLivePlayhead = () => {
       followScrollFrameRef.current = null;
 
@@ -2044,6 +2292,8 @@ export function Composer() {
     () =>
       buildSongProjectSnapshot({
         compositionMode,
+        timeSignature,
+        timeSignatureChanges,
         bpm,
         tempoAutomation,
         steps,
@@ -2071,6 +2321,8 @@ export function Composer() {
       barLyrics,
       bpm,
       compositionMode,
+      timeSignature,
+      timeSignatureChanges,
       tempoAutomation,
       drums,
       extraTracks,
@@ -2148,17 +2400,6 @@ export function Composer() {
       ...lockEntry[1],
     };
   }, [activeTab, currentTabLockMap]);
-  const visibleComposerLocks = useMemo(
-    () =>
-      activeComposerLocks
-        .filter((lock) => lock.sessionId !== COLLAB_SESSION_ID)
-        .slice(0, 4),
-    [activeComposerLocks]
-  );
-  const recentComposerHistory = useMemo<CollabComposerHistoryEntry[]>(
-    () => (collabId ? (composerHistoryByProject[collabId] ?? []).slice(0, 24) : []),
-    [collabId, composerHistoryByProject]
-  );
   const projectCollabMessages = useMemo(
     () =>
       collabId
@@ -3038,26 +3279,6 @@ export function Composer() {
     [activateTab, addInstrumentTrack, navigate, openTabsState]
   );
 
- const handleAddAiVocalTrack = useCallback(
-  (voice: 'female' | 'male') => {
-    const trackId = addAiVocalTrack(voice);
-
-    setOpenExtraTrackIds((current) => [...current, trackId]);
-    setArrangementTrackOrder((current) => [
-      ...current,
-      `extra-${trackId}`,
-    ]);
-
-    activateTab('melody', trackId);
-
-    // 새 AI 보컬 트랙이 실제로 선택된 뒤 보컬 생성을 시작하도록 예약
-    setPendingAiVocalTrackId(trackId);
-  },
-  [activateTab, addAiVocalTrack]
-);
-
-
-
 
 
   const handleTrackPickerOpen = useCallback(
@@ -3280,14 +3501,18 @@ export function Composer() {
 
   const handleGoToLyricsBar = useCallback(
     (index: number) => {
-      const targetStep = (lyricsStartBar + index - 1) * COLLAB_BAR_LENGTH;
+      const targetStep = getBarInfoAtIndex(
+        timeSignatureChanges,
+        timeSignature,
+        lyricsStartBar + index - 1
+      ).start;
       setSelectedLyricsBar(index);
       handleOpenComposerPage();
       handleArrangementProgressSelect(
         (targetStep / Math.max(1, steps - 1)) * 100
       );
     },
-    [handleArrangementProgressSelect, handleOpenComposerPage, lyricsStartBar, steps]
+    [handleArrangementProgressSelect, handleOpenComposerPage, lyricsStartBar, steps, timeSignature, timeSignatureChanges]
   );
 
   const handleArrangementPointerSelect = useCallback(
@@ -3492,6 +3717,8 @@ export function Composer() {
     JSON.stringify(
       buildSongProjectSnapshot({
         compositionMode: useSongStore.getState().compositionMode,
+        timeSignature: useSongStore.getState().timeSignature,
+        timeSignatureChanges: useSongStore.getState().timeSignatureChanges,
         bpm: useSongStore.getState().bpm,
         tempoAutomation: useSongStore.getState().tempoAutomation,
         steps: useSongStore.getState().steps,
@@ -4105,6 +4332,7 @@ export function Composer() {
     queueComposerOperation({
       type: 'set-melody-note',
       ...payload,
+      note: MELODY_NOTES[payload.row],
     });
   };
 
@@ -4122,6 +4350,8 @@ export function Composer() {
     queueComposerOperation({
       type: 'apply-chord',
       ...payload,
+      notes: payload.rows.map((row) => (payload.isBass ? BASS_NOTES : MELODY_NOTES)[row]),
+      length: payload.isBass ? primaryTrackNoteLengths.bass : primaryTrackNoteLengths.melody,
     });
   };
 
@@ -4133,7 +4363,7 @@ export function Composer() {
     col: number,
     lengthSteps = primaryTrackNoteLengths.bass
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock('bass', barIndex))) {
       return;
     }
@@ -4149,6 +4379,8 @@ export function Composer() {
       row,
       col,
       nextValue,
+      note: BASS_NOTES[row],
+      length: lengthSteps,
       barIndex,
     });
     releaseComposerBarLock('bass', barIndex);
@@ -4159,7 +4391,7 @@ export function Composer() {
     col: number,
     lengthSteps = primaryTrackNoteLengths.violin
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock('violin', barIndex))) {
       return;
     }
@@ -4177,6 +4409,8 @@ export function Composer() {
       row,
       col,
       nextValue,
+      note: VIOLIN_NOTES[row],
+      length: lengthSteps,
       barIndex,
     });
     releaseComposerBarLock('violin', barIndex);
@@ -4187,7 +4421,7 @@ export function Composer() {
     col: number,
     lengthSteps = primaryTrackNoteLengths.saxophone
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock('saxophone', barIndex))) {
       return;
     }
@@ -4205,6 +4439,8 @@ export function Composer() {
       row,
       col,
       nextValue,
+      note: SAXOPHONE_NOTES[row],
+      length: lengthSteps,
       barIndex,
     });
     releaseComposerBarLock('saxophone', barIndex);
@@ -4215,7 +4451,7 @@ export function Composer() {
     col: number,
     lengthSteps = primaryTrackNoteLengths.guitar
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock('guitar', barIndex))) {
       return;
     }
@@ -4233,6 +4469,8 @@ export function Composer() {
       row,
       col,
       nextValue,
+      note: GUITAR_TRACK_LABELS[row],
+      length: lengthSteps,
       barIndex,
     });
     releaseComposerBarLock('guitar', barIndex);
@@ -4244,7 +4482,7 @@ export function Composer() {
     col: number,
     length: number
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock(instrument, barIndex))) {
       return;
     }
@@ -4252,13 +4490,13 @@ export function Composer() {
     setPitchedNoteLength(instrument, row, col, length, undefined, false);
 
     if (instrument === 'violin') {
-      queueComposerOperation({ type: 'toggle-violin-step', row, col, nextValue: true, barIndex });
+      queueComposerOperation({ type: 'toggle-violin-step', row, col, nextValue: true, note: VIOLIN_NOTES[row], length, barIndex });
     } else if (instrument === 'saxophone') {
-      queueComposerOperation({ type: 'toggle-saxophone-step', row, col, nextValue: true, barIndex });
+      queueComposerOperation({ type: 'toggle-saxophone-step', row, col, nextValue: true, note: SAXOPHONE_NOTES[row], length, barIndex });
     } else if (instrument === 'guitar') {
-      queueComposerOperation({ type: 'toggle-guitar-step', row, col, nextValue: true, barIndex });
+      queueComposerOperation({ type: 'toggle-guitar-step', row, col, nextValue: true, note: GUITAR_TRACK_LABELS[row], length, barIndex });
     } else {
-      queueComposerOperation({ type: 'toggle-bass-step', row, col, nextValue: true, barIndex });
+      queueComposerOperation({ type: 'toggle-bass-step', row, col, nextValue: true, note: BASS_NOTES[row], length, barIndex });
     }
 
     releaseComposerBarLock(instrument, barIndex);
@@ -4269,7 +4507,7 @@ export function Composer() {
     col: number,
     lengthSteps = primaryTrackNoteLengths.bass
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock('bass', barIndex))) {
       return;
     }
@@ -4281,6 +4519,8 @@ export function Composer() {
       col,
       isBass: true,
       rows: [...(BASS_CHORD_MAP[chord] ?? [])],
+      notes: [...(BASS_CHORD_MAP[chord] ?? [])].map((row) => BASS_NOTES[row]),
+      length: lengthSteps,
       barIndex,
     });
     releaseComposerBarLock('bass', barIndex);
@@ -4308,7 +4548,7 @@ export function Composer() {
     col: number,
     lengthSteps = primaryTrackNoteLengths[instrument]
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock(instrument, barIndex))) {
       return;
     }
@@ -4355,6 +4595,8 @@ export function Composer() {
         instrument,
         chord,
         rows: addedRows,
+        notes: addedRows.map((row) => config.notes[row]),
+        length: lengthSteps,
         col,
         barIndex,
       });
@@ -4364,7 +4606,7 @@ export function Composer() {
   };
 
   const handleDrumCellToggle = async (row: number, col: number) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock('drums', barIndex))) {
       return;
     }
@@ -4377,6 +4619,7 @@ export function Composer() {
       row,
       col,
       nextValue,
+      note: DRUM_TRACK_LABELS[row],
       barIndex,
     });
     releaseComposerBarLock('drums', barIndex);
@@ -4411,60 +4654,30 @@ export function Composer() {
     }
   };
 
-  const generateAiVocalFromTrack = useCallback(
-  async (track: typeof activeExtraTrack) => {
-    if (!track) return;
-
-    const trackNotes = track.grid.flatMap((rowValues, row) =>
-      rowValues
-        .map((active, col) => {
-          if (!active) return null;
-
-          return {
-            row,
-            col,
-            note: getExtraTrackNotes(track.instrument)[row] ?? '',
-            length:
-              track.melodyLengths?.[row]?.[col] ?? 1,
-            lyric:
-              noteLyrics[`${row}-${col}`] ?? '',
-          };
-        })
-        .filter(
-          (
-            item
-          ): item is {
-            row: number;
-            col: number;
-            note: string;
-            length: number;
-            lyric: string;
-          } => item !== null
-        )
-    );
-
-    const lyricNotes = trackNotes.filter(
+  const generateAiVocalFromMelody = useCallback(
+  async (voice: 'female' | 'male') => {
+    const lyricNotes = melodyLyricNotes.filter(
       (note) => note.lyric.trim().length > 0
     );
 
     if (lyricNotes.length === 0) {
       window.alert(
-        'AI 보컬 트랙에 가사가 있는 음표가 없습니다.\n' +
-        '먼저 음표와 가사를 입력해주세요.'
+        '멜로디 트랙에 가사가 있는 음표가 없습니다.\n' +
+        '먼저 멜로디 음표와 가사를 입력해주세요.'
       );
       return;
     }
 
     try {
       console.info('[Aqua Planet] 보컬 생성 시작', {
-        trackId: track.id,
-        trackLabel: track.label,
+        source: 'lyrics-melody',
+        voice,
         notes: lyricNotes,
       });
 
       const vocalNotes = notesFromComposer(
         lyricNotes,
-        getExtraTrackNotes(track.instrument)
+        MELODY_NOTES
       );
 
       const result = await renderAquaPlanetVocal(
@@ -4485,29 +4698,36 @@ export function Composer() {
       );
 
       const url = URL.createObjectURL(result.blob);
-
       const audio = new Audio(url);
+      const trackId = addAiVocalTrack(voice);
+      const duration = result.audioBuffer.duration;
 
-      const safeLabel = track.label.replace(/[\\/:*?"<>|]/g, '_');
-      const anchor = document.createElement('a');
-      anchor.href = url;
-      anchor.download = `${safeLabel}.wav`;
-      anchor.click();
-
-      // 재생과 다운로드가 끝날 시간을 주고 해제
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-
-      console.info('[Aqua Planet] 보컬 생성 완료', {
-        seconds: result.audioBuffer.duration,
+      void saveAiVocalAudio(trackId, result.blob).catch((error) => {
+        console.error('[AI Vocal] generated audio persistence failed:', error);
       });
 
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-      };
+      setAiVocalAudioClips((current) => ({
+        ...current,
+        [trackId]: { url, duration, voice, audio },
+      }));
+      setOpenExtraTrackIds((current) => [...current, trackId]);
+      setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
+      setArrangementClipLayouts((current) => ({
+        ...current,
+        [`extra-${trackId}-full`]: {
+          start: 0,
+          length: Math.min(
+            100,
+            Math.max(4, (duration / Math.max(0.01, steps * (60 / Math.max(1, bpm) / 4))) * 100)
+          ),
+        },
+      }));
+      activateTab('melody', trackId);
 
-      await audio.play();
-
-      console.info('[Aqua Planet] 보컬 재생 완료');
+      console.info('[Aqua Planet] 보컬 생성 완료', {
+        trackId,
+        seconds: duration,
+      });
     } catch (error) {
       console.error(
         '[Aqua Planet] vocal generation failed:',
@@ -4525,32 +4745,13 @@ export function Composer() {
     }
   },
   [
+    activateTab,
+    addAiVocalTrack,
     bpm,
-    getExtraTrackNotes,
-    noteLyrics,
+    melodyLyricNotes,
+    steps,
   ]
 );
-
-useEffect(() => {
-  if (!pendingAiVocalTrackId) return;
-  if (!activeExtraTrack) return;
-
-  if (activeExtraTrack.id !== pendingAiVocalTrackId) {
-    return;
-  }
-
-  if (!activeExtraTrack.label.startsWith('AI 보컬')) {
-    return;
-  }
-
-  setPendingAiVocalTrackId(null);
-
-  void generateAiVocalFromTrack(activeExtraTrack);
-}, [
-  pendingAiVocalTrackId,
-  activeExtraTrack,
-  generateAiVocalFromTrack,
-]);
 
   const getExtraTrackColors = (instrument: InstrumentKey): readonly string[] => {
     switch (instrument) {
@@ -4623,7 +4824,7 @@ useEffect(() => {
     col: number,
     lengthSteps?: MelodyNoteLengthSteps
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock(track.instrument, barIndex))) {
       return;
     }
@@ -4635,7 +4836,7 @@ useEffect(() => {
         : shouldAddTimedNote(liveTrack?.grid ?? track.grid, liveTrack?.melodyLengths ?? [], row, col);
     toggleExtraTrackCell(track.id, row, col, track.instrument === 'drums' ? undefined : lengthSteps ?? 4);
 
-    if (nextValue && track.id !== LYRICS_MELODY_TRACK_ID) {
+    if (nextValue) {
       playExtraTrackPreview(track.instrument, row, lengthSteps ?? 4);
     }
 
@@ -4646,6 +4847,8 @@ useEffect(() => {
       row,
       col,
       nextValue,
+      note: getExtraTrackNotes(track.instrument)[row],
+      length: track.instrument === 'drums' ? 1 : lengthSteps ?? 4,
       barIndex,
     });
 
@@ -4658,7 +4861,7 @@ useEffect(() => {
     col: number,
     length: number
   ) => {
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock(track.instrument, barIndex))) {
       return;
     }
@@ -4671,6 +4874,8 @@ useEffect(() => {
       row,
       col,
       nextValue: true,
+      note: getExtraTrackNotes(track.instrument)[row],
+      length,
       barIndex,
     });
 
@@ -4687,7 +4892,7 @@ useEffect(() => {
       return;
     }
 
-    const barIndex = Math.floor(col / COLLAB_BAR_LENGTH);
+    const barIndex = getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index;
     if (!(await requestComposerBarLock(track.instrument, barIndex))) {
       return;
     }
@@ -4701,6 +4906,8 @@ useEffect(() => {
         trackId: track.id,
         chord,
         rows,
+        notes: rows.map((row) => getExtraTrackNotes(track.instrument)[row]),
+        length: lengthSteps,
         col,
         barIndex,
       });
@@ -4799,6 +5006,10 @@ useEffect(() => {
       '--piano-control-bar-height': '0px',
       '--piano-step-width': `${stepWidth}px`,
       '--piano-step-span': `calc(${stepWidth}px + ${gridGap}px)`,
+      '--piano-unit-span': `${stepSpan * beatSteps}px`,
+      '--piano-beat-span': `${stepSpan * primaryBeatSteps}px`,
+      '--piano-group-span': `${stepSpan * groupSteps}px`,
+      '--piano-bar-span': `${stepSpan * stepsPerBar}px`,
       '--piano-row-height': `${rowHeight}px`,
       '--piano-row-span': `calc(${rowHeight}px + ${gridGap}px)`,
       '--piano-row-count': `${notes.length}`,
@@ -4885,26 +5096,36 @@ useEffect(() => {
                     key={`${scrollKey}-header-${col}`}
                     type="button"
                     data-playhead-step={col}
-                    className={`piano-roll-step-number${getSubdivisionClassName(col)}${
+                    className={`piano-roll-step-number${getSubdivisionClassName(col, timeSignatureChanges, timeSignature)}${
                       loopRange && col >= loopRange.start && col <= loopRange.end
                         ? ' is-loop-active'
                         : ''
                     }${loopRange?.end === col ? ' is-loop-end' : ''}${
-                      currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]?.mine === false
+                      currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index]?.mine === false
                         ? ' is-locked'
                         : ''
                     }`}
                     style={{
                       '--collab-member-color':
-                        currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]?.color,
+                        currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index]?.color,
                     } as CSSProperties}
                     onClick={() => handleStepLoopSelect(col)}
                     aria-label={`${col + 1}번 위치까지 반복`}
                     title={`${col + 1}번 위치까지 반복`}
                   >
-                    {col % COLLAB_BAR_LENGTH === 0 ? (
+                    {getBarInfoAtStep(timeSignatureChanges, timeSignature, col).offset === 0 ? (
                       <span className="piano-roll-bar-number" aria-hidden="true">
-                        {Math.floor(col / COLLAB_BAR_LENGTH) + 1}
+                        {getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index + 1}
+                        {getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index > 0 &&
+                        timeSignatureChanges.some(
+                          (change) => change.bar === getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index
+                        ) ? (
+                          <small>
+                            {formatTimeSignature(
+                              getTimeSignatureAtStep(timeSignatureChanges, timeSignature, col)
+                            )}
+                          </small>
+                        ) : null}
                       </span>
                     ) : null}
                     <span className="sr-only">{col + 1}</span>
@@ -4920,7 +5141,11 @@ useEffect(() => {
               const nextScrollLeft = event.currentTarget.scrollLeft;
               setPitchedRollScrollLeft((current) => {
                 const nextStoredScrollLeft = isPlayingRef.current
-                  ? Math.floor(nextScrollLeft / (stepSpan * 16)) * stepSpan * 16
+                  ? getBarInfoAtStep(
+                      timeSignatureChanges,
+                      timeSignature,
+                      Math.floor(nextScrollLeft / stepSpan)
+                    ).start * stepSpan
                   : nextScrollLeft;
 
                 if ((current[scrollKey] ?? 0) === nextStoredScrollLeft) {
@@ -5010,8 +5235,13 @@ useEffect(() => {
                             getCollabNoteColorKey(instrument, row, col, options.noteColorTrackId)
                           ]
                         : undefined;
+                      const collabNoteAuthor = active
+                        ? collabNoteAuthorNames[
+                            getCollabNoteColorKey(instrument, row, col, options.noteColorTrackId)
+                          ]
+                        : undefined;
                       const isCurrent = col === currentStep;
-                      const lock = currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)];
+                      const lock = currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index];
                       const isLocked = Boolean(lock && !lock.mine);
                       const isDisabled = isLocked || Boolean(collabId && !canSyncCollab);
                       const previewLength =
@@ -5039,12 +5269,14 @@ useEffect(() => {
                           data-playhead-step={col}
                           className={`piano-roll-cell is-melody${active ? ' is-active is-note-start' : ''}${
                             isCurrent ? ' is-current' : ''
-                          }${getSubdivisionClassName(col)}${isSharpNote(note) ? ' is-sharp' : ''}${
+                          }${getSubdivisionClassName(col, timeSignatureChanges, timeSignature)}${isSharpNote(note) ? ' is-sharp' : ''}${
                             isNoteTail ? ' is-note-tail' : ''
                           }${
                             isLocked ? ' is-locked' : ''
                           }${collabNoteColor ? ' is-collab-authored' : ''}${collabId && !canSyncCollab ? ' is-readonly' : ''}`}
                           style={cellStyle}
+                          title={collabNoteAuthor ? `작성자: ${collabNoteAuthor}` : undefined}
+                          aria-label={collabNoteAuthor ? `${note} 노트, 작성자 ${collabNoteAuthor}` : undefined}
                           aria-disabled={isDisabled}
                           onMouseDown={() => {
                             if (isDisabled) return;
@@ -5077,8 +5309,8 @@ useEffect(() => {
                               drag.scrollKey !== scrollKey ||
                               drag.row !== row ||
                               col < drag.col ||
-                              Math.floor(col / COLLAB_BAR_LENGTH) !==
-                                Math.floor(drag.col / COLLAB_BAR_LENGTH)
+                              getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index !==
+                                getBarInfoAtStep(timeSignatureChanges, timeSignature, drag.col).index
                             ) {
                               return;
                             }
@@ -5164,6 +5396,10 @@ useEffect(() => {
                 style={{
                   gridTemplateColumns: `repeat(${steps}, ${DRUM_STEP_WIDTH}px)`,
                   ['--sequencer-step-span' as string]: `calc(${DRUM_STEP_WIDTH}px + 10px)`,
+                  ['--sequencer-unit-span' as string]: `${(DRUM_STEP_WIDTH + 10) * beatSteps}px`,
+                  ['--sequencer-beat-span' as string]: `${(DRUM_STEP_WIDTH + 10) * primaryBeatSteps}px`,
+                  ['--sequencer-group-span' as string]: `${(DRUM_STEP_WIDTH + 10) * groupSteps}px`,
+                  ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                 }}
               >
                 {Array.from({ length: steps }).map((_, col) => (
@@ -5171,7 +5407,7 @@ useEffect(() => {
                     key={`${track.id}-drum-header-${col}`}
                     type="button"
                     data-playhead-step={col}
-                    className={`composer-drum-step-number${getSubdivisionClassName(col)}${
+                    className={`composer-drum-step-number${getSubdivisionClassName(col, timeSignatureChanges, timeSignature)}${
                       loopRange && col >= loopRange.start && col <= loopRange.end
                         ? ' is-loop-active'
                         : ''
@@ -5199,14 +5435,23 @@ useEffect(() => {
                     style={{
                       gridTemplateColumns: `repeat(${steps}, ${DRUM_STEP_WIDTH}px)`,
                       ['--sequencer-step-span' as string]: `calc(${DRUM_STEP_WIDTH}px + 10px)`,
+                      ['--sequencer-unit-span' as string]: `${(DRUM_STEP_WIDTH + 10) * beatSteps}px`,
+                      ['--sequencer-beat-span' as string]: `${(DRUM_STEP_WIDTH + 10) * primaryBeatSteps}px`,
+                      ['--sequencer-group-span' as string]: `${(DRUM_STEP_WIDTH + 10) * groupSteps}px`,
+                      ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                     }}
                   >
                     {Array.from({ length: steps }).map((_, col) => {
                       const active = track.grid[row]?.[col];
-                      const lock = currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)];
+                      const lock = currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index];
                       const isLocked = Boolean(lock && !lock.mine);
                       const collabNoteColor = active
                         ? collabNoteColors[
+                            getCollabNoteColorKey(track.instrument, row, col, track.id)
+                          ]
+                        : undefined;
+                      const collabNoteAuthor = active
+                        ? collabNoteAuthorNames[
                             getCollabNoteColorKey(track.instrument, row, col, track.id)
                           ]
                         : undefined;
@@ -5219,9 +5464,13 @@ useEffect(() => {
                           className={`composer-drum-cell is-${drumTrack.tone}${
                             active ? ' is-active' : ''
                           }${col === currentStep ? ' is-current' : ''}${getSubdivisionClassName(
-                            col
+                            col,
+                            timeSignatureChanges,
+                            timeSignature
                           )}${collabNoteColor ? ' is-collab-authored' : ''}${lock?.mine ? ' is-own-locked' : isLocked ? ' is-locked' : ''}`}
                           style={{ '--collab-note-color': collabNoteColor } as CSSProperties}
+                          title={collabNoteAuthor ? `작성자: ${collabNoteAuthor}` : undefined}
+                          aria-label={collabNoteAuthor ? `${drumTrack.name}, 작성자 ${collabNoteAuthor}` : undefined}
                           onClick={() => {
                             void handleExtraTrackCellToggle(track, row, col);
                           }}
@@ -5298,7 +5547,6 @@ useEffect(() => {
             setOpenTrackMenuId(null);
             setIsTabPickerOpen(false);
             setIsLyricsWorkspaceOpen(false);
-            setPendingAiVocalTrackId(null);
             activateTab('melody');
             window.localStorage.setItem(
               COMPOSER_TAB_STORAGE_KEY,
@@ -5314,7 +5562,7 @@ useEffect(() => {
           lyricsActive={activeTab === 'lyrics' && !activeExtraTrack}
           onScoreClick={() => setIsScoreViewerOpen((open) => !open)}
           scoreActive={isScoreViewerOpen}
-          onAddAiVocalTrack={handleAddAiVocalTrack}
+          onGenerateAiVocal={generateAiVocalFromMelody}
         />
       </footer>
 
@@ -5702,7 +5950,6 @@ useEffect(() => {
 
               <div className="composer-collab-drawer-tabs" role="tablist" aria-label="협업 패널 메뉴">
                 {([
-                  ['activity', '로그'],
                   ['members', '팀원'],
                   ['chat', '채팅'],
                 ] as const).map(([tab, label]) => (
@@ -5718,41 +5965,6 @@ useEffect(() => {
                   </button>
                 ))}
               </div>
-
-              {collabPanelTab === 'activity' ? (
-                <div className="composer-collab-drawer-body composer-collab-log-list">
-                  {conflictNotice ? <p className="composer-collab-drawer-alert">{conflictNotice}</p> : null}
-                  {visibleComposerLocks.map((lock) => {
-                    const memberColor = lock.color || '#94a3b8';
-                    return (
-                      <article key={`${lock.instrument}-${lock.barIndex}-${lock.sessionId}`}>
-                        <i style={{ background: memberColor }} />
-                        <div>
-                          <strong>{lock.name}</strong>
-                          <p>{composerInstrumentLabels[lock.instrument]} {lock.barIndex + 1}마디 편집 중</p>
-                        </div>
-                        <time>현재</time>
-                      </article>
-                    );
-                  })}
-                  {recentComposerHistory.map((entry) => {
-                    const memberColor = entry.authorColor || '#94a3b8';
-                    return (
-                      <article key={entry.id}>
-                        <i style={{ background: memberColor }} />
-                        <div>
-                          <strong>{entry.authorName}</strong>
-                          <p>{entry.summary}</p>
-                        </div>
-                        <time>{new Date(entry.createdAt).toLocaleTimeString('ko-KR', { hour: '2-digit', minute: '2-digit' })}</time>
-                      </article>
-                    );
-                  })}
-                  {!visibleComposerLocks.length && !recentComposerHistory.length ? (
-                    <p className="composer-collab-drawer-empty">아직 기록된 작업이 없습니다.</p>
-                  ) : null}
-                </div>
-              ) : null}
 
               {collabPanelTab === 'members' ? (
                 <div className="composer-collab-drawer-body composer-collab-member-list">
@@ -5796,6 +6008,7 @@ useEffect(() => {
 
               {collabPanelTab === 'chat' ? (
                 <div className="composer-collab-chat">
+                  {conflictNotice ? <p className="composer-collab-drawer-alert">{conflictNotice}</p> : null}
                   <div
                     ref={collabChatListRef}
                     className="composer-collab-drawer-body composer-collab-chat-list"
@@ -6020,13 +6233,6 @@ useEffect(() => {
           <div
             className="composer-arrangement-overview"
             aria-label="편곡 타임라인"
-            style={
-              {
-                '--arrangement-label-count': `${arrangementBarCount}`,
-                '--arrangement-major-span': `${Math.min(100, (4 / arrangementBarCount) * 100)}%`,
-                '--arrangement-minor-span': `${100 / arrangementBarCount}%`,
-              } as CSSProperties
-            }
           >
             <div
               className="composer-arrangement-ruler"
@@ -6040,13 +6246,14 @@ useEffect(() => {
             >
               {arrangementTimelineBars.map((bar) => (
                 <button
-                  key={bar}
+                  key={bar.index}
                   type="button"
                   style={{
-                    gridColumn: `${bar} / span ${Math.min(4, arrangementBarCount - bar + 1)}`,
+                    left: `${bar.left}%`,
+                    width: `${bar.majorWidth}%`,
                   }}
                 >
-                  {bar}
+                  {bar.index + 1}
                 </button>
               ))}
               <div className="composer-arrangement-tools" aria-label="타임라인 보기 도구">
@@ -6086,6 +6293,17 @@ useEffect(() => {
                 }
               }}
             >
+              <div className="composer-arrangement-grid" aria-hidden="true">
+                {arrangementBars.map((bar) => (
+                  <i
+                    key={bar.index}
+                    className={`${bar.index % 4 === 0 ? 'is-major' : ''}${
+                      bar.meterChange ? ' is-meter-change' : ''
+                    }`}
+                    style={{ left: `${bar.left}%` }}
+                  />
+                ))}
+              </div>
               {arrangementVisibleTracks.map((track) => {
                 const trackKey = track.key ?? track.id;
                 const renderClip = () => {
@@ -6094,12 +6312,17 @@ useEffect(() => {
                     arrangementClipLayouts[clipKey] ??
                     getDefaultArrangementClipLayout();
                   const trackData = getArrangementTrackData(track);
-                  const preview = buildArrangementClipPreview(
-                    trackData.grid,
-                    trackData.lengths,
-                    (layout.start / 100) * steps,
-                    ((layout.start + layout.length) / 100) * steps
-                  );
+                  const aiVocalClip = track.trackId
+                    ? aiVocalAudioClips[track.trackId]
+                    : undefined;
+                  const preview = aiVocalClip
+                    ? { hasAudio: true, pitchSegments: [] }
+                    : buildArrangementClipPreview(
+                        trackData.grid,
+                        trackData.lengths,
+                        (layout.start / 100) * steps,
+                        ((layout.start + layout.length) / 100) * steps
+                      );
                   const isSelected = selectedArrangementClip === clipKey;
                   const isDragging = draggingArrangementClip === clipKey;
                   const isActiveTrack =
@@ -6162,6 +6385,18 @@ useEffect(() => {
                           />
                         ))}
                       </svg>
+                      {aiVocalClip ? (
+                        <span className="composer-clip-audio-waveform" aria-hidden="true">
+                          {Array.from({ length: 40 }, (_, index) => (
+                            <i
+                              key={index}
+                              style={{
+                                height: `${24 + ((index * 17 + track.label.length * 11) % 64)}%`,
+                              }}
+                            />
+                          ))}
+                        </span>
+                      ) : null}
                     </button>
                   );
                 };
@@ -6235,7 +6470,8 @@ useEffect(() => {
               </button>
             </div>
             {(activeExtraTrack
-              ? activeExtraTrack.instrument !== 'drums'
+              ? activeExtraTrack.instrument !== 'drums' &&
+                !activeExtraTrack.label.startsWith('AI 보컬')
               : activeTab !== 'drums' && activeTab !== 'lyrics') ? (
               <div className="composer-detail-tools" aria-label="피아노롤 편집 도구">
                 <div className="composer-note-zoom">
@@ -6276,7 +6512,34 @@ useEffect(() => {
         className={`composer-main composer-main--${activeTab}`}
       >
         {activeExtraTrack ? (
-          activeExtraTrack.instrument === 'drums' ? (
+          activeExtraTrack.label.startsWith('AI 보컬') ? (
+            <section className="composer-audio-track-editor" aria-label={`${activeExtraTrack.label} 오디오 트랙`}>
+              <div className="composer-audio-track-summary">
+                <span className="composer-audio-track-icon" aria-hidden="true">♪</span>
+                <div>
+                  <strong>{activeExtraTrack.label}</strong>
+                  <span>
+                    {activeAiVocalClip
+                      ? `${activeAiVocalClip.duration.toFixed(1)}초 · 멜로디와 가사로 생성됨`
+                      : '이 세션에 저장된 보컬 오디오가 없습니다.'}
+                  </span>
+                </div>
+              </div>
+              {activeAiVocalClip ? (
+                <div className="composer-audio-track-player">
+                  <audio controls src={activeAiVocalClip.url} preload="metadata">
+                    브라우저에서 오디오 재생을 지원하지 않습니다.
+                  </audio>
+                  <a
+                    href={activeAiVocalClip.url}
+                    download={`${activeExtraTrack.label.replace(/[\\/:*?"<>|]/g, '_')}.wav`}
+                  >
+                    WAV 다운로드
+                  </a>
+                </div>
+              ) : null}
+            </section>
+          ) : activeExtraTrack.instrument === 'drums' ? (
             renderExtraDrumSequencer(activeExtraTrack)
           ) : (
             renderMelodyLikeSequencer(
@@ -6345,6 +6608,7 @@ useEffect(() => {
                 onStepHeaderSelect={handleStepLoopSelect}
                 collabBarLocks={currentTabLockMap}
                 collabNoteColors={collabNoteColors}
+                collabNoteAuthors={collabNoteAuthorNames}
                 canEditCollab={!collabId || canSyncCollab}
                 requestCollabBarLock={requestComposerBarLock}
                 releaseCollabBarLock={releaseComposerBarLock}
@@ -6590,6 +6854,10 @@ useEffect(() => {
                       style={{
                         gridTemplateColumns: `repeat(${steps}, ${DRUM_STEP_WIDTH}px)`,
                         ['--sequencer-step-span' as string]: `calc(${DRUM_STEP_WIDTH}px + 10px)`,
+                        ['--sequencer-unit-span' as string]: `${(DRUM_STEP_WIDTH + 10) * beatSteps}px`,
+                        ['--sequencer-beat-span' as string]: `${(DRUM_STEP_WIDTH + 10) * primaryBeatSteps}px`,
+                        ['--sequencer-group-span' as string]: `${(DRUM_STEP_WIDTH + 10) * groupSteps}px`,
+                        ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                       }}
                       >
                         {Array.from({ length: steps }).map((_, col) => (
@@ -6597,7 +6865,7 @@ useEffect(() => {
                           key={`drum-header-${col}`}
                           type="button"
                           data-playhead-step={col}
-                          className={`composer-drum-step-number${getSubdivisionClassName(col)}${
+                          className={`composer-drum-step-number${getSubdivisionClassName(col, timeSignatureChanges, timeSignature)}${
                             loopRange && col >= loopRange.start && col <= loopRange.end
                               ? ' is-loop-active'
                               : ''
@@ -6625,6 +6893,10 @@ useEffect(() => {
                           style={{
                             gridTemplateColumns: `repeat(${steps}, ${DRUM_STEP_WIDTH}px)`,
                             ['--sequencer-step-span' as string]: `calc(${DRUM_STEP_WIDTH}px + 10px)`,
+                            ['--sequencer-unit-span' as string]: `${(DRUM_STEP_WIDTH + 10) * beatSteps}px`,
+                            ['--sequencer-beat-span' as string]: `${(DRUM_STEP_WIDTH + 10) * primaryBeatSteps}px`,
+                            ['--sequencer-group-span' as string]: `${(DRUM_STEP_WIDTH + 10) * groupSteps}px`,
+                            ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                           }}
                         >
                           {Array.from({ length: steps }).map((_, col) => {
@@ -6632,6 +6904,9 @@ useEffect(() => {
                             const isCurrent = col === currentStep;
                             const collabNoteColor = active
                               ? collabNoteColors[getCollabNoteColorKey('drums', row, col)]
+                              : undefined;
+                            const collabNoteAuthor = active
+                              ? collabNoteAuthorNames[getCollabNoteColorKey('drums', row, col)]
                               : undefined;
 
                             return (
@@ -6642,22 +6917,26 @@ useEffect(() => {
                                 className={`composer-drum-cell is-${track.tone}${
                                   active ? ' is-active' : ''
                                 }${isCurrent ? ' is-current' : ''}${getSubdivisionClassName(
-                                  col
+                                  col,
+                                  timeSignatureChanges,
+                                  timeSignature
                                 )}${getDrumTutorialCellClass(row, col)}${collabNoteColor ? ' is-collab-authored' : ''}${
-                                  currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]?.mine
+                                  currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index]?.mine
                                     ? ' is-own-locked'
-                                    : currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)]
+                                    : currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index]
                                       ? ' is-locked'
                                       : ''
                                 }`}
                                 style={{ '--collab-note-color': collabNoteColor } as CSSProperties}
+                                title={collabNoteAuthor ? `작성자: ${collabNoteAuthor}` : undefined}
+                                aria-label={collabNoteAuthor ? `${track.name}, 작성자 ${collabNoteAuthor}` : undefined}
                                 onClick={() => {
                                   void handleDrumCellToggle(row, col);
                                 }}
                                 disabled={
                                   Boolean(
-                                    currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)] &&
-                                      !currentTabLockMap[Math.floor(col / COLLAB_BAR_LENGTH)].mine
+                                    currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index] &&
+                                      !currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index].mine
                                   ) || Boolean(collabId && !canSyncCollab)
                                 }
                               >

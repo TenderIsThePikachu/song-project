@@ -21,9 +21,9 @@ const SORT_OPTIONS: Array<{ key: SortKey; label: string }> = [
   { key: 'comments', label: '댓글순' },
 ];
 const FEATURED_IMAGES = [
-  '/landing-assets/shared-fallback-film.jpg',
-  '/landing-assets/emotional-bridge.jpg',
-  '/landing-assets/shared-fallback-groove.jpg',
+  '/landing-assets/shared-fallback-film.webp',
+  '/landing-assets/emotional-bridge.webp',
+  '/landing-assets/shared-fallback-groove.webp',
 ];
 const GUIDE_ITEMS = [
   '서로를 존중하는 따뜻한 표현을 사용해요.',

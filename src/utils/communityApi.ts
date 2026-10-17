@@ -3,6 +3,8 @@ import {
 } from 'firebase/firestore';
 import { db } from '../firebase'; // ★ 주의: 실제 firebase.ts 파일 경로에 맞게 수정해주세요!
 import type { Comment, Post } from '../types/community';
+import { isLocalDevelopmentHost } from './localEnvironment';
+import { fetchServerJson } from './serverApi';
 
 // ============================================================================
 // 1. 타입 정의 (기존 UI와의 완벽한 호환을 위해 그대로 유지합니다)
@@ -61,6 +63,25 @@ export type ModerateCommunityPostPayload = {
   action: 'delete-post' | 'block-user';
 };
 
+type CommunityMutationResponse = {
+  snapshot: CommunitySnapshot;
+};
+
+type CommunityCreateResponse = CommunityMutationResponse & {
+  postId: string;
+};
+
+type CommunityCommentResponse = CommunityMutationResponse & {
+  commentId: string;
+};
+
+function postToLocalServer<T>(path: string, payload: unknown) {
+  return fetchServerJson<T>(path, {
+    method: 'POST',
+    body: JSON.stringify(payload),
+  });
+}
+
 
 // ============================================================================
 // 🔥 2. 화면 데이터 동기화 (Bootstrap)
@@ -85,6 +106,10 @@ async function fetchUserMetas() {
 }
 
 export async function fetchCommunityBootstrap(): Promise<CommunitySnapshot> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<CommunitySnapshot>('/api/community/bootstrap');
+  }
+
   const postsQuery = query(collection(db, 'community_posts'), orderBy('createdAt', 'desc'), limit(20)); // limit(20) 추가
   const postsSnap = await getDocs(postsQuery);
     
@@ -110,6 +135,10 @@ export async function fetchCommunityBootstrap(): Promise<CommunitySnapshot> {
 // ============================================================================
 
 export async function createCommunityPostOnServer(payload: CreateCommunityPostPayload) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityCreateResponse>('/api/community/posts', payload);
+  }
+
   const docRef = await addDoc(collection(db, 'community_posts'), {
     ...payload,
     viewCount: 0,
@@ -120,6 +149,13 @@ export async function createCommunityPostOnServer(payload: CreateCommunityPostPa
 }
 
 export async function updateCommunityPostOnServer(payload: UpdateCommunityPostPayload) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/update`,
+      payload
+    );
+  }
+
   const postRef = doc(db, 'community_posts', payload.postId);
   await updateDoc(postRef, {
     title: payload.title,
@@ -132,11 +168,25 @@ export async function updateCommunityPostOnServer(payload: UpdateCommunityPostPa
 }
 
 export async function deleteCommunityPostOnServer(payload: { postId: string; userEmail: string }) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/delete`,
+      payload
+    );
+  }
+
   await deleteDoc(doc(db, 'community_posts', payload.postId));
   return { snapshot: await fetchCommunityBootstrap() };
 }
 
 export async function recordCommunityViewOnServer(payload: { postId: string }) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/view`,
+      payload
+    );
+  }
+
   const postRef = doc(db, 'community_posts', payload.postId);
   await updateDoc(postRef, { viewCount: increment(1) });
   return { snapshot: await fetchCommunityBootstrap() };
@@ -146,6 +196,13 @@ export async function recordCommunityViewOnServer(payload: { postId: string }) {
 // 기존의 toggleCommunityLikeOnServer 함수를 아래 코드로 교체하세요.
 // ============================================================================
 export async function toggleCommunityLikeOnServer(payload: { postId: string; userEmail: string }) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/like`,
+      payload
+    );
+  }
+
   const userMetaRef = doc(db, 'community_user_meta', payload.userEmail);
   const userMetaSnap = await getDoc(userMetaRef);
   let isLiked = false;
@@ -173,6 +230,13 @@ export async function toggleCommunityLikeOnServer(payload: { postId: string; use
 // 기존의 toggleCommunityBookmarkOnServer 함수를 아래 코드로 교체하세요.
 // ============================================================================
 export async function toggleCommunityBookmarkOnServer(payload: { postId: string; userEmail: string }) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse & { bookmarked: boolean }>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/bookmark`,
+      payload
+    );
+  }
+
   const userMetaRef = doc(db, 'community_user_meta', payload.userEmail);
   const userMetaSnap = await getDoc(userMetaRef);
   let isBookmarked = false;
@@ -195,6 +259,13 @@ export async function toggleCommunityBookmarkOnServer(payload: { postId: string;
 }
 
 export async function reportCommunityPostOnServer(payload: { postId: string; userEmail: string }) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/report`,
+      payload
+    );
+  }
+
   const userMetaRef = doc(db, 'community_user_meta', payload.userEmail);
   // 신고 목록에 추가합니다.
   await setDoc(userMetaRef, { reportedPostIds: arrayUnion(payload.postId) }, { merge: true });
@@ -202,6 +273,13 @@ export async function reportCommunityPostOnServer(payload: { postId: string; use
 }
 
 export async function moderateCommunityPostOnServer(payload: ModerateCommunityPostPayload) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/moderate`,
+      payload
+    );
+  }
+
   if (payload.action === 'delete-post') {
     await deleteDoc(doc(db, 'community_posts', payload.postId));
   }
@@ -214,6 +292,13 @@ export async function moderateCommunityPostOnServer(payload: ModerateCommunityPo
 // ============================================================================
 
 export async function addCommunityCommentOnServer(payload: AddCommunityCommentPayload) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityCommentResponse>(
+      `/api/community/posts/${encodeURIComponent(payload.postId)}/comments`,
+      payload
+    );
+  }
+
   const docRef = await addDoc(collection(db, 'community_comments'), {
     ...payload,
     likeCount: 0,
@@ -223,6 +308,13 @@ export async function addCommunityCommentOnServer(payload: AddCommunityCommentPa
 }
 
 export async function replyCommunityCommentOnServer(payload: ReplyCommunityCommentPayload) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityCommentResponse>(
+      `/api/community/comments/${encodeURIComponent(payload.commentId)}/reply`,
+      payload
+    );
+  }
+
   const docRef = await addDoc(collection(db, 'community_comments'), {
     postId: payload.postId,
     parentId: payload.commentId, // 부모 댓글 ID를 추가로 저장
@@ -236,6 +328,13 @@ export async function replyCommunityCommentOnServer(payload: ReplyCommunityComme
 }
 
 export async function updateCommunityCommentOnServer(payload: UpdateCommunityCommentPayload) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/comments/${encodeURIComponent(payload.commentId)}/update`,
+      payload
+    );
+  }
+
   const commentRef = doc(db, 'community_comments', payload.commentId);
   await updateDoc(commentRef, {
     content: payload.content,
@@ -245,6 +344,13 @@ export async function updateCommunityCommentOnServer(payload: UpdateCommunityCom
 }
 
 export async function deleteCommunityCommentOnServer(payload: DeleteCommunityCommentPayload) {
+  if (isLocalDevelopmentHost()) {
+    return postToLocalServer<CommunityMutationResponse>(
+      `/api/community/comments/${encodeURIComponent(payload.commentId)}/delete`,
+      payload
+    );
+  }
+
   await deleteDoc(doc(db, 'community_comments', payload.commentId));
   return { snapshot: await fetchCommunityBootstrap() };
 }

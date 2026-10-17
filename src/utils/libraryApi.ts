@@ -4,6 +4,8 @@ import {
 import { db, storage } from '../firebase'; // ★ 주의: 실제 firebase.ts 경로에 맞게 수정하세요!
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { SongProject } from '../store/songStore';
+import { isLocalDevelopmentHost } from './localEnvironment';
+import { fetchServerJson } from './serverApi';
 // ============================================================================
 // 1. 타입 정의
 // ============================================================================
@@ -110,6 +112,10 @@ async function fetchLibraryUserMetas() {
 // 🔥 4. 작곡 라이브러리 (내 프로젝트) API
 // ============================================================================
 export async function fetchComposerLibraryBootstrap(): Promise<ComposerLibrarySnapshot> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<ComposerLibrarySnapshot>('/api/composer-library');
+  }
+
   const q = query(collection(db, 'composer_projects'), limit(20)); // createdAt 필드가 있다면 orderBy도 추가하세요
   const projectsSnap = await getDocs(q);  
   // 꺼낼 때 번역기를 거쳐서 원래 배열로 복구!
@@ -126,6 +132,13 @@ async function getComposerMagicSnapshot(): Promise<ComposerMagicSnapshot> {
 }
 
 export async function saveComposerProjectOnServer(payload: Record<string, any>): Promise<{ projectId: string; snapshot: ComposerMagicSnapshot }> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ projectId: string; snapshot: ComposerMagicSnapshot }>(
+      '/api/composer-library/projects/save',
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+  }
+
   const projectId = (payload.id as string) || doc(collection(db, 'composer_projects')).id;
   const projectRef = doc(db, 'composer_projects', projectId);
   const existingProject = await getDoc(projectRef);
@@ -146,11 +159,25 @@ export async function saveComposerProjectOnServer(payload: Record<string, any>):
 }
 
 export async function deleteComposerProjectOnServer(payload: { projectId: string; userEmail: string }): Promise<{ snapshot: ComposerMagicSnapshot }> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: ComposerMagicSnapshot }>(
+      `/api/composer-library/projects/${encodeURIComponent(payload.projectId)}/delete`,
+      { method: 'POST', body: JSON.stringify({ userEmail: payload.userEmail }) }
+    );
+  }
+
   await deleteDoc(doc(db, 'composer_projects', payload.projectId));
   return { snapshot: await getComposerMagicSnapshot() };
 }
 
 export async function toggleFavoriteTrackOnServer(payload: { trackId: string; userEmail: string }): Promise<{ snapshot: ComposerMagicSnapshot }> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: ComposerMagicSnapshot }>(
+      '/api/composer-library/favorites/toggle',
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+  }
+
   const userMetaRef = doc(db, 'library_user_meta', payload.userEmail);
   const userMetaSnap = await getDoc(userMetaRef);
   let isFavorite = false;
@@ -169,6 +196,13 @@ export async function toggleFavoriteTrackOnServer(payload: { trackId: string; us
 }
 
 export async function shareComposerProjectOnServer(payload: Record<string, any>): Promise<{ projectId: string; snapshot: ComposerMagicSnapshot }> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ projectId: string; snapshot: ComposerMagicSnapshot }>(
+      '/api/composer-library/projects/share',
+      { method: 'POST', body: JSON.stringify(payload) }
+    );
+  }
+
   const trackId = (payload.id as string) || doc(collection(db, 'music_share_tracks')).id;
   const trackRef = doc(db, 'music_share_tracks', trackId);
 

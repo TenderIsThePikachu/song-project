@@ -15,6 +15,15 @@ import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import { COLLAB_MEMBER_COLOR_OPTIONS } from '../utils/collabMemberColor.ts';
 import { fetchAiMusic } from '../utils/aiSong.ts';
 import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
+import {
+  TIME_SIGNATURE_BEAT_TYPES,
+  formatTimeSignature,
+  getBarCountForSteps,
+  getBarInfoAtIndex,
+  getBarInfoAtStep,
+  getTimeSignatureAtStep,
+  type TimeSignatureBeatType,
+} from '../utils/timeSignature.ts';
 import './TransportBar.css';
 
 const DEFAULT_AI_TEMPLATE = `분위기:
@@ -25,7 +34,6 @@ const DEFAULT_AI_TEMPLATE = `분위기:
 강조하고 싶은 요소:`;
 
 const SAVE_BACKUP_STORAGE_KEY = 'song-maker-project-backups';
-const BAR_LENGTH = 16;
 const GO_TO_FIRST_BAR_EVENT = 'composer-go-to-first-bar';
 
 const GENRE_GROUPS = [
@@ -234,7 +242,6 @@ type TransportBarProps = {
   lyricsActive?: boolean;
   onScoreClick?: () => void;
   scoreActive?: boolean;
-  onAddAiVocalTrack?: (voice: 'female' | 'male') => void;
   onGenerateAiVocal?: (voice: 'female' | 'male') => void | Promise<void>;
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
@@ -363,7 +370,6 @@ export const TransportBar = ({
   lyricsActive = false,
   onScoreClick,
   scoreActive = false,
-  onAddAiVocalTrack,
   onGenerateAiVocal,
   songTitle = '',
   onSongTitleChange,
@@ -380,6 +386,10 @@ export const TransportBar = ({
   const bpm = useSongStore((state) => state.bpm);
   const setBpm = useSongStore((state) => state.setBpm);
   const steps = useSongStore((state) => state.steps);
+  const timeSignature = useSongStore((state) => state.timeSignature);
+  const timeSignatureChanges = useSongStore((state) => state.timeSignatureChanges);
+  const setTimeSignatureChange = useSongStore((state) => state.setTimeSignatureChange);
+  const removeTimeSignatureChange = useSongStore((state) => state.removeTimeSignatureChange);
   const isPlaying = useSongStore((state) => state.isPlaying);
   const setPlaying = useSongStore((state) => state.setPlaying);
   const currentStep = useSongStore((state) => state.currentStep);
@@ -410,7 +420,18 @@ export const TransportBar = ({
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
-  const [isGenerating, setIsGenerating] = useState(false);
+  const [isGeneratingComposition, setIsGeneratingComposition] = useState(false);
+  const [isMeterPanelOpen, setIsMeterPanelOpen] = useState(false);
+  const currentBarInfo = getBarInfoAtStep(timeSignatureChanges, timeSignature, currentStep);
+  const currentTimeSignature = getTimeSignatureAtStep(
+    timeSignatureChanges,
+    timeSignature,
+    currentStep
+  );
+  const [meterBeats, setMeterBeats] = useState(currentTimeSignature.beats);
+  const [meterBeatType, setMeterBeatType] = useState<TimeSignatureBeatType>(
+    currentTimeSignature.beatType
+  );
 
   const filledLyricBars = barLyrics.flatMap((line, index) =>
     line.trim() ? [{ text: line.trim(), bar: lyricsStartBar + index }] : []
@@ -475,9 +496,6 @@ export const TransportBar = ({
 
   try {
     await new Promise((resolve) => window.setTimeout(resolve, 650));
-
-    // AI 보컬 트랙 생성
-    onAddAiVocalTrack?.(aiVocalVoice);
 
     // 실제 Aqua Planet 보컬 생성 요청
     await onGenerateAiVocal?.(aiVocalVoice);
@@ -546,10 +564,10 @@ export const TransportBar = ({
   const [backingTrackVolume] = useState(0.7);
   const [backingTrackSourceBpm] = useState(bpm);
   const [playbackBar, setPlaybackBar] = useState(
-    () => Math.floor(currentStep / BAR_LENGTH) + 1
+    () => getBarInfoAtStep(timeSignatureChanges, timeSignature, currentStep).index + 1
   );
 
-  const currentBar = isPlaying ? playbackBar : Math.floor(currentStep / BAR_LENGTH) + 1;
+  const currentBar = isPlaying ? playbackBar : currentBarInfo.index + 1;
   const currentCollabMember = collabMembers.find((member) => member.isCurrent);
   const onlineCollaboratorCount = collabMembers.filter(
     (member) => member.isOnline && !member.isCurrent
@@ -565,7 +583,13 @@ export const TransportBar = ({
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, [isCollabMenuOpen]);
-  const totalBars = Math.max(1, Math.ceil(steps / BAR_LENGTH));
+  const totalBars = getBarCountForSteps(timeSignatureChanges, timeSignature, steps);
+
+  useEffect(() => {
+    if (!isMeterPanelOpen) return;
+    setMeterBeats(currentTimeSignature.beats);
+    setMeterBeatType(currentTimeSignature.beatType);
+  }, [currentTimeSignature.beatType, currentTimeSignature.beats, isMeterPanelOpen]);
 
   useEffect(() => {
     setEditableSongTitle(songTitle);
@@ -648,9 +672,7 @@ export const TransportBar = ({
       const previousStep = previousPlaybackStepRef.current;
       previousPlaybackStepRef.current = step;
 
-      if (step % BAR_LENGTH === 0) {
-        setPlaybackBar(Math.floor(step / BAR_LENGTH) + 1);
-      }
+      setPlaybackBar(getBarInfoAtStep(timeSignatureChanges, timeSignature, step).index + 1);
 
       if (!backingTrackName) return;
       const loopRestarted = loopRange
@@ -668,7 +690,7 @@ export const TransportBar = ({
 
     window.addEventListener('composer-playhead-step', handlePlaybackStep);
     return () => window.removeEventListener('composer-playhead-step', handlePlaybackStep);
-  }, [backingTrackName, backingTrackSourceBpm, loopRange, setCurrentStep]);
+  }, [backingTrackName, backingTrackSourceBpm, loopRange, setCurrentStep, timeSignature, timeSignatureChanges]);
 
   const createProjectSnapshot = (): SongProject => {
     return buildSongProjectSnapshot(useSongStore.getState());
@@ -740,7 +762,7 @@ export const TransportBar = ({
         ? Math.min(loopEnd, Math.max(loopStart, currentStep))
         : Math.min(steps - 1, Math.max(0, currentStep));
       setCurrentStep(startStep);
-      setPlaybackBar(Math.floor(startStep / BAR_LENGTH) + 1);
+      setPlaybackBar(getBarInfoAtStep(timeSignatureChanges, timeSignature, startStep).index + 1);
       previousPlaybackStepRef.current = startStep;
       await preparePlaybackEngine(startStep);
       Tone.Transport.bpm.value = bpm;
@@ -792,8 +814,6 @@ export const TransportBar = ({
     setPlaying(false);
     navigate('/composer', { replace: true });
   };
-
-  
 
   const handleLoadProject = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
@@ -957,24 +977,32 @@ export const TransportBar = ({
     const prompt = [
       summary ? `한 줄 설명: ${summary}` : '',
       details ? `상세 요청:\n${details}` : '',
-      `프로젝트 설정:\n- BPM: ${bpm}\n- Steps: ${steps}\n- Melody Volume: ${volumes.melody}\n- Drums Volume: ${volumes.drums}\n- Bass Volume: ${volumes.bass} \n Guitar Volume: ${volumes.guitar}`,
+      [
+        '현재 프로젝트 설정:',
+        `- BPM: ${bpm}`,
+        `- Steps: ${steps}`,
+        `- Melody Volume: ${volumes.melody}`,
+        `- Drums Volume: ${volumes.drums}`,
+        `- Bass Volume: ${volumes.bass}`,
+        `- Guitar Volume: ${volumes.guitar}`,
+      ].join('\n'),
     ]
       .filter(Boolean)
       .join('\n\n');
 
-    setIsGenerating(true);
+    setIsGeneratingComposition(true);
     try {
-      const aiGeneratedProject = (await fetchAiMusic(prompt)) as SongProject;
-      useSongStore.getState().loadProject(aiGeneratedProject);
+      const generatedProject = await fetchAiMusic(prompt);
+      useSongStore.getState().loadProject(generatedProject);
       setIsAiPanelOpen(false);
-      alert('AI 생성 결과를 불러왔습니다.');
+      alert('AI 작곡 데모 곡을 불러왔습니다.');
     } catch (error) {
-      console.error('AI generation failed:', error);
+      console.error('AI composition generation failed:', error);
       const message =
         error instanceof Error ? error.message : 'AI 생성 요청을 처리하지 못했습니다.';
       alert(`AI 생성에 실패했습니다.\n\n${message}`);
     } finally {
-      setIsGenerating(false);
+      setIsGeneratingComposition(false);
     }
   };
 
@@ -1112,6 +1140,115 @@ export const TransportBar = ({
           <strong className="transport-value">
             {currentBar}/{totalBars}
           </strong>
+          <div className="transport-meter-control">
+            <button
+              type="button"
+              className={`transport-meter-button${isMeterPanelOpen ? ' is-open' : ''}`}
+              title="현재 마디부터 박자 변경"
+              aria-expanded={isMeterPanelOpen}
+              onClick={() => setIsMeterPanelOpen((open) => !open)}
+            >
+              {formatTimeSignature(currentTimeSignature)}
+            </button>
+            {isMeterPanelOpen ? (
+              <div className="transport-meter-popover" role="dialog" aria-label="변박 설정">
+                <strong>{currentBarInfo.index + 1}마디부터 박자 변경</strong>
+                <div className="transport-meter-fields">
+                  <label>
+                    <span>박</span>
+                    <input
+                      type="number"
+                      min={1}
+                      max={32}
+                      value={meterBeats}
+                      onChange={(event) =>
+                        setMeterBeats(Math.min(32, Math.max(1, Number(event.target.value) || 1)))
+                      }
+                    />
+                  </label>
+                  <span aria-hidden="true">/</span>
+                  <label>
+                    <span>음표</span>
+                    <select
+                      value={meterBeatType}
+                      onChange={(event) =>
+                        setMeterBeatType(Number(event.target.value) as TimeSignatureBeatType)
+                      }
+                    >
+                      {TIME_SIGNATURE_BEAT_TYPES.map((beatType) => (
+                        <option key={beatType} value={beatType}>{beatType}</option>
+                      ))}
+                    </select>
+                  </label>
+                </div>
+                <div className="transport-meter-list" aria-label="변박 목록">
+                  {timeSignatureChanges.map((change) => {
+                    const changeBar = getBarInfoAtIndex(
+                      timeSignatureChanges,
+                      timeSignature,
+                      change.bar
+                    );
+                    return (
+                      <div
+                        key={`${change.bar}-${change.beats}-${change.beatType}`}
+                        className={change.bar === currentBarInfo.index ? 'is-current' : ''}
+                      >
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setCurrentStep(changeBar.start);
+                            setIsMeterPanelOpen(false);
+                          }}
+                        >
+                          <span>{change.bar + 1}마디</span>
+                          <strong>{formatTimeSignature(change)}</strong>
+                        </button>
+                        {change.bar > 0 ? (
+                          <button
+                            type="button"
+                            className="transport-meter-remove"
+                            aria-label={`${change.bar + 1}마디 변박 삭제`}
+                            title="변박 삭제"
+                            onClick={() => removeTimeSignatureChange(changeBar.start)}
+                          >
+                            ×
+                          </button>
+                        ) : null}
+                      </div>
+                    );
+                  })}
+                </div>
+                <div className="transport-meter-actions">
+                  {currentBarInfo.start > 0 && timeSignatureChanges.some(
+                    (change) => change.bar === currentBarInfo.index
+                  ) ? (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        removeTimeSignatureChange(currentBarInfo.start);
+                        setIsMeterPanelOpen(false);
+                      }}
+                    >
+                      변경 삭제
+                    </button>
+                  ) : <span />}
+                  <button
+                    type="button"
+                    className="is-primary"
+                    onClick={() => {
+                      setTimeSignatureChange(currentBarInfo.start, {
+                        beats: meterBeats,
+                        beatType: meterBeatType,
+                      });
+                      setIsMeterPanelOpen(false);
+                    }}
+                  >
+                    적용
+                  </button>
+                </div>
+              </div>
+            ) : null}
+          </div>
           <button
             type="button"
             className={`transport-status-chip${lyricsActive ? ' is-active' : ''}`}
@@ -1519,40 +1656,15 @@ export const TransportBar = ({
             <div className="transport-ai-actions">
               <button type="button" className="transport-button transport-ai-cancel" onClick={() => setIsAiPanelOpen(false)}>닫기</button>
               <button
-              type="button"
-              className="transport-button transport-button--accent transport-ai-submit is-open"
-              onClick={handleAiGenerate}
-              disabled={isGenerating}
-            >
-              {isGenerating ? '생성 중...' : '✦ AI로 생성'}
-            </button>
-          </div>
-        </section>
-        </div>
-      ) : null}
-
-      {aiCompletionToast ? (
-        <div className="transport-ai-complete" role="status" aria-live="polite">
-          <div className="transport-ai-complete-burst" aria-hidden="true">
-            {Array.from({ length: 8 }).map((_, index) => (
-              <span key={index} />
-            ))}
-          </div>
-          <div className="transport-ai-complete-orb" aria-hidden="true">
-            <span />
-            <span />
-          </div>
-          <div className="transport-ai-complete-copy">
-            <strong>AI 곡이 배치됐습니다</strong>
-            <span>
-              프롬프트에 맞춰 펼쳐놨어요.
-            </span>
-          </div>
-          <div className="transport-ai-complete-wave" aria-hidden="true">
-            {Array.from({ length: 14 }).map((_, index) => (
-              <i key={index} style={{ animationDelay: `${index * 46}ms` }} />
-            ))}
-          </div>
+                type="button"
+                className="transport-button transport-button--accent transport-ai-submit is-open"
+                onClick={() => void handleAiGenerate()}
+                disabled={isGeneratingComposition}
+              >
+                {isGeneratingComposition ? '생성 중...' : '✦ AI로 생성'}
+              </button>
+            </div>
+          </section>
         </div>
       ) : null}
 
