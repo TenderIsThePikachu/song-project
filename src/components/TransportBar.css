@@ -553,6 +553,155 @@
   backdrop-filter: blur(6px);
 }
 
+.transport-reset-backdrop {
+  z-index: 190;
+  background: rgba(8, 15, 26, 0.56);
+  backdrop-filter: blur(8px);
+}
+
+.transport-reset-dialog {
+  display: grid;
+  grid-template-columns: 46px minmax(0, 1fr);
+  gap: 14px 16px;
+  width: min(440px, calc(100vw - 32px));
+  padding: 22px;
+  border: 1px solid rgba(190, 216, 248, 0.15);
+  border-radius: 16px;
+  background: #151e2c;
+  color: #eef4fb;
+  box-shadow: 0 28px 80px rgba(2, 7, 16, 0.42);
+}
+
+.transport-reset-icon {
+  display: grid;
+  width: 46px;
+  height: 46px;
+  place-items: center;
+  border-radius: 12px;
+  background: rgba(248, 113, 113, 0.12);
+  color: #fca5a5;
+}
+
+.transport-reset-icon svg {
+  width: 22px;
+  height: 22px;
+}
+
+.transport-reset-copy {
+  min-width: 0;
+}
+
+.transport-reset-copy > span {
+  color: #f59a9a;
+  font-size: 10px;
+  font-weight: 850;
+}
+
+.transport-reset-copy h2 {
+  margin: 4px 0 7px;
+  color: #f6f9fc;
+  font-size: 20px;
+  line-height: 1.35;
+}
+
+.transport-reset-copy p {
+  margin: 0;
+  color: #9eacbf;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.transport-reset-actions {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 6px;
+}
+
+.transport-reset-actions button {
+  min-height: 42px;
+  border: 1px solid rgba(190, 216, 248, 0.14);
+  border-radius: 9px;
+  background: rgba(255, 255, 255, 0.04);
+  color: #d7e0eb;
+  font: inherit;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+}
+
+.transport-reset-actions button:hover,
+.transport-reset-actions button:focus-visible {
+  border-color: rgba(190, 216, 248, 0.28);
+  background: rgba(255, 255, 255, 0.08);
+  outline: none;
+}
+
+.transport-reset-actions button.is-danger {
+  border-color: #ef6464;
+  background: #ef6464;
+  color: #ffffff;
+}
+
+.transport-reset-actions button.is-danger:hover,
+.transport-reset-actions button.is-danger:focus-visible {
+  border-color: #f07878;
+  background: #f07878;
+}
+
+html[data-theme='light'] .transport-reset-backdrop {
+  background: rgba(23, 35, 51, 0.34);
+}
+
+html[data-theme='light'] .transport-reset-dialog {
+  border-color: #d6dee8;
+  background: #ffffff;
+  color: #172238;
+  box-shadow: 0 24px 70px rgba(35, 52, 80, 0.2);
+}
+
+html[data-theme='light'] .transport-reset-icon {
+  background: #fff0f0;
+  color: #d94f4f;
+}
+
+html[data-theme='light'] .transport-reset-copy > span {
+  color: #c94343;
+}
+
+html[data-theme='light'] .transport-reset-copy h2 {
+  color: #172238;
+}
+
+html[data-theme='light'] .transport-reset-copy p {
+  color: #5c6a7e;
+}
+
+html[data-theme='light'] .transport-reset-actions button {
+  border-color: #d6dee8;
+  background: #f7f9fb;
+  color: #344158;
+}
+
+html[data-theme='light'] .transport-reset-actions button:hover,
+html[data-theme='light'] .transport-reset-actions button:focus-visible {
+  border-color: #bbc7d5;
+  background: #eef3f6;
+}
+
+html[data-theme='light'] .transport-reset-actions button.is-danger {
+  border-color: #df5555;
+  background: #df5555;
+  color: #ffffff;
+}
+
+html[data-theme='light'] .transport-reset-actions button.is-danger:hover,
+html[data-theme='light'] .transport-reset-actions button.is-danger:focus-visible {
+  border-color: #c94343;
+  background: #c94343;
+}
+
 .transport-dialog {
   width: min(360px, calc(100vw - 32px));
   border: 1px solid rgba(255, 255, 255, 0.08);

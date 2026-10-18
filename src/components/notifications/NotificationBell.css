@@ -441,6 +441,7 @@
 
 .notification-bell-item {
   position: relative;
+  flex: 0 0 auto;
   min-width: 0;
   overflow: hidden;
   padding: 13px 14px 13px 16px;

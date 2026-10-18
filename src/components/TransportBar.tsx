@@ -417,6 +417,7 @@ export const TransportBar = ({
   const [isVocalPreviewing, setIsVocalPreviewing] = useState(false);
   const [isAddingVocal, setIsAddingVocal] = useState(false);
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
+  const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
@@ -531,6 +532,17 @@ export const TransportBar = ({
 
     return () => window.clearTimeout(timeout);
   }, [aiCompletionToast]);
+
+  useEffect(() => {
+    if (!isResetDialogOpen) return undefined;
+
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsResetDialogOpen(false);
+    };
+
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isResetDialogOpen]);
 
   const [saveTitle, setSaveTitle] = useState('');
   const [editableSongTitle, setEditableSongTitle] = useState(songTitle);
@@ -800,11 +812,10 @@ export const TransportBar = ({
   };
 
   const handleResetProject = () => {
-    const shouldReset = window.confirm('현재 작곡 내용을 초기화할까요?');
-    if (!shouldReset) {
-      return;
-    }
+    setIsResetDialogOpen(true);
+  };
 
+  const confirmResetProject = () => {
     Tone.Transport.stop();
     Tone.Transport.position = 0;
     stopBackingTrack(false);
@@ -812,6 +823,7 @@ export const TransportBar = ({
     onProjectReset?.();
     setCurrentStep(0);
     setPlaying(false);
+    setIsResetDialogOpen(false);
     navigate('/composer', { replace: true });
   };
 
@@ -1349,6 +1361,40 @@ export const TransportBar = ({
           AI 보컬
         </button>
       </div>
+
+      {isResetDialogOpen ? (
+        <div
+          className="transport-dialog-backdrop transport-reset-backdrop"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setIsResetDialogOpen(false);
+          }}
+        >
+          <section
+            className="transport-reset-dialog"
+            role="alertdialog"
+            aria-modal="true"
+            aria-labelledby="transport-reset-title"
+            aria-describedby="transport-reset-description"
+          >
+            <div className="transport-reset-icon" aria-hidden="true">
+              <ResetIcon />
+            </div>
+            <div className="transport-reset-copy">
+              <span>RESET MUSIC</span>
+              <h2 id="transport-reset-title">음악을 초기화할까요?</h2>
+              <p id="transport-reset-description">
+                현재 편집 중인 음표와 트랙이 모두 삭제됩니다. 이 작업은 되돌릴 수 없습니다.
+              </p>
+            </div>
+            <div className="transport-reset-actions">
+              <button type="button" onClick={() => setIsResetDialogOpen(false)} autoFocus>취소</button>
+              <button type="button" className="is-danger" onClick={confirmResetProject}>
+                초기화
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {activeDialog ? (
         <div

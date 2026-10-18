@@ -72,8 +72,6 @@ export default function MusicShareDetail() {
   const projects = useComposerLibraryStore((state) => state.projects);
   const deleteTrack = useMusicShareStore((state) => state.deleteTrack);
   const updateTrack = useMusicShareStore((state) => state.updateTrack);
-  const favoriteTrackIdsByUser = useComposerLibraryStore((state) => state.favoriteTrackIdsByUser);
-  const toggleFavoriteTrack = useComposerLibraryStore((state) => state.toggleFavoriteTrack);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
   const likedTrackIdsByUser = useMusicShareStore((state) => state.likedTrackIdsByUser);
   const serverTracks = useMusicShareStore((state) => state.tracks);
@@ -102,10 +100,24 @@ export default function MusicShareDetail() {
   const [editCategory, setEditCategory] = useState<MusicShareTrackCard['category']>('pop');
   const [editTags, setEditTags] = useState('');
   const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
+  const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewAudioUrlRef = useRef('');
   const linkedShortVideoRef = useRef<HTMLVideoElement | null>(null);
   const linkedShortAudioRef = useRef<HTMLAudioElement | null>(null);
+  const toastTimeoutRef = useRef<number | null>(null);
+
+  const showToast = (message: string, tone: 'success' | 'error' = 'success') => {
+    if (toastTimeoutRef.current !== null) {
+      window.clearTimeout(toastTimeoutRef.current);
+    }
+
+    setToast({ message, tone });
+    toastTimeoutRef.current = window.setTimeout(() => {
+      setToast(null);
+      toastTimeoutRef.current = null;
+    }, 3000);
+  };
 
   // 여기서 seedLibrary와 seedMusicShare가 사용됩니다. (에러 방지)
   useEffect(() => {
@@ -149,7 +161,6 @@ export default function MusicShareDetail() {
   );
   
   const liked = !!user && !!track && (likedTrackIdsByUser[user.email] ?? []).includes(track.id);
-  const saved = !!user && !!track && (favoriteTrackIdsByUser[user.email] ?? []).includes(track.id);
   const trackProject = useMemo(() => {
     if (!track) return null;
     return projects.find((item) => item.id === track.projectId)?.project ?? track.project ?? null;
@@ -185,6 +196,7 @@ export default function MusicShareDetail() {
       previewAudioRef.current = null;
       if (previewAudioUrlRef.current) URL.revokeObjectURL(previewAudioUrlRef.current);
       previewAudioUrlRef.current = '';
+      if (toastTimeoutRef.current !== null) window.clearTimeout(toastTimeoutRef.current);
     };
   }, [trackId]);
   // 🌟 무한 루프 방지용 코드 (순서가 중요합니다! 반드시 track이 정의된 아래에 있어야 합니다)
@@ -236,15 +248,6 @@ export default function MusicShareDetail() {
       route: `/community/music/${track.id}`,
       actorName: user.name,
     });
-  };
-
-  const handleToggleSave = async () => {
-    if (!user) {
-      handleRequireLogin();
-      return;
-    }
-
-    await toggleFavoriteTrack(track.id, user.email);
   };
 
   const handleDownload = async () => {
@@ -304,7 +307,7 @@ export default function MusicShareDetail() {
       setIsPreviewPlaying(true);
     } catch (error) {
       console.error('Track preview failed:', error);
-      alert('미리듣기를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.');
+      showToast('미리듣기를 준비하지 못했습니다. 잠시 후 다시 시도해 주세요.', 'error');
     } finally {
       setIsPreviewPreparing(false);
     }
@@ -331,8 +334,13 @@ export default function MusicShareDetail() {
       }
     }
 
-    await navigator.clipboard.writeText(url);
-    alert('공유 링크를 복사했습니다.');
+    try {
+      await navigator.clipboard.writeText(url);
+      showToast('공유 링크를 복사했습니다.');
+    } catch (error) {
+      console.error('Share link copy failed:', error);
+      showToast('공유 링크를 복사하지 못했습니다.', 'error');
+    }
   };
 
 const isOwner = Boolean(
@@ -430,7 +438,7 @@ const handleDeleteTrack = async () => {
     
   } catch (error) {
     console.error('글 삭제 중 오류 발생:', error);
-    alert('삭제에 실패했습니다. 다시 시도해 주세요.');
+    showToast('삭제에 실패했습니다. 다시 시도해 주세요.', 'error');
   }
 };
 
@@ -574,9 +582,6 @@ const handleDeleteTrack = async () => {
               </button>
 
               <div className="music-share-detail-player-actions">
-                <button type="button" className={saved ? 'is-active' : ''} onClick={handleToggleSave}>
-                  {saved ? '추가됨' : '추가'}
-                </button>
                 <button type="button" onClick={() => void handleShareTrack()}>공유</button>
                 {isOwner ? <button type="button" onClick={handleOpenEdit}>수정</button> : null}
               </div>
@@ -693,6 +698,18 @@ const handleDeleteTrack = async () => {
               <button type="submit" className="is-primary" disabled={isSavingEdit}>{isSavingEdit ? '저장 중...' : '저장'}</button>
             </footer>
           </form>
+        </div>
+      ) : null}
+
+      {toast ? (
+        <div
+          className={`music-share-detail-toast is-${toast.tone}`}
+          role={toast.tone === 'error' ? 'alert' : 'status'}
+          aria-live={toast.tone === 'error' ? 'assertive' : 'polite'}
+        >
+          <span aria-hidden="true">{toast.tone === 'error' ? '!' : '✓'}</span>
+          <p><strong>{toast.tone === 'error' ? '처리하지 못했습니다' : '완료되었습니다'}</strong>{toast.message}</p>
+          <button type="button" aria-label="알림 닫기" onClick={() => setToast(null)}>×</button>
         </div>
       ) : null}
     </div>

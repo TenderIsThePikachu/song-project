@@ -274,14 +274,14 @@ export default function ProjectLibraryPage() {
           >
             <header className="library-create-header">
               <div>
-                <span>NEW COMPOSITION</span>
-                <h2 id="library-create-title">새 작곡 설정</h2>
-                <p>곡의 기본 정보를 정한 뒤 스튜디오를 시작하세요.</p>
+                <span>NEW MUSIC</span>
+                <h2 id="library-create-title">새 음악 설정</h2>
+                <p>음악의 기본 정보를 정한 뒤 스튜디오를 시작하세요.</p>
               </div>
               <button
                 type="button"
                 className="library-create-close"
-                aria-label="새 작곡 설정 닫기"
+                aria-label="새 음악 설정 닫기"
                 onClick={() => setIsCreateDialogOpen(false)}
               >
                 ×
@@ -290,12 +290,12 @@ export default function ProjectLibraryPage() {
 
             <div className="library-create-body">
               <label className="library-create-field">
-                <span>곡 이름</span>
+                <span>음악 이름</span>
                 <input
                   autoFocus
                   value={newProjectTitle}
                   maxLength={60}
-                  placeholder="새로운 곡의 이름을 입력하세요"
+                  placeholder="새로운 음악의 이름을 입력하세요"
                   onChange={(event) => setNewProjectTitle(event.target.value)}
                 />
                 <small>{newProjectTitle.length}/60</small>

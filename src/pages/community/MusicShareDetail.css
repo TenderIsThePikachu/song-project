@@ -1150,3 +1150,128 @@ html[data-theme='light'] .music-share-edit-dialog footer button.is-primary { bor
     padding: 24px 20px;
   }
 }
+
+.music-share-detail-toast {
+  position: fixed;
+  z-index: 240;
+  right: 24px;
+  bottom: 24px;
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr) 30px;
+  align-items: center;
+  gap: 12px;
+  width: min(390px, calc(100vw - 32px));
+  padding: 14px;
+  border: 1px solid rgba(99, 230, 190, 0.28);
+  border-radius: 12px;
+  background: rgba(17, 25, 39, 0.97);
+  color: #eef5fa;
+  box-shadow: 0 18px 48px rgba(2, 7, 16, 0.28);
+  backdrop-filter: blur(16px);
+  animation: music-share-toast-in 180ms ease-out;
+}
+
+.music-share-detail-toast > span {
+  display: grid;
+  width: 34px;
+  height: 34px;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(99, 230, 190, 0.14);
+  color: #63e6be;
+  font-size: 17px;
+  font-weight: 900;
+}
+
+.music-share-detail-toast p {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  min-width: 0;
+  margin: 0;
+  color: #aebacc;
+  font-size: 12px;
+  line-height: 1.45;
+}
+
+.music-share-detail-toast p strong {
+  color: #f4f8fc;
+  font-size: 13px;
+}
+
+.music-share-detail-toast > button {
+  display: grid;
+  width: 30px;
+  height: 30px;
+  padding: 0;
+  place-items: center;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: #8795a8;
+  font: inherit;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.music-share-detail-toast > button:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #ffffff;
+}
+
+.music-share-detail-toast.is-error {
+  border-color: rgba(248, 113, 113, 0.3);
+}
+
+.music-share-detail-toast.is-error > span {
+  background: rgba(248, 113, 113, 0.14);
+  color: #fca5a5;
+}
+
+html[data-theme='light'] .music-share-detail-toast {
+  border-color: rgba(16, 151, 116, 0.24);
+  background: rgba(255, 255, 255, 0.98);
+  color: #172238;
+  box-shadow: 0 18px 48px rgba(38, 54, 82, 0.18);
+}
+
+html[data-theme='light'] .music-share-detail-toast p {
+  color: #5c6a7e;
+}
+
+html[data-theme='light'] .music-share-detail-toast p strong {
+  color: #172238;
+}
+
+html[data-theme='light'] .music-share-detail-toast > button:hover {
+  background: #eef3f6;
+  color: #172238;
+}
+
+html[data-theme='light'] .music-share-detail-toast.is-error {
+  border-color: rgba(220, 38, 38, 0.24);
+}
+
+@keyframes music-share-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(10px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@media (max-width: 600px) {
+  .music-share-detail-toast {
+    right: 16px;
+    bottom: 16px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .music-share-detail-toast {
+    animation: none;
+  }
+}

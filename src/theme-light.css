@@ -4015,6 +4015,14 @@ html[data-theme="light"] .composer-drum-step-number {
   box-shadow: inset 0 1px 0 #ffffff !important;
 }
 
+html[data-theme="light"] .composer-drum-bar-number {
+  color: #24344d !important;
+}
+
+html[data-theme="light"] .composer-drum-bar-number small {
+  color: #087c5e !important;
+}
+
 html[data-theme="light"] :is(
   .composer-drum-step-number.is-current,
   .composer-drum-step-number.is-current-live
