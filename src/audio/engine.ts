@@ -45,6 +45,7 @@ import {
   SUPPORTING_PIANO_NOTES,
   VIOLIN_NOTES,
 } from "../constants/composer.ts";
+import { loadAiVocalAudio } from "../utils/aiVocalAudioStorage.ts";
 
 let loopId: number | null = null;
 let playbackStep = 0;
@@ -1232,8 +1233,116 @@ async function renderSongBuffer(stateOverride?: SongState): Promise<AudioBuffer>
 }
 
 export async function exportSongAsMp3(): Promise<Blob> {
-  const buffer = await renderSongBuffer();
-  return audioBufferToMp3(buffer);
+  const state = useSongStore.getState();
+  const instrumentalBuffer = await renderSongBuffer(state);
+  const vocalSources = await loadAiVocalMixSources(state.extraTracks);
+  const mixedBuffer = await mixAudioBuffers(instrumentalBuffer, vocalSources);
+  return audioBufferToMp3(mixedBuffer);
+}
+
+type VocalMixSource = {
+  blob: Blob;
+  volume: number;
+};
+
+async function loadAiVocalMixSources(
+  extraTracks: ExtraInstrumentTrack[]
+): Promise<VocalMixSource[]> {
+  const vocalTracks = extraTracks.filter((track) => track.label.startsWith("AI 보컬"));
+
+  const sources = await Promise.all(
+    vocalTracks.map(async (track) => {
+      try {
+        const blob = await loadAiVocalAudio(track.id);
+        if (!blob) return null;
+
+        return {
+          blob,
+          volume: Math.max(0, Math.min(1, track.volume / 100)),
+        };
+      } catch (error) {
+        console.warn(`AI 보컬 오디오를 불러오지 못했습니다: ${track.id}`, error);
+        return null;
+      }
+    })
+  );
+
+  return sources.filter((source): source is VocalMixSource => source !== null);
+}
+
+async function mixAudioBuffers(
+  instrumentalBuffer: AudioBuffer,
+  vocalSources: VocalMixSource[]
+): Promise<AudioBuffer> {
+  if (vocalSources.length === 0) return instrumentalBuffer;
+
+  const decodingContext = new AudioContext();
+  let vocalBuffers: AudioBuffer[];
+
+  try {
+    vocalBuffers = await Promise.all(
+      vocalSources.map(async ({ blob }) => {
+        const audioData = await blob.arrayBuffer();
+        return decodingContext.decodeAudioData(audioData);
+      })
+    );
+  } finally {
+    await decodingContext.close();
+  }
+
+  const duration = Math.max(
+    instrumentalBuffer.duration,
+    ...vocalBuffers.map((buffer) => buffer.duration)
+  );
+  const channelCount = Math.max(
+    2,
+    instrumentalBuffer.numberOfChannels,
+    ...vocalBuffers.map((buffer) => buffer.numberOfChannels)
+  );
+  const offlineContext = new OfflineAudioContext(
+    channelCount,
+    Math.ceil(duration * instrumentalBuffer.sampleRate),
+    instrumentalBuffer.sampleRate
+  );
+
+  const connectBuffer = (buffer: AudioBuffer, gainValue: number) => {
+    const source = offlineContext.createBufferSource();
+    const gain = offlineContext.createGain();
+    source.buffer = buffer;
+    gain.gain.value = gainValue;
+    source.connect(gain).connect(offlineContext.destination);
+    source.start(0);
+  };
+
+  connectBuffer(instrumentalBuffer, 1);
+  vocalBuffers.forEach((buffer, index) => {
+    connectBuffer(buffer, vocalSources[index]?.volume ?? 0);
+  });
+
+  return normalizeAudioBuffer(await offlineContext.startRendering());
+}
+
+function normalizeAudioBuffer(buffer: AudioBuffer): AudioBuffer {
+  let peak = 0;
+
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const samples = buffer.getChannelData(channel);
+    for (let index = 0; index < samples.length; index += 1) {
+      peak = Math.max(peak, Math.abs(samples[index] ?? 0));
+    }
+  }
+
+  if (peak <= 0.98) return buffer;
+
+  const scale = 0.98 / peak;
+  for (let channel = 0; channel < buffer.numberOfChannels; channel += 1) {
+    const samples = buffer.getChannelData(channel);
+    for (let index = 0; index < samples.length; index += 1) {
+      samples[index] = (samples[index] ?? 0) * scale;
+    }
+  }
+
+  return buffer;
 }
 
 export async function exportSongProjectAsMp3(project: SongProject): Promise<Blob> {

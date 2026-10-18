@@ -13,6 +13,7 @@
     "lint": "eslint .",
     "preview": "vite preview --configLoader native",
     "test:browser": "node scripts/browser-smoke.mjs",
+    "test:mp3-vocal": "node scripts/mp3-vocal-smoke.mjs",
     "test:collab-guest": "node scripts/collab-guest-smoke.mjs",
     "test:coverflow": "node scripts/coverflow-smoke.mjs",
     "test:workflows": "node scripts/workflow-smoke.mjs",
