@@ -299,6 +299,7 @@ const tabOrder: ComposerTab[] = [
 ];
 const DEFAULT_OPEN_TABS: ComposerTab[] = ['melody', 'drums'];
 const DEFAULT_OPEN_EXTRA_TRACK_IDS = [LYRICS_MELODY_TRACK_ID];
+const LYRICS_MELODY_AUDIO_MIGRATION_KEY = 'song-maker-lyrics-melody-audio-v1';
 const DEFAULT_ARRANGEMENT_TRACK_ORDER = [
   `extra-${LYRICS_MELODY_TRACK_ID}`,
   ...DEFAULT_OPEN_TABS.map((tab) => `primary-${tab}`),
@@ -879,6 +880,7 @@ export function Composer() {
   const applyComposerOperation = useCollabStore((state) => state.applyComposerOperation);
   const setComposerLock = useCollabStore((state) => state.setComposerLock);
   const setCollabMemberColor = useCollabStore((state) => state.setMemberColor);
+  const renameCollabProject = useCollabStore((state) => state.renameProject);
   const touchPresence = useCollabStore((state) => state.touchPresence);
   const updateCollabCursor = useCollabStore((state) => state.updateCursor);
   const leavePresence = useCollabStore((state) => state.leavePresence);
@@ -931,7 +933,16 @@ export function Composer() {
 
   useEffect(() => {
     ensureLyricsMelodyTrack();
-  }, [ensureLyricsMelodyTrack]);
+    if (window.localStorage.getItem(LYRICS_MELODY_AUDIO_MIGRATION_KEY)) return;
+
+    const guideTrack = useSongStore
+      .getState()
+      .extraTracks.find((track) => track.id === LYRICS_MELODY_TRACK_ID);
+    if (guideTrack?.volume === 0) {
+      setExtraTrackVolume(LYRICS_MELODY_TRACK_ID, 80);
+    }
+    window.localStorage.setItem(LYRICS_MELODY_AUDIO_MIGRATION_KEY, '1');
+  }, [ensureLyricsMelodyTrack, setExtraTrackVolume]);
 
   const collabNoteColors = useMemo(() => {
     const merged = { ...serverCollabNoteColors };
@@ -1232,6 +1243,45 @@ export function Composer() {
   const [projectGenre, setProjectGenre] = useState('ballad');
   const [isLyricsWorkspaceOpen, setIsLyricsWorkspaceOpen] = useState(false);
   const [isScoreViewerOpen, setIsScoreViewerOpen] = useState(false);
+  const handleSongTitleCommit = useCallback(async (rawTitle: string) => {
+    const title = rawTitle.trim();
+    if (!title) return;
+
+    try {
+      if (collabId && collabProject && user) {
+        await renameCollabProject(collabId, user.email, title);
+        return;
+      }
+
+      if (projectId && loadedLibraryProject) {
+        const state = useSongStore.getState();
+        await saveLibraryProject({
+          id: projectId,
+          title,
+          description: loadedLibraryProject.description,
+          genre: projectGenre,
+          bpm: state.bpm,
+          steps: state.steps,
+          project: buildSongProjectSnapshot(state),
+          creatorName: loadedLibraryProject.creatorName,
+          creatorEmail: loadedLibraryProject.creatorEmail,
+          exportFormat: loadedLibraryProject.exportFormat,
+        });
+      }
+    } catch (error) {
+      console.error('Song title update failed:', error);
+      alert(error instanceof Error ? error.message : '곡 제목을 수정하지 못했습니다.');
+    }
+  }, [
+    collabId,
+    collabProject,
+    loadedLibraryProject,
+    projectGenre,
+    projectId,
+    renameCollabProject,
+    saveLibraryProject,
+    user,
+  ]);
   const closeScoreViewer = useCallback(() => setIsScoreViewerOpen(false), []);
   const [isCollabPanelOpen, setIsCollabPanelOpen] = useState(false);
   const [collabPanelTab, setCollabPanelTab] = useState<CollabPanelTab>('chat');
@@ -1334,6 +1384,15 @@ export function Composer() {
       setProjectGenre(loadedLibraryProject.genre);
     }
   }, [loadedLibraryProject?.genre]);
+
+  useEffect(() => {
+    const savedTitle = loadedLibraryProject?.title ?? collabProject?.title;
+    if (!savedTitle) return;
+
+    setNotepadDraft((current) =>
+      current.title === savedTitle ? current : { ...current, title: savedTitle }
+    );
+  }, [collabProject?.title, loadedLibraryProject?.title]);
 
   useEffect(() => {
     if (!newProjectRequested || configuredNewProjectRef.current) {
@@ -1448,13 +1507,15 @@ export function Composer() {
         key: item.id,
         trackId: item.trackId,
         label: isLyricsMelodyTrack ? '멜로디' : item.label,
-        icon: isLyricsMelodyTrack || item.label.startsWith('AI 보컬')
+        icon: isLyricsMelodyTrack
           ? '🎤'
-          : baseTrack?.icon ?? arrangementTrackIcons[item.tab as InstrumentComposerTab],
+          : item.label.startsWith('AI 보컬')
+            ? '🎤'
+            : baseTrack?.icon ?? arrangementTrackIcons[item.tab as InstrumentComposerTab],
         tab: item.tab as InstrumentComposerTab,
         tone: baseTrack?.tone ?? getArrangementTrackTone(item.tab as InstrumentComposerTab),
         fixed: isLyricsMelodyTrack,
-        silent: isLyricsMelodyTrack,
+        silent: false,
       }];
     });
 
@@ -4939,9 +5000,7 @@ export function Composer() {
   };
 
   const getTabVolume = (item: ComposerTabItem) =>
-    item.trackId === LYRICS_MELODY_TRACK_ID
-      ? 0
-      : item.tab === 'lyrics'
+    item.tab === 'lyrics'
       ? 100
       : item.trackId
       ? extraTracks.find((track) => track.id === item.trackId)?.volume ?? 80
@@ -5160,6 +5219,28 @@ export function Composer() {
 
           <div
             className="piano-roll-melody-scroller"
+            onWheel={
+              instrument === 'bass'
+                ? (event) => {
+                    const scroller = event.currentTarget;
+                    if (
+                      Math.abs(event.deltaY) <= Math.abs(event.deltaX) ||
+                      scroller.scrollHeight <= scroller.clientHeight
+                    ) {
+                      return;
+                    }
+
+                    const nextScrollTop = Math.min(
+                      scroller.scrollHeight - scroller.clientHeight,
+                      Math.max(0, scroller.scrollTop + event.deltaY)
+                    );
+                    if (nextScrollTop === scroller.scrollTop) return;
+
+                    event.preventDefault();
+                    scroller.scrollTop = nextScrollTop;
+                  }
+                : undefined
+            }
             onScroll={(event) => {
               const nextScrollLeft = event.currentTarget.scrollLeft;
               setPitchedRollScrollLeft((current) => {
@@ -5556,7 +5637,7 @@ export function Composer() {
       >
         <TransportBar
           songTitle={
-            loadedLibraryProject?.title ?? collabProject?.title ?? notepadDraft.title
+            notepadDraft.title || loadedLibraryProject?.title || collabProject?.title || ''
           }
           initialGenre={projectGenre}
           onGenreChange={setProjectGenre}
@@ -5564,6 +5645,7 @@ export function Composer() {
           onSongTitleChange={(title) =>
             setNotepadDraft((current) => ({ ...current, title }))
           }
+          onSongTitleCommit={handleSongTitleCommit}
           workMode={collabId ? 'collab' : 'personal'}
           collabMembers={transportCollabMembers}
           collabColor={collabSessionColor}
@@ -5682,7 +5764,7 @@ export function Composer() {
                     </span>
                   </button>
 
-                  {tab !== 'lyrics' && item.trackId !== LYRICS_MELODY_TRACK_ID ? (
+                  {tab !== 'lyrics' ? (
                     <label className="composer-tab-volume">
                       <span className="sr-only">{`${item.label} volume`}</span>
                       <input
@@ -6840,7 +6922,10 @@ export function Composer() {
 
         {activeTab === 'bass' && isActivePrimaryTabOpen && (
           <>
-            <section ref={bassShellRef} className={getGuideHighlightClass('bass-grid')}>
+            <section
+              ref={bassShellRef}
+              className={`composer-bass-roll-host${getGuideHighlightClass('bass-grid')}`}
+            >
               {renderMelodyLikeSequencer(
                 'bass',
                 BASS_NOTES,
@@ -7091,7 +7176,7 @@ export function Composer() {
 
       <ScoreViewer
         open={isScoreViewerOpen}
-        title={loadedLibraryProject?.title ?? collabProject?.title ?? notepadDraft.title}
+        title={notepadDraft.title || loadedLibraryProject?.title || collabProject?.title || ''}
         creator={user?.name}
         createdAt={loadedLibraryProject?.createdAt ?? collabProject?.createdAt ?? scoreDraftCreatedAtRef.current}
         updatedAt={loadedLibraryProject?.updatedAt ?? collabProject?.updatedAt}

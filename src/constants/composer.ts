@@ -482,6 +482,6 @@ export const BASS_CHORD_MAP = mapChordNotesToRows(BASS_NOTE_TO_ROW, {
   E: ['E2'],
   F: ['F2'],
   G: ['G2'],
-  A: ['A1'],
+  A: ['A2'],
   B: ['B2'],
 });

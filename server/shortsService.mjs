@@ -232,6 +232,13 @@ export function createShort(payload) {
     videoStorageKey: payload.videoStorageKey,
     videoFileName: payload.videoFileName,
     videoSizeBytes: payload.videoSizeBytes,
+    audioUrl: payload.audioUrl,
+    audioStorageKey: payload.audioStorageKey,
+    audioFileName: payload.audioFileName,
+    audioSizeBytes: payload.audioSizeBytes,
+    musicProjectId: payload.musicProjectId,
+    musicProjectTitle: payload.musicProjectTitle,
+    musicShareTrackId: payload.musicShareTrackId,
   };
 
   state = {
@@ -269,6 +276,9 @@ export function updateShort(shortId, payload) {
             audioStorageKey: payload.audioStorageKey ?? short.audioStorageKey,
             audioFileName: payload.audioFileName ?? short.audioFileName,
             audioSizeBytes: payload.audioSizeBytes ?? short.audioSizeBytes,
+            musicProjectId: payload.musicProjectId ?? short.musicProjectId,
+            musicProjectTitle: payload.musicProjectTitle ?? short.musicProjectTitle,
+            musicShareTrackId: payload.musicShareTrackId ?? short.musicShareTrackId,
           }
         : short
     ),

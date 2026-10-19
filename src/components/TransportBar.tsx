@@ -245,6 +245,7 @@ type TransportBarProps = {
   onGenerateAiVocal?: (voice: 'female' | 'male') => void | Promise<void>;
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
+  onSongTitleCommit?: (title: string) => void | Promise<void>;
   initialGenre?: string;
   onGenreChange?: (genre: string) => void;
   currentProjectId?: string | null;
@@ -373,6 +374,7 @@ export const TransportBar = ({
   onGenerateAiVocal,
   songTitle = '',
   onSongTitleChange,
+  onSongTitleCommit,
   initialGenre = 'ballad',
   onGenreChange,
   currentProjectId = null,
@@ -1030,6 +1032,23 @@ export const TransportBar = ({
         placeholder="곡 제목"
         aria-label="곡 제목"
         maxLength={100}
+        onBlur={() => {
+          const title = editableSongTitle.trim();
+          if (!title || title === songTitle.trim()) return;
+          setEditableSongTitle(title);
+          onSongTitleChange?.(title);
+          void onSongTitleCommit?.(title);
+        }}
+        onKeyDown={(event) => {
+          if (event.key === 'Enter') {
+            event.preventDefault();
+            event.currentTarget.blur();
+          }
+          if (event.key === 'Escape') {
+            setEditableSongTitle(songTitle);
+            event.currentTarget.blur();
+          }
+        }}
       />
       <div ref={collabMenuRef} className="transport-work-mode-shell">
         <button

@@ -3,6 +3,8 @@ import {
   arrayRemove, arrayUnion, increment, query, limit, orderBy
 } from 'firebase/firestore';
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
+import { isLocalDevelopmentHost } from './localEnvironment';
+import { fetchServerJson, uploadServerFile } from './serverApi';
 import { db, storage } from '../firebase'; // ★ 주의: 실제 firebase.ts 경로에 맞게 수정하세요!
 
 export type ShortsSnapshot = {
@@ -15,6 +17,10 @@ export type ShortsSnapshot = {
 // ============================================================================
 
 export async function fetchShortsBootstrap(): Promise<ShortsSnapshot> {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<ShortsSnapshot>('/api/shorts/bootstrap');
+  }
+
   // 숏폼 게시글과 댓글을 각각 파이어베이스에서 가져옵니다.
   const shortsQuery = query(collection(db, 'shorts'), orderBy('createdAt', 'desc'), limit(10));
   const shortsSnap = await getDocs(shortsQuery);
@@ -34,6 +40,22 @@ export async function fetchShortsBootstrap(): Promise<ShortsSnapshot> {
 }
 
 export async function uploadShortVideoOnServer(payload: { creatorEmail: string; file: File; }) {
+  if (isLocalDevelopmentHost()) {
+    const query = new URLSearchParams({
+      fileName: payload.file.name,
+      creatorEmail: payload.creatorEmail,
+    });
+    const result = await uploadServerFile<{
+      videoUrl: string;
+      videoStorageKey: string;
+      storageKey?: string;
+    }>(`/api/shorts/upload?${query.toString()}`, payload.file);
+    return {
+      url: result.videoUrl,
+      storageKey: result.storageKey ?? result.videoStorageKey,
+    };
+  }
+
   // 1. 영상이 저장될 이름 만들기 (중복 방지를 위해 현재 시간 추가)
   const storageKey = `shorts/${Date.now()}_${payload.file.name}`;
   
@@ -49,6 +71,22 @@ export async function uploadShortVideoOnServer(payload: { creatorEmail: string; 
 }
 
 export async function uploadShortAudioOnServer(payload: { creatorEmail: string; file: File; }) {
+  if (isLocalDevelopmentHost()) {
+    const query = new URLSearchParams({
+      fileName: payload.file.name,
+      creatorEmail: payload.creatorEmail,
+    });
+    const result = await uploadServerFile<{
+      audioUrl: string;
+      audioStorageKey: string;
+      storageKey?: string;
+    }>(`/api/shorts/upload-audio?${query.toString()}`, payload.file);
+    return {
+      url: result.audioUrl,
+      storageKey: result.storageKey ?? result.audioStorageKey,
+    };
+  }
+
   const storageKey = `shorts_audio/${Date.now()}_${payload.file.name}`;
   const audioRef = ref(storage, storageKey);
   await uploadBytes(audioRef, payload.file);
@@ -58,6 +96,13 @@ export async function uploadShortAudioOnServer(payload: { creatorEmail: string; 
 }
 
 export async function createShortOnServer(payload: Record<string, any>) {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ shortId: string; snapshot: ShortsSnapshot }>('/api/shorts', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   const newRef = doc(collection(db, 'shorts'));
   const shortId = newRef.id;
 
@@ -92,6 +137,14 @@ export async function createShortOnServer(payload: Record<string, any>) {
 
 export async function updateShortOnServer(payload: { shortId: string } & Record<string, any>) {
   const { shortId, ...updateData } = payload;
+
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: ShortsSnapshot }>(
+      `/api/shorts/${encodeURIComponent(shortId)}/update`,
+      { method: 'POST', body: JSON.stringify(updateData) }
+    );
+  }
+
   const docRef = doc(db, 'shorts', shortId);
 
   // 기존 글 수정
@@ -104,6 +157,13 @@ export async function updateShortOnServer(payload: { shortId: string } & Record<
 }
 
 export async function deleteShortOnServer(payload: { shortId: string; userEmail: string }) {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: ShortsSnapshot }>(
+      `/api/shorts/${encodeURIComponent(payload.shortId)}/delete`,
+      { method: 'POST', body: JSON.stringify({ userEmail: payload.userEmail }) }
+    );
+  }
+
   const shortRef = doc(db, 'shorts', payload.shortId);
   const shortSnap = await getDoc(shortRef);
 
@@ -139,6 +199,13 @@ export async function deleteShortOnServer(payload: { shortId: string; userEmail:
 }
 
 export async function toggleShortLikeOnServer(payload: { shortId: string; userEmail: string }) {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: ShortsSnapshot }>('/api/shorts/like', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   const docRef = doc(db, 'shorts', payload.shortId);
   const docSnap = await getDoc(docRef);
 
@@ -164,6 +231,13 @@ export async function toggleShortLikeOnServer(payload: { shortId: string; userEm
 }
 
 export async function addShortCommentOnServer(payload: { shortId: string; authorName: string; authorEmail: string; content: string; }) {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: ShortsSnapshot }>('/api/shorts/comments', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   const newRef = doc(collection(db, 'shorts_comments'));
   
   await setDoc(newRef, {
@@ -176,6 +250,13 @@ export async function addShortCommentOnServer(payload: { shortId: string; author
 }
 
 export async function recordShortViewOnServer(payload: { shortId: string }) {
+  if (isLocalDevelopmentHost()) {
+    return fetchServerJson<{ snapshot: ShortsSnapshot }>('/api/shorts/view', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  }
+
   const docRef = doc(db, 'shorts', payload.shortId);
   
   // 조회수 1 증가시키기

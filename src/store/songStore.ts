@@ -242,6 +242,7 @@ export type SongState = {
 
 export type SongProject = {
   version: 2;
+  lyricsMelodyAudioVersion?: 1;
   compositionMode?: 'standard' | 'soloPiano';
   timeSignature?: TimeSignature;
   timeSignatureChanges?: TimeSignatureChange[];
@@ -564,9 +565,9 @@ function withLyricsMelodyTrack(tracks: ExtraInstrumentTrack[], steps: number) {
         ...guideTrack,
         instrument: 'melody' as const,
         label: '멜로디',
-        volume: 0,
+        volume: guideTrack.volume,
       }, steps)
-    : createEmptyExtraTrack('melody', steps, tracks, LYRICS_MELODY_TRACK_ID, '멜로디', 0);
+    : createEmptyExtraTrack('melody', steps, tracks, LYRICS_MELODY_TRACK_ID, '멜로디', 80);
 
   return [normalizedGuide, ...tracks.filter((track) => track.id !== LYRICS_MELODY_TRACK_ID)];
 }
@@ -1242,6 +1243,7 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
 
   return {
     version: 2,
+    lyricsMelodyAudioVersion: 1,
     compositionMode: state.compositionMode,
     timeSignature: normalizeTimeSignature(state.timeSignature),
     timeSignatureChanges: normalizeTimeSignatureChanges(
@@ -1430,13 +1432,18 @@ function parseV2TracksToGrids(project: SongProject, steps: number) {
       return;
     }
 
+    const savedVolume = savedTrack.volume ?? 80;
     const track = createEmptyExtraTrack(
       instrument,
       steps,
       extraTracks,
       savedTrack.id || `${instrument}-loaded-${index}`,
       savedTrack.label || createExtraTrackLabel(instrument, extraTracks),
-      savedTrack.volume ?? 80
+      savedTrack.id === LYRICS_MELODY_TRACK_ID &&
+        project.lyricsMelodyAudioVersion !== 1 &&
+        savedVolume === 0
+        ? 80
+        : savedVolume
     );
     const noteToRow = getInstrumentNoteToRowMap(instrument);
 
@@ -1943,7 +1950,7 @@ export const useSongStore = create<SongState>()(
     set((state) => {
       const extraTracks = state.extraTracks.map((track) =>
         track.id === trackId
-          ? { ...track, volume: track.id === LYRICS_MELODY_TRACK_ID ? 0 : clampVolume(volume) }
+          ? { ...track, volume: clampVolume(volume) }
           : track
       );
 

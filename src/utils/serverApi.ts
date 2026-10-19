@@ -79,3 +79,33 @@ export async function fetchServerJson<T>(
 
   return readServerJson<T>(response);
 }
+
+export async function uploadServerFile<T>(
+  path: string,
+  file: File,
+  connectionErrorMessage = '파일 업로드 서버에 연결하지 못했습니다.'
+) {
+  let response: Response;
+
+  try {
+    const persistedSessionToken = useAuthStore.getState().sessionToken;
+    const sessionToken = getStoredSessionToken() ?? persistedSessionToken;
+    response = await fetch(`${APP_SERVER_URL}${path}`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': file.type || 'application/octet-stream',
+        ...(sessionToken ? { Authorization: `Bearer ${sessionToken}` } : {}),
+      },
+      body: file,
+    });
+  } catch {
+    throw new Error(connectionErrorMessage);
+  }
+
+  if (!response.ok) {
+    const payload = await readServerJson<{ error?: string }>(response).catch(() => null);
+    throw new Error(payload?.error || '파일 업로드에 실패했습니다.');
+  }
+
+  return readServerJson<T>(response);
+}

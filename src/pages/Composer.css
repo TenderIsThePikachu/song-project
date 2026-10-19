@@ -2162,6 +2162,42 @@
   min-height: 0;
 }
 
+.composer-bass-roll-host {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.composer-bass-roll-host > .composer-roll-shell {
+  width: 100%;
+}
+
+.composer-bass-roll-host .piano-roll--bass .piano-roll-melody-scroller {
+  overflow-y: scroll;
+  overscroll-behavior-y: contain;
+  scrollbar-color: #d2a84f #2a251d !important;
+  scrollbar-gutter: stable;
+  scrollbar-width: auto !important;
+}
+
+.composer-bass-roll-host .piano-roll--bass .piano-roll-melody-scroller::-webkit-scrollbar {
+  width: 12px !important;
+}
+
+.composer-bass-roll-host .piano-roll--bass .piano-roll-melody-scroller::-webkit-scrollbar-track {
+  border-left: 1px solid #3b3428 !important;
+  background: #211e19 !important;
+}
+
+.composer-bass-roll-host .piano-roll--bass .piano-roll-melody-scroller::-webkit-scrollbar-thumb {
+  min-height: 48px;
+  border: 2px solid #211e19 !important;
+  background: #d2a84f !important;
+  background-clip: padding-box !important;
+}
+
 .composer-drum-panel {
   display: flex;
   flex-direction: column;
@@ -3705,6 +3741,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 .composer-page {
   --composer-track-panel-width: 228px;
   --composer-lyrics-dock-width: min(360px, 100vw);
+  --composer-collab-drawer-width: min(360px, calc(100vw - var(--composer-track-panel-width)));
 }
 
 .composer-page .composer-workbar {
@@ -3843,7 +3880,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
 }
 
 .composer-collab-edge-button.is-open {
-  right: 360px;
+  right: var(--composer-collab-drawer-width);
 }
 
 .composer-collab-edge-button:hover {
@@ -3859,7 +3896,7 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   right: 0;
   bottom: 0;
   display: flex;
-  width: 360px;
+  width: var(--composer-collab-drawer-width);
   min-height: 0;
   flex-direction: column;
   overflow: hidden;
@@ -5803,8 +5840,16 @@ body:has(.composer-page) .site-header .topbar-account-menu {
   flex: 0 0 60px;
 }
 
+@media (max-width: 1080px) {
+  .composer-footer {
+    height: auto;
+    min-height: 96px;
+    flex-basis: auto;
+  }
+}
+
 @media (max-width: 980px) {
-  .composer-page { --composer-track-panel-width: 220px; }
+  .composer-page { --composer-track-panel-width: 160px; }
   .composer-project-meta > span { padding: 0 10px; }
   .composer-studio-layout { grid-template-columns: var(--composer-track-panel-width) minmax(0, 1fr); }
   .composer-track-main { grid-template-columns: 32px minmax(0, 1fr); padding-left: 9px; }

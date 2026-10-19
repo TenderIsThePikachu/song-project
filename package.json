@@ -15,7 +15,9 @@
     "test:browser": "node scripts/browser-smoke.mjs",
     "test:mp3-vocal": "node scripts/mp3-vocal-smoke.mjs",
     "test:collab-guest": "node scripts/collab-guest-smoke.mjs",
+    "test:composer-ui": "node scripts/composer-ui-smoke.mjs",
     "test:coverflow": "node scripts/coverflow-smoke.mjs",
+    "test:shorts-upload": "node scripts/shorts-upload-smoke.mjs",
     "test:workflows": "node scripts/workflow-smoke.mjs",
     "optimize:images": "node scripts/optimize-landing-images.mjs"
   },
