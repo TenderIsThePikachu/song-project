@@ -92,6 +92,12 @@ try {
   await page.waitForTimeout(100);
   assert.ok(await bassScroller.evaluate((element) => element.scrollTop > 0));
 
+  const emptyBassCell = page
+    .locator('.composer-main--bass .piano-roll-cell:not(.is-active):not(.is-note-tail)')
+    .first();
+  await emptyBassCell.click();
+  await page.waitForTimeout(300);
+
   await page.goto(`${baseUrl}/collab`, { waitUntil: 'networkidle' });
   await page.locator('.collab-card-open').first().click();
   await page.waitForURL(/\/collab\/[^/]+$/);

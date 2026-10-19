@@ -1523,9 +1523,10 @@ function loadLame(): Promise<void> {
 }
 
 export async function playBassPreview(row: number, durationSteps = 1): Promise<void> {
-  await ensureToneReady();
+  const activeInstruments = new Set<InstrumentKey>(["bass"]);
+  await ensureToneReady(activeInstruments);
   const state = useSongStore.getState();
-  applyLiveVolumes(state.volumes, state.extraTracks);
+  applyLiveVolumes(state.volumes, state.extraTracks, activeInstruments);
   const midi = BASS_MIDI[row] ?? BASS_MIDI[BASS_MIDI.length - 1];
   const note = toSamplerNote(Tone.Frequency(midi, "midi").toNote());
   bassSampler.triggerAttackRelease(note, getMelodyGateSeconds(durationSteps, state.bpm));
