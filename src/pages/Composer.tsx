@@ -806,7 +806,7 @@ function isSharpNote(note: unknown) {
 export function Composer() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
-  const collabId = searchParams.get('collab');
+  const collabId = searchParams.get('collab')?.trim() || null;
   const authenticatedUser = useAuthStore((state) => state.user);
   const user = authenticatedUser ?? (collabId && isLocalDevelopmentHost() ? LOCAL_COLLAB_GUEST : null);
   const tutorialCompletedByEmail = useAuthStore(
@@ -891,7 +891,7 @@ export function Composer() {
   const libraryProjects = useComposerLibraryStore((state) => state.projects);
   const seedLibrary = useComposerLibraryStore((state) => state.seedLibrary);
   const saveLibraryProject = useComposerLibraryStore((state) => state.saveProject);
-  const projectId = searchParams.get('project');
+  const projectId = searchParams.get('project')?.trim() || null;
   const newProjectRequested = searchParams.get('new') === '1';
   const requestedNewProjectTitle = (searchParams.get('title') ?? '').trim().slice(0, 60);
   const requestedNewProjectBpmValue = Number(searchParams.get('bpm'));
@@ -5219,28 +5219,6 @@ export function Composer() {
 
           <div
             className="piano-roll-melody-scroller"
-            onWheel={
-              instrument === 'bass'
-                ? (event) => {
-                    const scroller = event.currentTarget;
-                    if (
-                      Math.abs(event.deltaY) <= Math.abs(event.deltaX) ||
-                      scroller.scrollHeight <= scroller.clientHeight
-                    ) {
-                      return;
-                    }
-
-                    const nextScrollTop = Math.min(
-                      scroller.scrollHeight - scroller.clientHeight,
-                      Math.max(0, scroller.scrollTop + event.deltaY)
-                    );
-                    if (nextScrollTop === scroller.scrollTop) return;
-
-                    event.preventDefault();
-                    scroller.scrollTop = nextScrollTop;
-                  }
-                : undefined
-            }
             onScroll={(event) => {
               const nextScrollLeft = event.currentTarget.scrollLeft;
               setPitchedRollScrollLeft((current) => {

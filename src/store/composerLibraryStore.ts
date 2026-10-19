@@ -45,7 +45,6 @@ type SaveProjectPayload = {
 };
 
 type ShareProjectPayload = Omit<SaveProjectPayload, 'exportFormat'> & {
-  projectId?: string;
   shareVisibility: 'public' | 'private';
   shareMidiEnabled: boolean;
   coverImageUrl?: string;

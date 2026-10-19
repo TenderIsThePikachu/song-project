@@ -951,7 +951,6 @@ export const TransportBar = ({
       }
 
       await shareComposerProject({
-        projectId: currentProjectId ?? undefined,
         title,
         description: shareDescription.trim(),
         genre: shareGenre,

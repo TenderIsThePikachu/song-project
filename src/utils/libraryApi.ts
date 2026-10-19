@@ -140,7 +140,7 @@ export async function saveComposerProjectOnServer(payload: Record<string, any>):
     );
   }
 
-  const projectId = (payload.id as string) || doc(collection(db, 'composer_projects')).id;
+  const projectId = String(payload.id ?? '').trim() || doc(collection(db, 'composer_projects')).id;
   const projectRef = doc(db, 'composer_projects', projectId);
   const existingProject = await getDoc(projectRef);
   
@@ -204,7 +204,7 @@ export async function shareComposerProjectOnServer(payload: Record<string, any>)
     );
   }
 
-  const trackId = (payload.id as string) || doc(collection(db, 'music_share_tracks')).id;
+  const trackId = String(payload.id ?? '').trim() || doc(collection(db, 'music_share_tracks')).id;
   const trackRef = doc(db, 'music_share_tracks', trackId);
 
   // 공유할 때도 번역기를 거쳐서 에러 방지!
