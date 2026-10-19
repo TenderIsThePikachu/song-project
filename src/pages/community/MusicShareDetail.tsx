@@ -17,6 +17,7 @@ import { useNotificationStore } from '../../store/notificationStore';
 import { useShortsStore } from '../../store/shortsStore';
 import { useSongStore } from '../../store/songStore';
 import { getProjectFromSharedTrack } from '../../utils/songSketchDna';
+import { uploadMusicShareCoverOnServer } from '../../utils/libraryApi';
 import './MusicShareDetail.css';
 
 const EDIT_CATEGORY_OPTIONS: Array<{ value: MusicShareTrackCard['category']; label: string }> = [
@@ -100,6 +101,9 @@ export default function MusicShareDetail() {
   const [editCategory, setEditCategory] = useState<MusicShareTrackCard['category']>('pop');
   const [editTags, setEditTags] = useState('');
   const [editYoutubeUrl, setEditYoutubeUrl] = useState('');
+  const [editCoverFile, setEditCoverFile] = useState<File | null>(null);
+  const [editCoverPreviewUrl, setEditCoverPreviewUrl] = useState('');
+  const [editCoverRemoved, setEditCoverRemoved] = useState(false);
   const [toast, setToast] = useState<{ message: string; tone: 'success' | 'error' } | null>(null);
   const previewAudioRef = useRef<HTMLAudioElement | null>(null);
   const previewAudioUrlRef = useRef('');
@@ -359,8 +363,44 @@ const handleOpenEdit = () => {
   setEditCategory(track.category);
   setEditTags(track.tags.join(', '));
   setEditYoutubeUrl(track.youtubeUrl ?? '');
+  setEditCoverFile(null);
+  setEditCoverPreviewUrl(track.imageUrl || getMusicShareTrackImage(track));
+  setEditCoverRemoved(false);
   setEditError('');
   setIsEditOpen(true);
+};
+
+const handleSelectEditCover = (event: React.ChangeEvent<HTMLInputElement>) => {
+  const file = event.target.files?.[0] ?? null;
+  event.target.value = '';
+  if (!file) return;
+
+  if (!file.type.startsWith('image/')) {
+    setEditError('이미지 파일만 선택할 수 있습니다.');
+    return;
+  }
+
+  if (file.size > 8 * 1024 * 1024) {
+    setEditError('커버 이미지는 8MB 이하로 선택해 주세요.');
+    return;
+  }
+
+  if (editCoverPreviewUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(editCoverPreviewUrl);
+  }
+  setEditCoverFile(file);
+  setEditCoverPreviewUrl(URL.createObjectURL(file));
+  setEditCoverRemoved(false);
+  setEditError('');
+};
+
+const handleRemoveEditCover = () => {
+  if (editCoverPreviewUrl.startsWith('blob:')) {
+    URL.revokeObjectURL(editCoverPreviewUrl);
+  }
+  setEditCoverFile(null);
+  setEditCoverPreviewUrl('');
+  setEditCoverRemoved(true);
 };
 
 const handleSaveEdit = async (event: React.FormEvent<HTMLFormElement>) => {
@@ -390,6 +430,10 @@ const handleSaveEdit = async (event: React.FormEvent<HTMLFormElement>) => {
   setIsSavingEdit(true);
   setEditError('');
   try {
+    const uploadedCover = editCoverFile
+      ? await uploadMusicShareCoverOnServer({ file: editCoverFile, creatorEmail: user.email })
+      : null;
+
     await updateTrack({
       trackId: track.id,
       creatorEmail: user.email,
@@ -399,7 +443,11 @@ const handleSaveEdit = async (event: React.FormEvent<HTMLFormElement>) => {
       category: editCategory,
       tags: editTags.split(',').map((tag) => tag.trim()).filter(Boolean),
       youtubeUrl,
+      imageUrl: uploadedCover?.imageUrl ?? (editCoverRemoved ? '' : track.imageUrl),
     });
+    if (editCoverPreviewUrl.startsWith('blob:')) {
+      URL.revokeObjectURL(editCoverPreviewUrl);
+    }
     setIsEditOpen(false);
   } catch (error) {
     setEditError(error instanceof Error ? error.message : '공유곡을 수정하지 못했습니다.');
@@ -691,6 +739,25 @@ const handleDeleteTrack = async () => {
             <label><span>곡 설명</span><textarea value={editReference} onChange={(event) => setEditReference(event.target.value)} maxLength={300} /></label>
             <label><span>태그</span><input value={editTags} onChange={(event) => setEditTags(event.target.value)} placeholder="발라드, 감성, 피아노" /></label>
             <label><span>유튜브 링크</span><input type="url" value={editYoutubeUrl} onChange={(event) => setEditYoutubeUrl(event.target.value)} placeholder="https://www.youtube.com/watch?v=..." /></label>
+
+            <div className="music-share-edit-cover-field">
+              <span>커버 이미지</span>
+              <div className="music-share-edit-cover-content">
+                <div className={`music-share-edit-cover-preview${editCoverPreviewUrl ? '' : ' is-empty'}`}>
+                  {editCoverPreviewUrl ? <img src={editCoverPreviewUrl} alt="변경할 커버 미리보기" /> : <span>기본 이미지 사용</span>}
+                </div>
+                <div className="music-share-edit-cover-actions">
+                  <label className="music-share-edit-cover-picker">
+                    <span>{editCoverFile ? '다른 이미지 선택' : '이미지 선택'}</span>
+                    <input type="file" accept="image/png,image/jpeg,image/webp" onChange={handleSelectEditCover} disabled={isSavingEdit} />
+                  </label>
+                  {(track.imageUrl || editCoverFile) && !editCoverRemoved ? (
+                    <button type="button" onClick={handleRemoveEditCover} disabled={isSavingEdit}>이미지 삭제</button>
+                  ) : null}
+                  <small>JPG, PNG, WebP · 최대 8MB</small>
+                </div>
+              </div>
+            </div>
 
             {editError ? <p className="music-share-edit-error">{editError}</p> : null}
             <footer>

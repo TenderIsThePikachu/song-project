@@ -1,6 +1,7 @@
 import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 import type { SongProject } from './songStore';
+import { useMusicShareStore } from './musicShareStore';
 import {
   deleteComposerProjectOnServer,
   fetchComposerLibraryBootstrap,
@@ -132,6 +133,9 @@ export const useComposerLibraryStore = create<ComposerLibraryState>()(
       shareProject: async (payload) => {
         const response = await shareComposerProjectOnServer(payload as unknown as Record<string, unknown>);
         applySnapshot(response.snapshot);
+        if (response.snapshot.share) {
+          useMusicShareStore.getState().applyServerSnapshot(response.snapshot.share);
+        }
         return response.projectId;
       },
       toggleFavoriteTrack: async (trackId, userEmail) => {

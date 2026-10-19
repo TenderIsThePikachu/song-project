@@ -1680,6 +1680,17 @@ html[data-theme='light'] .community-detail-comment-empty {
   color: #e05666;
 }
 
+.community-detail-action-error {
+  margin: 10px 0 0;
+  padding: 10px 12px;
+  border: 1px solid rgba(224, 86, 102, 0.28);
+  border-radius: 8px;
+  background: rgba(224, 86, 102, 0.08);
+  color: #d84455;
+  font-size: 12px;
+  font-weight: 700;
+}
+
 .community-detail-text-action:disabled {
   opacity: 0.58;
   cursor: default;

@@ -42,28 +42,12 @@ export const MUSIC_SHARE_FALLBACK_IMAGES = [
   '/landing-assets/shared-fallback-pink-sketch.webp',
 ] as const;
 
-const CATEGORY_COVER_IMAGES: Partial<Record<Exclude<MusicShareCategory, 'all'>, string>> = {
-  classic: '/landing-assets/cover-classic-piano.webp',
-  jazz: '/landing-assets/cover-jazz-sax.webp',
-  citypop: '/landing-assets/cover-citypop-night.webp',
-  ost: '/landing-assets/cover-film-projector.webp',
-  anime: '/landing-assets/shared-fallback-pink-sketch.webp',
-  game: '/landing-assets/night-loop.webp',
-  ballad: '/landing-assets/cover-classic-piano.webp',
-  pop: '/landing-assets/shared-fallback-band.webp',
-  rock: '/landing-assets/shared-fallback-film.webp',
-};
-
 export function getMusicShareTrackImage(
   track: Pick<MusicShareTrackCard, 'id' | 'imageUrl'> & Partial<Pick<MusicShareTrackCard, 'category'>>
 ) {
   const imageUrl = track.imageUrl?.trim();
   if (imageUrl) {
     return imageUrl;
-  }
-
-  if (track.category && CATEGORY_COVER_IMAGES[track.category]) {
-    return CATEGORY_COVER_IMAGES[track.category];
   }
 
   const hash = Array.from(track.id).reduce(
@@ -295,23 +279,6 @@ export function buildSharedTrackCard(
     projectId: project.id,
     creatorEmail: project.creatorEmail,
     project: project.project,
-    imageUrl:
-      project.coverImageUrl ||
-      SHARED_TRACK_IMAGE_MAP[project.id] ||
-      (category === 'classic'
-        ? '/landing-assets/cover-classic-piano.webp'
-        : category === 'jazz'
-          ? '/landing-assets/cover-jazz-sax.webp'
-          : category === 'citypop'
-            ? '/landing-assets/cover-citypop-night.webp'
-            : category === 'ost'
-              ? '/landing-assets/cover-film-projector.webp'
-              : category === 'anime'
-                ? '/landing-assets/shared-fallback-pink-sketch.webp'
-                : category === 'game'
-                  ? '/landing-assets/night-loop.webp'
-                  : category === 'ballad'
-                    ? '/landing-assets/cover-classic-piano.webp'
-                    : '/landing-assets/shared-fallback-band.webp'),
+    imageUrl: project.coverImageUrl || SHARED_TRACK_IMAGE_MAP[project.id],
   };
 }

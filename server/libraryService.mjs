@@ -416,13 +416,7 @@ export function deleteComposerProject(payload) {
 
 export function getMusicShareSnapshot() {
   return {
-    tracks: state.sharedTracks.map((track) => ({
-      ...track,
-      imageUrl:
-        track.imageUrl && track.imageUrl.startsWith('/uploads/music-share/')
-          ? track.imageUrl
-          : getDefaultTrackImage(track),
-    })),
+    tracks: state.sharedTracks,
     likedTrackIdsByUser: state.likedTrackIdsByUser,
     recentOpenedTrackIdsByUser: state.recentOpenedTrackIdsByUser,
     trackMetricsById: state.trackMetricsById,
@@ -469,6 +463,10 @@ export function updateMusicShareTrack(payload) {
       ? payload.tags.map((tag) => normalizeText(tag)).filter(Boolean).slice(0, 10)
       : track.tags,
     youtubeUrl: normalizeText(payload.youtubeUrl),
+    imageUrl:
+      payload.imageUrl === undefined
+        ? track.imageUrl
+        : normalizeText(payload.imageUrl),
     updatedAt: Date.now(),
   };
 

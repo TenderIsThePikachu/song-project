@@ -248,6 +248,7 @@ export default function PostDetail() {
   const [isCommentPopupOpen, setIsCommentPopupOpen] = useState(false);
   const [isCommentSubmitting, setIsCommentSubmitting] = useState(false);
   const [replySubmittingId, setReplySubmittingId] = useState<string | null>(null);
+  const [postActionError, setPostActionError] = useState('');
 
   const post: Post | null =
     posts.find((item) => item.id === id) ?? (isPreviewMode ? DUMMY_POSTS[0] : null);
@@ -325,10 +326,11 @@ export default function PostDetail() {
   const liked = !!user && (likedPostIdsByUser[user.email] ?? []).includes(post.id);
   const bookmarked = !!user && (bookmarkedPostIdsByUser[user.email] ?? []).includes(post.id);
   const reported = !!user && (reportedPostIdsByUser[user.email] ?? []).includes(post.id);
-  const isMine =
-    !!user &&
-    (post.authorId === user.email ||
-      ('authorEmail' in post && post.authorEmail === user.email));
+  const normalizedUserEmail = user?.email.trim().toLowerCase() ?? '';
+  const normalizedAuthorEmail = (post.authorEmail || post.authorId || '').trim().toLowerCase();
+  const isMine = Boolean(
+    normalizedUserEmail && normalizedAuthorEmail === normalizedUserEmail
+  );
   const isManager = !!user && isCommunityManagerEmail(user.email);
   const tone = categoryToneMap[post.category ?? '질문'] ?? 'slate';
   const paragraphs = getParagraphs(post.content);
@@ -559,8 +561,16 @@ export default function PostDetail() {
       return;
     }
 
-    await deletePost(post.id, user.email);
-    navigate('/community');
+    setPostActionError('');
+    try {
+      await deletePost(post.id, user.email.trim());
+      navigate('/community');
+    } catch (error) {
+      console.error('Community post delete failed:', error);
+      setPostActionError(
+        error instanceof Error ? error.message : '게시글을 삭제하지 못했습니다. 다시 시도해 주세요.'
+      );
+    }
   };
 
   const handleModerate = async (action: 'delete-post' | 'block-user') => {
@@ -831,6 +841,9 @@ export default function PostDetail() {
                   </button>
                 </div>
               </footer>
+              {postActionError ? (
+                <p className="community-detail-action-error" role="alert">{postActionError}</p>
+              ) : null}
             </article>
 
             <section className="community-detail-comments-card">

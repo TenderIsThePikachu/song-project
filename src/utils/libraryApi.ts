@@ -5,7 +5,7 @@ import { db, storage } from '../firebase'; // ★ 주의: 실제 firebase.ts 경
 import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
 import type { SongProject } from '../store/songStore';
 import { isLocalDevelopmentHost } from './localEnvironment';
-import { fetchServerJson } from './serverApi';
+import { fetchServerJson, uploadServerFile } from './serverApi';
 // ============================================================================
 // 1. 타입 정의
 // ============================================================================
@@ -213,6 +213,7 @@ export async function shareComposerProjectOnServer(payload: Record<string, any>)
   await setDoc(trackRef, {
     ...safePayload,
     id: trackId,
+    imageUrl: String(safePayload.coverImageUrl ?? safePayload.imageUrl ?? '').trim(),
     likeCount: 0,
     viewCount: 0,
     downloadCount: 0,
@@ -296,6 +297,19 @@ export async function recordTrackOpenOnServer(payload: { trackId: string; userEm
 }
 
 export async function uploadMusicShareCoverOnServer(payload: { file: File; creatorEmail?: string; }): Promise<{ imageUrl: string; imageStorageKey: string; imageFileName: string; }> {
+  if (isLocalDevelopmentHost()) {
+    const params = new URLSearchParams({ fileName: payload.file.name });
+    if (payload.creatorEmail?.trim()) {
+      params.set('creatorEmail', payload.creatorEmail.trim());
+    }
+
+    return uploadServerFile(
+      `/api/music-share/upload?${params.toString()}`,
+      payload.file,
+      '커버 이미지를 로컬 서버에 업로드하지 못했습니다.'
+    );
+  }
+
   // 1. 파이어베이스 스토리지에 저장될 고유한 이름(경로) 만들기
   const storageKey = `share_covers/${Date.now()}_${payload.file.name}`;
   
@@ -335,6 +349,7 @@ export type UpdateMusicShareTrackPayload = {
   category: string;
   tags: string[];
   youtubeUrl?: string;
+  imageUrl?: string;
 };
 
 export async function updateMusicShareTrackOnServer(
@@ -363,6 +378,7 @@ export async function updateMusicShareTrackOnServer(
     category: payload.category,
     tags: payload.tags,
     youtubeUrl: payload.youtubeUrl?.trim() || '',
+    imageUrl: payload.imageUrl?.trim() || '',
     updatedAt: Date.now(),
   });
 

@@ -190,27 +190,45 @@
 .shorts-nav-button {
   width: 56px;
   height: 56px;
-  border: 1px solid rgba(255, 255, 255, 0.12);
+  display: grid;
+  place-items: center;
+  border: 1px solid rgba(22, 31, 48, 0.22);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.06);
-  color: #f5f7fa;
+  background: rgba(255, 255, 255, 0.96);
+  color: #172033;
+  box-shadow: 0 8px 22px rgba(15, 23, 42, 0.14);
   font: inherit;
   font-size: 24px;
+  font-weight: 800;
   cursor: pointer;
   transition:
     transform 0.18s ease,
     background 0.18s ease,
+    color 0.18s ease,
+    box-shadow 0.18s ease,
     border-color 0.18s ease,
     opacity 0.18s ease;
 }
 
 .shorts-nav-button:hover:not(:disabled) {
   transform: translateY(-1px);
-  background: rgba(255, 255, 255, 0.12);
+  border-color: #1fbe9b;
+  background: #e9fbf5;
+  color: #087d67;
+  box-shadow: 0 10px 26px rgba(15, 23, 42, 0.18);
+}
+
+.shorts-nav-button:focus-visible {
+  outline: 3px solid rgba(31, 190, 155, 0.32);
+  outline-offset: 3px;
 }
 
 .shorts-nav-button:disabled {
-  opacity: 0.34;
+  border-color: rgba(22, 31, 48, 0.14);
+  background: rgba(248, 250, 252, 0.94);
+  color: #8b97aa;
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.08);
+  opacity: 0.72;
   cursor: default;
 }
 

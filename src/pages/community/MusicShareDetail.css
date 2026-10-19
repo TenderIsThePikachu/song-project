@@ -770,6 +770,39 @@
 }
 .music-share-edit-dialog textarea { min-height: 92px; resize: vertical; }
 .music-share-edit-dialog :is(input, select, textarea):focus { border-color: #43cfa8; outline: 0; box-shadow: 0 0 0 3px rgba(67, 207, 168, 0.12); }
+.music-share-edit-cover-field { display: grid; gap: 7px; }
+.music-share-edit-cover-field > span { color: #bdc7d6; font-size: 12px; font-weight: 800; }
+.music-share-edit-cover-content { display: flex; align-items: stretch; gap: 14px; }
+.music-share-edit-cover-preview {
+  width: 132px;
+  min-height: 94px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 8px;
+  background: #0f1116;
+}
+.music-share-edit-cover-preview img { width: 100%; height: 100%; min-height: 94px; object-fit: cover; }
+.music-share-edit-cover-preview.is-empty { display: grid; padding: 10px; place-items: center; color: #8794a8; font-size: 12px; text-align: center; }
+.music-share-edit-cover-actions { display: flex; flex: 1; flex-wrap: wrap; align-content: center; align-items: center; gap: 8px; }
+.music-share-edit-dialog .music-share-edit-cover-picker,
+.music-share-edit-cover-actions > button {
+  display: inline-grid;
+  min-height: 38px;
+  box-sizing: border-box;
+  padding: 8px 13px;
+  place-items: center;
+  border: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 8px;
+  background: rgba(255, 255, 255, 0.06);
+  color: #f5f7fb;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 800;
+  cursor: pointer;
+}
+.music-share-edit-dialog .music-share-edit-cover-picker { flex: 0 0 auto; gap: 0; }
+.music-share-edit-cover-picker input { position: absolute; width: 1px; height: 1px; overflow: hidden; opacity: 0; pointer-events: none; }
+.music-share-edit-cover-actions small { width: 100%; color: #8794a8; font-size: 11px; }
 .music-share-edit-error { margin: 0; color: #ff8f9a; font-size: 12px; font-weight: 700; }
 .music-share-edit-dialog footer { justify-content: flex-end; }
 .music-share-edit-dialog footer button {
@@ -790,6 +823,10 @@ html[data-theme='light'] .music-share-edit-overlay { background: rgba(23, 35, 51
 html[data-theme='light'] .music-share-edit-dialog { border-color: #d7e2ec; background: #fff; color: #13213a; }
 html[data-theme='light'] .music-share-edit-dialog header button { border-color: #d7e2ec; color: #253650; }
 html[data-theme='light'] .music-share-edit-dialog label > span { color: #52647e; }
+html[data-theme='light'] .music-share-edit-cover-field > span { color: #52647e; }
+html[data-theme='light'] .music-share-edit-cover-preview { border-color: #d7e2ec; background: #f8fafc; }
+html[data-theme='light'] .music-share-edit-dialog .music-share-edit-cover-picker,
+html[data-theme='light'] .music-share-edit-cover-actions > button { border-color: #d7e2ec; background: #f6f8fb; color: #24344d; }
 html[data-theme='light'] .music-share-edit-dialog :is(input, select, textarea) { border-color: #d7e2ec; background: #f8fafc; color: #13213a; }
 html[data-theme='light'] .music-share-edit-dialog footer button { border-color: #d7e2ec; background: #f6f8fb; color: #24344d; }
 html[data-theme='light'] .music-share-edit-dialog footer button.is-primary { border-color: #21b98f; background: #21b98f; color: #fff; }
@@ -798,6 +835,8 @@ html[data-theme='light'] .music-share-edit-dialog footer button.is-primary { bor
   .music-share-edit-overlay { padding: 10px; }
   .music-share-edit-dialog { max-height: calc(100vh - 20px); padding: 20px; }
   .music-share-edit-row { align-items: stretch; flex-direction: column; }
+  .music-share-edit-cover-content { flex-direction: column; }
+  .music-share-edit-cover-preview { width: 100%; min-height: 150px; }
 }
 
 .music-share-detail-player-actions button {

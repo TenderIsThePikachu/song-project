@@ -5,12 +5,48 @@ import {
 import { ref, uploadBytes, getDownloadURL, deleteObject } from 'firebase/storage';
 import { isLocalDevelopmentHost } from './localEnvironment';
 import { fetchServerJson, uploadServerFile } from './serverApi';
-import { db, storage } from '../firebase'; // ★ 주의: 실제 firebase.ts 경로에 맞게 수정하세요!
+import { auth, db, storage } from '../firebase'; // ★ 주의: 실제 firebase.ts 경로에 맞게 수정하세요!
 
 export type ShortsSnapshot = {
   shorts: any[];
   comments: any[];
 };
+
+function removeUndefinedFields(value: unknown): unknown {
+  if (Array.isArray(value)) {
+    return value.filter((item) => item !== undefined).map(removeUndefinedFields);
+  }
+
+  if (value && typeof value === 'object') {
+    return Object.fromEntries(
+      Object.entries(value)
+        .filter(([, item]) => item !== undefined)
+        .map(([key, item]) => [key, removeUndefinedFields(item)])
+    );
+  }
+
+  return value;
+}
+
+async function ensureFirebaseUploadSession() {
+  await auth.authStateReady();
+  if (auth.currentUser) return;
+
+  const error = new Error('Firebase 로그인이 만료되었습니다. 다시 로그인해 주세요.') as Error & {
+    code?: string;
+  };
+  error.code = 'storage/unauthorized';
+  throw error;
+}
+
+function getVideoContentType(file: File) {
+  if (file.type.startsWith('video/')) return file.type;
+
+  const extension = file.name.split('.').pop()?.toLowerCase();
+  if (extension === 'mov') return 'video/quicktime';
+  if (extension === 'webm') return 'video/webm';
+  return 'video/mp4';
+}
 
 // ============================================================================
 // 🔥 파이어베이스 숏폼(Shorts) API (Firestore & Storage 연동)
@@ -56,12 +92,14 @@ export async function uploadShortVideoOnServer(payload: { creatorEmail: string; 
     };
   }
 
+  await ensureFirebaseUploadSession();
+
   // 1. 영상이 저장될 이름 만들기 (중복 방지를 위해 현재 시간 추가)
   const storageKey = `shorts/${Date.now()}_${payload.file.name}`;
   
   // 2. 파이어베이스 스토리지(Storage)에 파일 업로드
   const videoRef = ref(storage, storageKey);
-  await uploadBytes(videoRef, payload.file);
+  await uploadBytes(videoRef, payload.file, { contentType: getVideoContentType(payload.file) });
 
   // 3. 웹에서 볼 수 있는 다운로드 URL 가져오기
   const url = await getDownloadURL(videoRef);
@@ -87,9 +125,11 @@ export async function uploadShortAudioOnServer(payload: { creatorEmail: string; 
     };
   }
 
+  await ensureFirebaseUploadSession();
+
   const storageKey = `shorts_audio/${Date.now()}_${payload.file.name}`;
   const audioRef = ref(storage, storageKey);
-  await uploadBytes(audioRef, payload.file);
+  await uploadBytes(audioRef, payload.file, { contentType: payload.file.type || 'audio/mpeg' });
   const url = await getDownloadURL(audioRef);
 
   return { url, storageKey };
@@ -114,20 +154,30 @@ export async function createShortOnServer(payload: Record<string, any>) {
     ...rest
   } = payload;
 
-  await setDoc(newRef, {
+  const document = removeUndefinedFields({
     ...rest,
-
     ...(audioUrl ? { audioUrl } : {}),
     ...(audioStorageKey ? { audioStorageKey } : {}),
     ...(audioFileName ? { audioFileName } : {}),
     ...(audioSizeBytes !== undefined ? { audioSizeBytes } : {}),
-
     id: shortId,
     createdAt: Date.now(),
     likeCount: 0,
     viewCount: 0,
     likedBy: []
-  });
+  }) as Record<string, unknown>;
+
+  try {
+    await setDoc(newRef, document);
+  } catch (error) {
+    if (payload.videoStorageKey) {
+      await deleteObject(ref(storage, payload.videoStorageKey)).catch(() => undefined);
+    }
+    if (payload.audioStorageKey) {
+      await deleteObject(ref(storage, payload.audioStorageKey)).catch(() => undefined);
+    }
+    throw error;
+  }
 
   return {
     shortId,
@@ -149,7 +199,7 @@ export async function updateShortOnServer(payload: { shortId: string } & Record<
 
   // 기존 글 수정
   await updateDoc(docRef, {
-    ...updateData,
+    ...(removeUndefinedFields(updateData) as Record<string, unknown>),
     updatedAt: Date.now()
   });
 

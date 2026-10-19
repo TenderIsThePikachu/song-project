@@ -149,7 +149,7 @@ export function normalizeMusicShareTrack(
     isSharedProject: Boolean(track.isSharedProject),
     projectId: asString(track.projectId) || undefined,
     creatorEmail: asString(track.creatorEmail) || undefined,
-    imageUrl: asString(track.imageUrl) || undefined,
+    imageUrl: asString(track.imageUrl) || asString(track.coverImageUrl) || undefined,
     youtubeUrl: asString(track.youtubeUrl) || undefined,
     project,
   };
