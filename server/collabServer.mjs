@@ -33,6 +33,7 @@ import {
   recordTrackDownload,
   recordTrackOpen,
   recordTrackView,
+  saveMusicShareAudioFile,
   saveMusicShareImageFile,
   saveComposerProject,
   shareComposerProject,
@@ -1938,6 +1939,21 @@ const server = createServer(async (request, response) => {
       maybeRequireSession(request, creatorEmail);
       const buffer = await readBuffer(request);
       const result = saveMusicShareImageFile({
+        buffer,
+        fileName,
+        baseUrl: `http://${request.headers.host}`,
+      });
+      writeJson(response, 200, result);
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/music-share/audio-upload') {
+      const fileName = url.searchParams.get('fileName') || 'shared-track.mp3';
+      const creatorEmail =
+        url.searchParams.get('creatorEmail') || url.searchParams.get('email');
+      maybeRequireSession(request, creatorEmail);
+      const buffer = await readBuffer(request);
+      const result = saveMusicShareAudioFile({
         buffer,
         fileName,
         baseUrl: `http://${request.headers.host}`,

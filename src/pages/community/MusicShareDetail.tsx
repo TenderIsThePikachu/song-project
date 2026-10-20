@@ -56,6 +56,39 @@ function normalizeText(value?: string) {
   return value?.trim().toLocaleLowerCase('ko-KR') ?? '';
 }
 
+function getYouTubeEmbedUrl(value?: string) {
+  const rawUrl = value?.trim();
+  if (!rawUrl) return '';
+
+  try {
+    const url = new URL(rawUrl);
+    const hostname = url.hostname.replace(/^www\./, '').toLowerCase();
+    let videoId = '';
+
+    if (hostname === 'youtu.be') {
+      videoId = url.pathname.split('/').filter(Boolean)[0] ?? '';
+    } else if (['youtube.com', 'm.youtube.com', 'music.youtube.com'].includes(hostname)) {
+      if (url.pathname === '/watch') {
+        videoId = url.searchParams.get('v') ?? '';
+      } else {
+        const pathParts = url.pathname.split('/').filter(Boolean);
+        if (['embed', 'shorts', 'live'].includes(pathParts[0] ?? '')) {
+          videoId = pathParts[1] ?? '';
+        }
+      }
+    }
+
+    if (!/^[a-zA-Z0-9_-]{6,15}$/.test(videoId)) return '';
+
+    const embedUrl = new URL(`https://www.youtube.com/embed/${videoId}`);
+    const start = url.searchParams.get('start') ?? url.searchParams.get('t');
+    if (start && /^\d+$/.test(start)) embedUrl.searchParams.set('start', start);
+    return embedUrl.toString();
+  } catch {
+    return '';
+  }
+}
+
 function syncShortAudioToVideo(video: HTMLVideoElement, audio: HTMLAudioElement) {
   const targetTime = Number.isFinite(audio.duration) && audio.duration > 0
     ? video.currentTime % audio.duration
@@ -152,6 +185,7 @@ export default function MusicShareDetail() {
     ?? trackLibrary.find((item) => item.id === trackId)
     ?? null;
   const trackImageUrl = track ? getMusicShareTrackImage(track) : '';
+  const youtubeEmbedUrl = track ? getYouTubeEmbedUrl(track.youtubeUrl) : '';
   const metrics = track ? trackMetricsById[track.id] ?? { likeCount: 0, viewCount: 0, downloadCount: 0 } : null;
   
   const comments = useMemo(
@@ -300,12 +334,15 @@ export default function MusicShareDetail() {
 
     setIsPreviewPreparing(true);
     try {
-      const project = getProjectFromSharedTrack(track, trackProject ?? undefined);
-      const blob = await exportSongProjectAsMp3(project);
-      const audioUrl = URL.createObjectURL(blob);
+      const storedAudioUrl = track.audioUrl?.trim();
+      const audioUrl = storedAudioUrl || URL.createObjectURL(
+        await exportSongProjectAsMp3(
+          getProjectFromSharedTrack(track, trackProject ?? undefined)
+        )
+      );
       const audio = new Audio(audioUrl);
       audio.onended = () => setIsPreviewPlaying(false);
-      previewAudioUrlRef.current = audioUrl;
+      previewAudioUrlRef.current = storedAudioUrl ? '' : audioUrl;
       previewAudioRef.current = audio;
       await audio.play();
       setIsPreviewPlaying(true);
@@ -607,6 +644,17 @@ const handleDeleteTrack = async () => {
                       aria-hidden="true"
                     />
                   ) : null}
+                </div>
+              ) : youtubeEmbedUrl ? (
+                <div className="music-share-detail-player-preview has-youtube-video">
+                  <iframe
+                    src={youtubeEmbedUrl}
+                    title={`${track.title} 유튜브 영상`}
+                    loading="lazy"
+                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                    referrerPolicy="strict-origin-when-cross-origin"
+                    allowFullScreen
+                  />
                 </div>
               ) : (
                 <button

@@ -30,6 +30,9 @@ export type ComposerProjectRecord = {
   coverImageUrl?: string;
   coverImageStorageKey?: string;
   coverImageFileName?: string;
+  audioUrl?: string;
+  audioStorageKey?: string;
+  audioFileName?: string;
 };
 
 type SaveProjectPayload = {
@@ -51,6 +54,9 @@ type ShareProjectPayload = Omit<SaveProjectPayload, 'exportFormat'> & {
   coverImageUrl?: string;
   coverImageStorageKey?: string;
   coverImageFileName?: string;
+  audioUrl?: string;
+  audioStorageKey?: string;
+  audioFileName?: string;
 };
 
 type ComposerLibraryState = {

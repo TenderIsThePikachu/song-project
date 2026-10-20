@@ -282,11 +282,15 @@ export function saveComposerProject(payload) {
   const timestamp = Date.now();
   const requestedProjectId = normalizeText(payload.id);
   const creatorEmail = normalizeEmail(payload.creatorEmail) || 'guest@songmaker.local';
-  const existingProject = requestedProjectId
-    ? state.projects.find(
-        (project) => project.id === requestedProjectId && project.creatorEmail === creatorEmail
-      )
+  const requestedProject = requestedProjectId
+    ? state.projects.find((project) => project.id === requestedProjectId)
     : null;
+
+  if (requestedProject && normalizeEmail(requestedProject.creatorEmail) !== creatorEmail) {
+    throw new Error('본인이 만든 프로젝트만 저장할 수 있습니다.');
+  }
+
+  const existingProject = requestedProject ?? null;
   const projectId = existingProject?.id || createId('project');
 
   const nextProject = {
@@ -303,9 +307,9 @@ export function saveComposerProject(payload) {
     creatorEmail,
     project: payload.project,
     exportFormat: payload.exportFormat === 'mp3' || payload.exportFormat === 'flac' ? payload.exportFormat : 'wav',
-    isShared: false,
-    shareVisibility: 'private',
-    shareMidiEnabled: false,
+    isShared: existingProject?.isShared ?? false,
+    shareVisibility: existingProject?.shareVisibility ?? 'private',
+    shareMidiEnabled: existingProject?.shareMidiEnabled ?? false,
   };
 
   state = {
@@ -343,6 +347,9 @@ export function shareComposerProject(payload) {
     coverImageUrl: payload.coverImageUrl,
     coverImageStorageKey: payload.coverImageStorageKey,
     coverImageFileName: payload.coverImageFileName,
+    audioUrl: payload.audioUrl,
+    audioStorageKey: payload.audioStorageKey,
+    audioFileName: payload.audioFileName,
   };
 
   state = {
@@ -494,6 +501,20 @@ export function saveMusicShareImageFile(payload) {
   };
 }
 
+export function saveMusicShareAudioFile(payload) {
+  ensureUploadDirs();
+  const storageKey = `${createId('music-audio')}.mp3`;
+  const filePath = join(MUSIC_SHARE_UPLOAD_DIR, storageKey);
+
+  writeFileSync(filePath, payload.buffer);
+
+  return {
+    audioUrl: buildUploadUrl(payload.baseUrl, storageKey),
+    audioStorageKey: storageKey,
+    audioFileName: payload.fileName || storageKey,
+  };
+}
+
 export function serveMusicShareUpload(request, response, fileName) {
   const filePath = join(MUSIC_SHARE_UPLOAD_DIR, fileName);
   if (!existsSync(filePath)) {
@@ -502,7 +523,9 @@ export function serveMusicShareUpload(request, response, fileName) {
 
   const ext = extname(filePath).toLowerCase();
   const contentType =
-    ext === '.png'
+    ext === '.mp3'
+      ? 'audio/mpeg'
+      : ext === '.png'
       ? 'image/png'
       : ext === '.webp'
         ? 'image/webp'

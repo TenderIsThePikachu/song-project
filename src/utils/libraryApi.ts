@@ -27,6 +27,7 @@ export type MusicShareSnapshot = {
     creatorName: string;
     creatorEmail?: string;
     imageUrl?: string;
+    audioUrl?: string;
     youtubeUrl?: string;
     likeCount?: number;
     viewCount?: number;
@@ -326,6 +327,32 @@ export async function uploadMusicShareCoverOnServer(payload: { file: File; creat
     imageUrl: imageUrl,
     imageStorageKey: storageKey,
     imageFileName: payload.file.name
+  };
+}
+
+export async function uploadMusicShareAudioOnServer(payload: { file: File; creatorEmail?: string; }): Promise<{ audioUrl: string; audioStorageKey: string; audioFileName: string; }> {
+  if (isLocalDevelopmentHost()) {
+    const params = new URLSearchParams({ fileName: payload.file.name });
+    if (payload.creatorEmail?.trim()) {
+      params.set('creatorEmail', payload.creatorEmail.trim());
+    }
+
+    return uploadServerFile(
+      `/api/music-share/audio-upload?${params.toString()}`,
+      payload.file,
+      '공유곡 MP3를 로컬 서버에 업로드하지 못했습니다.'
+    );
+  }
+
+  const storageKey = `share_audio/${Date.now()}_${payload.file.name}`;
+  const audioRef = ref(storage, storageKey);
+  await uploadBytes(audioRef, payload.file, { contentType: 'audio/mpeg' });
+  const audioUrl = await getDownloadURL(audioRef);
+
+  return {
+    audioUrl,
+    audioStorageKey: storageKey,
+    audioFileName: payload.file.name,
   };
 }
 

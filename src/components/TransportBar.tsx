@@ -14,7 +14,10 @@ import { useAuthStore } from '../store/authStore.ts';
 import { useComposerLibraryStore } from '../store/composerLibraryStore.ts';
 import { COLLAB_MEMBER_COLOR_OPTIONS } from '../utils/collabMemberColor.ts';
 import { fetchAiMusic } from '../utils/aiSong.ts';
-import { uploadMusicShareCoverOnServer } from '../utils/libraryApi.ts';
+import {
+  uploadMusicShareAudioOnServer,
+  uploadMusicShareCoverOnServer,
+} from '../utils/libraryApi.ts';
 import {
   TIME_SIGNATURE_BEAT_TYPES,
   formatTimeSignature,
@@ -903,19 +906,29 @@ export const TransportBar = ({
       onSongTitleChange?.(title);
       onGenreChange?.(saveGenre);
 
-      const blob = saveFormat === 'wav' ? await exportSongAsWav() : await exportSongAsMp3();
-      const extension = saveFormat === 'wav' ? 'wav' : 'mp3';
-      downloadBlob(blob, `${filenameBase}.${extension}`);
+      let exportError: unknown = null;
+      try {
+        const blob = saveFormat === 'wav' ? await exportSongAsWav() : await exportSongAsMp3();
+        const extension = saveFormat === 'wav' ? 'wav' : 'mp3';
+        downloadBlob(blob, `${filenameBase}.${extension}`);
 
-      if (saveBackupEnabled) {
-        downloadBlob(
-          new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' }),
-          `${filenameBase}.json`
-        );
+        if (saveBackupEnabled) {
+          downloadBlob(
+            new Blob([JSON.stringify(project, null, 2)], { type: 'application/json' }),
+            `${filenameBase}.json`
+          );
+        }
+      } catch (error) {
+        exportError = error;
+        console.error('Project audio export failed after save:', error);
       }
 
       closeDialog();
-      alert('프로젝트를 저장했습니다.');
+      if (exportError) {
+        alert('프로젝트는 저장했지만 음원 파일을 내려받지 못했습니다. 다시 내보내 주세요.');
+      } else {
+        alert('프로젝트를 저장했습니다.');
+      }
     } catch (error) {
       console.error('Project save failed:', error);
       const message = error instanceof Error ? error.message : String(error);
@@ -932,6 +945,7 @@ export const TransportBar = ({
       return;
     }
 
+    setIsUploadingShareCover(true);
     try {
       let uploadedCover:
         | {
@@ -942,13 +956,19 @@ export const TransportBar = ({
         | undefined;
 
       if (shareCoverFile) {
-        setIsUploadingShareCover(true);
         // 🌟 수정된 부분: 파일과 이메일을 객체로 묶어서 서버에 전송합니다.
         uploadedCover = await uploadMusicShareCoverOnServer({
           file: shareCoverFile,
           creatorEmail: user?.email,
         });
       }
+
+      const project = createProjectSnapshot();
+      const audioBlob = await exportSongAsMp3();
+      const uploadedAudio = await uploadMusicShareAudioOnServer({
+        file: new File([audioBlob], `${sanitizeFileName(title)}.mp3`, { type: 'audio/mpeg' }),
+        creatorEmail: user?.email,
+      });
 
       await shareComposerProject({
         title,
@@ -958,12 +978,15 @@ export const TransportBar = ({
         shareMidiEnabled,
         bpm,
         steps,
-        project: createProjectSnapshot(),
+        project,
         creatorName: user?.name ?? 'guest',
         creatorEmail: user?.email ?? 'guest@songmaker.local',
         coverImageUrl: uploadedCover?.imageUrl || "",
         coverImageStorageKey: uploadedCover?.imageStorageKey || "",
         coverImageFileName: uploadedCover?.imageFileName || "",
+        audioUrl: uploadedAudio.audioUrl,
+        audioStorageKey: uploadedAudio.audioStorageKey,
+        audioFileName: uploadedAudio.audioFileName,
       });
 
       clearShareCover();

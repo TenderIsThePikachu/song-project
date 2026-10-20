@@ -27,6 +27,7 @@ export type MusicShareTrackCard = {
   projectId?: string;
   creatorEmail?: string;
   imageUrl?: string;
+  audioUrl?: string;
   youtubeUrl?: string;
   project?: SongProject;
 };
@@ -280,5 +281,6 @@ export function buildSharedTrackCard(
     creatorEmail: project.creatorEmail,
     project: project.project,
     imageUrl: project.coverImageUrl || SHARED_TRACK_IMAGE_MAP[project.id],
+    audioUrl: project.audioUrl,
   };
 }
