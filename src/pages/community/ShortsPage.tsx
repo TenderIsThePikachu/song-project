@@ -206,7 +206,7 @@ function formatFileSize(bytes: number) {
   return `${Math.max(1, Math.round(bytes / 1024))}KB`;
 }
 
-type ShortsIconName = 'arrowUp' | 'arrowDown' | 'eye' | 'heart' | 'comment' | 'music' | 'plus' | 'close' | 'search' | 'reset';
+type ShortsIconName = 'arrowUp' | 'arrowDown' | 'eye' | 'heart' | 'comment' | 'music' | 'plus' | 'close' | 'search' | 'reset' | 'filter' | 'info';
 
 function ShortsIcon({ name, filled = false }: { name: ShortsIconName; filled?: boolean }) {
   return (
@@ -236,6 +236,20 @@ function ShortsIcon({ name, filled = false }: { name: ShortsIconName; filled?: b
         </>
       ) : null}
       {name === 'reset' ? <path d="M4 8V4m0 0h4M4 4l3 3a7 7 0 1 1-1.5 7.5" /> : null}
+      {name === 'filter' ? (
+        <>
+          <path d="M4 6h5M13 6h7M4 12h9M17 12h3M4 18h3M11 18h9" />
+          <circle cx="11" cy="6" r="2" />
+          <circle cx="15" cy="12" r="2" />
+          <circle cx="9" cy="18" r="2" />
+        </>
+      ) : null}
+      {name === 'info' ? (
+        <>
+          <circle cx="12" cy="12" r="9" />
+          <path d="M12 11v6M12 7.5h.01" />
+        </>
+      ) : null}
     </svg>
   );
 }
@@ -319,6 +333,8 @@ export default function ShortsPage() {
   const [selectedSort, setSelectedSort] = useState<ShortsSort>('latest');
   const [selectedGenre, setSelectedGenre] = useState('all');
   const [durationFilter, setDurationFilter] = useState<ShortsDurationFilter>('all');
+  const [isFilterPanelOpen, setIsFilterPanelOpen] = useState(false);
+  const [isInfoPanelOpen, setIsInfoPanelOpen] = useState(false);
   const [activeIndex, setActiveIndex] = useState(0);
   const [movementDirection, setMovementDirection] = useState<'up' | 'down' | null>(null);
   const [activeCommentShortId, setActiveCommentShortId] = useState<string | null>(null);
@@ -1362,6 +1378,38 @@ export default function ShortsPage() {
             <div className="shorts-toolbar-actions">
               <button
                 type="button"
+                className={`shorts-toolbar-button is-panel-toggle${
+                  isFilterPanelOpen || hasAdvancedFilters ? ' is-active' : ''
+                }`}
+                onClick={() => setIsFilterPanelOpen((open) => !open)}
+                aria-expanded={isFilterPanelOpen}
+                aria-controls="shorts-filter-panel"
+                aria-label="필터 열기"
+                title="필터"
+              >
+                <ShortsIcon name="filter" />
+              </button>
+              <button
+                type="button"
+                className={`shorts-toolbar-button is-panel-toggle${
+                  isInfoPanelOpen ? ' is-active' : ''
+                }`}
+                onClick={() => {
+                  setIsInfoPanelOpen((open) => {
+                    const nextOpen = !open;
+                    if (nextOpen) setActiveCommentShortId(null);
+                    return nextOpen;
+                  });
+                }}
+                aria-expanded={isInfoPanelOpen}
+                aria-controls="shorts-info-panel"
+                aria-label="현재 숏폼 정보 열기"
+                title="정보"
+              >
+                <ShortsIcon name="info" />
+              </button>
+              <button
+                type="button"
                 className="shorts-toolbar-button is-primary"
                 onClick={openCreateModal}
               >
@@ -1372,8 +1420,11 @@ export default function ShortsPage() {
           </div>
 
           {filteredShorts.length ? (
-            <div className={`shorts-stage${isDesktopCommentOpen ? ' has-comment-sidebar' : ''}`}>
-              <aside className="shorts-filter-panel" aria-label="숏폼 상세 필터">
+            <div className={`shorts-stage${isDesktopCommentOpen ? ' has-comment-sidebar' : ''}${
+              isFilterPanelOpen ? ' is-filter-open' : ''
+            }${isInfoPanelOpen && !isDesktopCommentOpen ? ' is-info-open' : ''}`}>
+              {isFilterPanelOpen ? (
+              <aside id="shorts-filter-panel" className="shorts-filter-panel" aria-label="숏폼 상세 필터">
                 <div className="shorts-filter-panel-head">
                   <div>
                     <span>DISCOVER</span>
@@ -1479,6 +1530,7 @@ export default function ShortsPage() {
                   필터 초기화
                 </button>
               </aside>
+              ) : null}
 
               <div
                 ref={feedRef}
@@ -1651,11 +1703,12 @@ export default function ShortsPage() {
                             <button
                               type="button"
                               className="shorts-reel-stat-button"
-                              onClick={() =>
+                              onClick={() => {
+                                setIsInfoPanelOpen(false);
                                 setActiveCommentShortId((current) =>
                                   current === short.id ? null : short.id
-                                )
-                              }
+                                );
+                              }}
                               aria-pressed={isCommentOpen}
                               aria-label="댓글 열기"
                             >
@@ -1727,8 +1780,8 @@ export default function ShortsPage() {
 
               {isDesktopCommentOpen && activeShort
                 ? renderCommentPanel(activeShort, activeShortComments, 'sidebar')
-                : activeShort ? (
-                    <aside className="shorts-info-sidebar" aria-label="현재 숏폼 정보">
+                : isInfoPanelOpen && activeShort ? (
+                    <aside id="shorts-info-panel" className="shorts-info-sidebar" aria-label="현재 숏폼 정보">
                       <div className="shorts-info-kicker">NOW PLAYING</div>
                       <h2>{activeShort.title}</h2>
                       <div className="shorts-info-author">
@@ -1789,7 +1842,10 @@ export default function ShortsPage() {
                         <button
                           type="button"
                           className="shorts-info-comment-button"
-                          onClick={() => setActiveCommentShortId(activeShort.id)}
+                          onClick={() => {
+                            setIsInfoPanelOpen(false);
+                            setActiveCommentShortId(activeShort.id);
+                          }}
                         >
                           <ShortsIcon name="comment" />
                           댓글 보기
