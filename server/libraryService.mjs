@@ -522,7 +522,9 @@ export function saveMusicShareAudioFile(payload) {
 
 export function saveComposerVocalAudioFile(payload) {
   ensureUploadDirs();
-  const storageKey = `${createId('ai-vocal')}.wav`;
+  const extension = extname(payload.fileName || '').toLowerCase();
+  const safeExtension = extension === '.mp3' ? '.mp3' : '.wav';
+  const storageKey = `${createId('ai-vocal')}${safeExtension}`;
   writeFileSync(join(COMPOSER_VOCAL_UPLOAD_DIR, storageKey), payload.buffer);
 
   return {
@@ -538,8 +540,9 @@ export function serveComposerVocalUpload(request, response, fileName) {
   if (!existsSync(filePath)) return false;
 
   const stat = statSync(filePath);
+  const contentType = extname(fileName).toLowerCase() === '.mp3' ? 'audio/mpeg' : 'audio/wav';
   response.writeHead(200, {
-    'Content-Type': 'audio/wav',
+    'Content-Type': contentType,
     'Content-Length': stat.size,
     'Cache-Control': 'public, max-age=3600',
     'Access-Control-Allow-Origin': '*',

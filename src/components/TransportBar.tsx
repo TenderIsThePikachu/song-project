@@ -247,6 +247,7 @@ type TransportBarProps = {
   onScoreClick?: () => void;
   scoreActive?: boolean;
   onGenerateAiVocal?: (voice: 'female' | 'male') => void | Promise<void>;
+  onImportVocalAudio?: (file: File) => void | Promise<void>;
   songTitle?: string;
   onSongTitleChange?: (title: string) => void;
   onSongTitleCommit?: (title: string) => void | Promise<void>;
@@ -376,6 +377,7 @@ export const TransportBar = ({
   onScoreClick,
   scoreActive = false,
   onGenerateAiVocal,
+  onImportVocalAudio,
   songTitle = '',
   onSongTitleChange,
   onSongTitleCommit,
@@ -423,12 +425,13 @@ export const TransportBar = ({
     projectKey: string;
     promise: Promise<Blob>;
   } | null>(null);
-  const [aiCompletionToast, setAiCompletionToast] = useState<'vocal' | null>(null);
+  const [aiCompletionToast, setAiCompletionToast] = useState<'generated' | 'imported' | null>(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [isAiVocalPanelOpen, setIsAiVocalPanelOpen] = useState(false);
   const [aiVocalVoice, setAiVocalVoice] = useState<'female' | 'male'>('female');
   const [isVocalPreviewing, setIsVocalPreviewing] = useState(false);
   const [isAddingVocal, setIsAddingVocal] = useState(false);
+  const vocalAudioInputRef = useRef<HTMLInputElement | null>(null);
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
@@ -517,7 +520,7 @@ export const TransportBar = ({
     await onGenerateAiVocal?.(aiVocalVoice);
 
     setIsAiVocalPanelOpen(false);
-    setAiCompletionToast('vocal');
+    setAiCompletionToast('generated');
   } catch (error) {
     console.error('[AI Vocal] generation failed:', error);
 
@@ -531,6 +534,34 @@ export const TransportBar = ({
     setIsAddingVocal(false);
   }
 };
+
+  const handleVocalAudioImport = async (event: ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    event.target.value = '';
+    if (!file) return;
+
+    const isSupported =
+      file.type === 'audio/mpeg' ||
+      file.type === 'audio/wav' ||
+      /\.(mp3|wav)$/i.test(file.name);
+    if (!isSupported) {
+      alert('MP3 또는 WAV 보컬 음원만 추가할 수 있습니다.');
+      return;
+    }
+
+    setIsAddingVocal(true);
+    try {
+      await onImportVocalAudio?.(file);
+      setIsAiVocalPanelOpen(false);
+      setAiCompletionToast('imported');
+    } catch (error) {
+      console.error('[Vocal Audio] import failed:', error);
+      const message = error instanceof Error ? error.message : String(error);
+      alert(`보컬 음원을 추가하지 못했습니다.\n\n${message}`);
+    } finally {
+      setIsAddingVocal(false);
+    }
+  };
 
   useEffect(() => () => {
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
@@ -1940,13 +1971,29 @@ export const TransportBar = ({
 
             <footer className="transport-vocal-actions">
               <span>현재 멜로디 노트를 기준으로 트랙을 만듭니다.</span>
+              <input
+                ref={vocalAudioInputRef}
+                type="file"
+                accept="audio/mpeg,audio/wav,.mp3,.wav"
+                onChange={(event) => void handleVocalAudioImport(event)}
+                hidden
+              />
+              <button
+                type="button"
+                className="transport-vocal-import"
+                onClick={() => vocalAudioInputRef.current?.click()}
+                disabled={isAddingVocal}
+              >
+                <span aria-hidden="true">+</span>
+                음원 추가
+              </button>
               <button
                 type="button"
                 onClick={() => void handleAddAiVocal()}
                 disabled={!aiVocalLyrics || isAddingVocal}
               >
                 <VocalIcon />
-                {isAddingVocal ? '보컬 생성 중...' : '보컬 트랙 추가'}
+                {isAddingVocal ? '처리 중...' : '보컬 트랙 추가'}
               </button>
             </footer>
           </section>
@@ -1965,8 +2012,12 @@ export const TransportBar = ({
             <span />
           </div>
           <div className="transport-ai-complete-copy">
-            <strong>AI 보컬 트랙을 추가했습니다</strong>
-            <span>멜로디와 가사를 바탕으로 보컬 가이드가 준비됐어요.</span>
+            <strong>{aiCompletionToast === 'imported' ? '보컬 음원을 추가했습니다' : 'AI 보컬 트랙을 추가했습니다'}</strong>
+            <span>
+              {aiCompletionToast === 'imported'
+                ? '업로드한 음원이 보컬 트랙에 연결됐어요.'
+                : '멜로디와 가사를 바탕으로 보컬 가이드가 준비됐어요.'}
+            </span>
           </div>
           <div className="transport-ai-complete-wave" aria-hidden="true">
             {Array.from({ length: 14 }).map((_, index) => (

@@ -4918,6 +4918,79 @@ export function Composer() {
   ]
 );
 
+  const importVocalAudio = useCallback(
+    async (file: File) => {
+      const maxSize = 50 * 1024 * 1024;
+      if (file.size > maxSize) {
+        throw new Error('50MB 이하의 보컬 음원을 선택해 주세요.');
+      }
+
+      const url = URL.createObjectURL(file);
+      const audio = new Audio(url);
+
+      try {
+        const duration = await new Promise<number>((resolve, reject) => {
+          const handleLoaded = () => {
+            cleanup();
+            if (!Number.isFinite(audio.duration) || audio.duration <= 0) {
+              reject(new Error('음원 길이를 확인할 수 없습니다.'));
+              return;
+            }
+            resolve(audio.duration);
+          };
+          const handleError = () => {
+            cleanup();
+            reject(new Error('선택한 음원 파일을 재생할 수 없습니다.'));
+          };
+          const cleanup = () => {
+            audio.removeEventListener('loadedmetadata', handleLoaded);
+            audio.removeEventListener('error', handleError);
+          };
+
+          audio.addEventListener('loadedmetadata', handleLoaded);
+          audio.addEventListener('error', handleError);
+          audio.load();
+        });
+
+        const baseName = file.name.replace(/\.[^.]+$/, '').trim().slice(0, 24) || '업로드 음원';
+        const trackId = addAiVocalTrack('female', `AI 보컬 · ${baseName}`);
+
+        await saveAiVocalAudio(trackId, file);
+        try {
+          const source = await uploadAiVocalAudio(trackId, file, user?.email, file.name);
+          setExtraTrackAudioSource(trackId, source);
+        } catch (error) {
+          console.error('[Vocal Audio] remote persistence failed:', error);
+        }
+
+        setAiVocalAudioClips((current) => ({
+          ...current,
+          [trackId]: { url, duration, voice: 'female', audio },
+        }));
+        setOpenExtraTrackIds((current) => [...current, trackId]);
+        setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
+        setArrangementClipLayouts((current) => ({
+          ...current,
+          [`extra-${trackId}-full`]: {
+            start: 0,
+            length: Math.min(
+              100,
+              Math.max(
+                4,
+                (duration / Math.max(0.01, steps * (60 / Math.max(1, bpm) / 4))) * 100
+              )
+            ),
+          },
+        }));
+        activateTab('melody', trackId);
+      } catch (error) {
+        URL.revokeObjectURL(url);
+        throw error;
+      }
+    },
+    [activateTab, addAiVocalTrack, bpm, setExtraTrackAudioSource, steps, user?.email]
+  );
+
   const getExtraTrackColors = (instrument: InstrumentKey): readonly string[] => {
     switch (instrument) {
       case 'melody':
@@ -5786,6 +5859,7 @@ export function Composer() {
           onScoreClick={() => setIsScoreViewerOpen((open) => !open)}
           scoreActive={isScoreViewerOpen}
           onGenerateAiVocal={generateAiVocalFromMelody}
+          onImportVocalAudio={importVocalAudio}
         />
       </footer>
 

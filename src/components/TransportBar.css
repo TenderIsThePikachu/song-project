@@ -2910,6 +2910,19 @@ html[data-theme='light'] .transport-reset-actions button.is-danger:focus-visible
   opacity: .5;
 }
 
+.transport-vocal-actions > .transport-vocal-import {
+  min-width: 104px;
+  border: 1px solid #cbd8df;
+  background: #fff;
+  color: #1d6659;
+  box-shadow: none;
+}
+
+.transport-vocal-actions > .transport-vocal-import:hover:not(:disabled) {
+  border-color: #27b995;
+  background: #effbf7;
+}
+
 @keyframes transport-vocal-preview-progress {
   from { width: 0; }
   to { width: 100%; }

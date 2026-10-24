@@ -66,9 +66,12 @@ export type AiVocalAudioSource = {
 export async function uploadAiVocalAudio(
   trackId: string,
   blob: Blob,
-  creatorEmail?: string
+  creatorEmail?: string,
+  originalFileName?: string
 ): Promise<AiVocalAudioSource> {
-  const fileName = `ai-vocal-${trackId}.wav`;
+  const requestedName = originalFileName?.trim().replace(/[\\/:*?"<>|]/g, '-') || '';
+  const supportedName = /\.(mp3|wav)$/i.test(requestedName) ? requestedName : '';
+  const fileName = supportedName || `ai-vocal-${trackId}.wav`;
   const file = new File([blob], fileName, { type: blob.type || 'audio/wav' });
 
   if (isLocalDevelopmentHost()) {

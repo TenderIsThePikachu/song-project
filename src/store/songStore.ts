@@ -215,7 +215,7 @@ export type SongState = {
   ) => void;
   clearInstrument: (instrument: InstrumentKey) => void;
   addInstrumentTrack: (instrument: InstrumentKey) => string;
-  addAiVocalTrack: (voice: 'female' | 'male') => string;
+  addAiVocalTrack: (voice: 'female' | 'male', label?: string) => string;
   ensureLyricsMelodyTrack: () => void;
   duplicateInstrumentTrack: (instrument: InstrumentKey, sourceTrackId?: string) => string;
   removeInstrumentTrack: (trackId: string) => void;
@@ -1810,14 +1810,14 @@ export const useSongStore = create<SongState>()(
     return track.id;
   },
 
-  addAiVocalTrack: (voice) => {
+  addAiVocalTrack: (voice, label) => {
     const state = get();
     const track = createEmptyExtraTrack(
       'melody',
       state.steps,
       state.extraTracks,
       undefined,
-      `AI 보컬 · ${voice === 'female' ? '여성' : '남성'}`,
+      label?.trim() || `AI 보컬 · ${voice === 'female' ? '여성' : '남성'}`,
       72
     );
 
