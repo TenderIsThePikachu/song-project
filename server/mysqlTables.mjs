@@ -366,6 +366,7 @@ async function ensureMysqlSchema() {
           description LONGTEXT NOT NULL,
           creator_name VARCHAR(120) NOT NULL,
           creator_email VARCHAR(255) NOT NULL,
+          genre VARCHAR(80) NOT NULL DEFAULT '기타',
           tags_json LONGTEXT NOT NULL,
           created_at BIGINT NOT NULL,
           duration_label VARCHAR(32) NOT NULL,
@@ -464,6 +465,13 @@ async function ensureMysqlSchema() {
 
     for (const statement of statements) {
       await pool.query(statement);
+    }
+
+    const [shortGenreColumns] = await pool.query(
+      "SHOW COLUMNS FROM shorts_items LIKE 'genre'"
+    );
+    if (shortGenreColumns.length === 0) {
+      await pool.query("ALTER TABLE shorts_items ADD COLUMN genre VARCHAR(80) NOT NULL DEFAULT '기타' AFTER creator_email");
     }
   })();
 
@@ -1936,6 +1944,7 @@ async function readShortsState() {
         description,
         creator_name,
         creator_email,
+        genre,
         tags_json,
         created_at,
         duration_label,
@@ -1981,6 +1990,7 @@ async function readShortsState() {
       description: row.description,
       creatorName: row.creator_name,
       creatorEmail: normalizeEmail(row.creator_email),
+      genre: row.genre || '기타',
       tags: parseJsonField(row.tags_json, []),
       createdAt: toNumber(row.created_at),
       durationLabel: row.duration_label,
@@ -2019,6 +2029,7 @@ async function replaceShortsState(connection, state) {
           description,
           creator_name,
           creator_email,
+          genre,
           tags_json,
           created_at,
           duration_label,
@@ -2031,7 +2042,7 @@ async function replaceShortsState(connection, state) {
           video_file_name,
           video_size_bytes
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
       `,
       [
         short.id,
@@ -2039,6 +2050,7 @@ async function replaceShortsState(connection, state) {
         short.description ?? '',
         short.creatorName ?? 'guest',
         normalizeEmail(short.creatorEmail) || 'guest@songmaker.local',
+        short.genre ?? '기타',
         JSON.stringify(short.tags ?? []),
         toNumber(short.createdAt, Date.now()),
         short.durationLabel ?? '0:15',

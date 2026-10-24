@@ -35,9 +35,11 @@ import {
   recordTrackView,
   saveMusicShareAudioFile,
   saveMusicShareImageFile,
+  saveComposerVocalAudioFile,
   saveComposerProject,
   shareComposerProject,
   serveMusicShareUpload,
+  serveComposerVocalUpload,
   toggleFavoriteTrack,
   toggleTrackLike,
   updateMusicShareTrack,
@@ -1596,6 +1598,19 @@ const server = createServer(async (request, response) => {
     return;
   }
 
+  const composerVocalUploadMatch = pathname.match(/^\/uploads\/composer-vocals\/([^/]+)$/);
+  if (request.method === 'GET' && composerVocalUploadMatch) {
+    const served = serveComposerVocalUpload(
+      request,
+      response,
+      decodeURIComponent(composerVocalUploadMatch[1])
+    );
+    if (!served) {
+      writeJson(response, 404, { error: '저장된 AI 보컬 음원을 찾을 수 없습니다.' });
+    }
+    return;
+  }
+
   const marketUploadMatch = pathname.match(/^\/uploads\/market\/([^/]+)$/);
   if (request.method === 'GET' && marketUploadMatch) {
     const served = serveMarketUpload(request, response, decodeURIComponent(marketUploadMatch[1]));
@@ -1954,6 +1969,21 @@ const server = createServer(async (request, response) => {
       maybeRequireSession(request, creatorEmail);
       const buffer = await readBuffer(request);
       const result = saveMusicShareAudioFile({
+        buffer,
+        fileName,
+        baseUrl: `http://${request.headers.host}`,
+      });
+      writeJson(response, 200, result);
+      return;
+    }
+
+    if (request.method === 'POST' && pathname === '/api/composer/vocal-upload') {
+      const fileName = url.searchParams.get('fileName') || 'ai-vocal.wav';
+      const creatorEmail =
+        url.searchParams.get('creatorEmail') || url.searchParams.get('email');
+      maybeRequireSession(request, creatorEmail);
+      const buffer = await readBuffer(request);
+      const result = saveComposerVocalAudioFile({
         buffer,
         fileName,
         baseUrl: `http://${request.headers.host}`,

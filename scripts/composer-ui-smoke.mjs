@@ -35,6 +35,47 @@ try {
   await melodyVolume.fill('37');
   assert.equal(await melodyVolume.inputValue(), '37');
 
+  const melodyScroller = page.locator('.piano-roll--melody .piano-roll-melody-scroller').first();
+  await melodyScroller.evaluate((element) => {
+    element.scrollTop = element.scrollHeight;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await page.waitForTimeout(100);
+  const lowMelodyCell = page
+    .locator(
+      '.piano-roll--melody .piano-roll-cell[data-playhead-step="0"]:not(.is-active):not(.is-note-tail)'
+    )
+    .last();
+  await lowMelodyCell.click();
+  await melodyScroller.evaluate((element) => {
+    element.scrollTop = 0;
+    element.dispatchEvent(new Event('scroll'));
+  });
+  await page.locator('.transport-play-button').click();
+  await page.waitForTimeout(100);
+  await page.evaluate(() => {
+    window.dispatchEvent(
+      new CustomEvent('composer-playhead-step', { detail: { step: 0, bpm: 120 } })
+    );
+  });
+  await page.waitForFunction(
+    () => (document.querySelector('.piano-roll--melody .piano-roll-melody-scroller')?.scrollTop ?? 0) > 0
+  );
+  await page.locator('.transport-play-button').click();
+
+  const scoreButton = page.locator('.transport-button--score');
+  await scoreButton.click();
+  const scoreTrackSelect = page.locator('.score-viewer-track-select select');
+  await scoreTrackSelect.waitFor();
+  const firstPartValue = await scoreTrackSelect.locator('option:not([value="all"]):not(:disabled)').first().getAttribute('value');
+  assert.ok(firstPartValue, 'The score viewer needs at least one selectable part.');
+  await scoreTrackSelect.selectOption(firstPartValue);
+  await page.locator('.score-viewer-icon-button').click();
+  await scoreButton.click();
+  await scoreTrackSelect.waitFor();
+  assert.equal(await scoreTrackSelect.inputValue(), 'all');
+  await page.locator('.score-viewer-icon-button').click();
+
   const composerMetrics = await page.evaluate(() => ({
     scrollWidth: document.documentElement.scrollWidth,
     innerWidth: window.innerWidth,
@@ -98,6 +139,16 @@ try {
   await emptyBassCell.click();
   await page.waitForTimeout(300);
 
+  await page.goto(`${baseUrl}/composer?tab=drums`, { waitUntil: 'networkidle' });
+  const drumCells = page.locator('.composer-drum-cell');
+  await drumCells.first().waitFor();
+  assert.ok(
+    (await drumCells.count()) < 200,
+    `Drum roll rendered too many off-screen cells: ${await drumCells.count()}`
+  );
+  await drumCells.first().click();
+  await page.waitForTimeout(300);
+
   await page.goto(`${baseUrl}/collab`, { waitUntil: 'networkidle' });
   await page.locator('.collab-card-open').first().click();
   await page.waitForURL(/\/collab\/[^/]+$/);
@@ -123,7 +174,7 @@ try {
   }
   assert.deepEqual(runtimeErrors, [], `Browser runtime errors:\n${runtimeErrors.join('\n')}`);
 
-  console.log('Composer UI smoke test passed: title, melody volume, bass scroll, and split layout.');
+  console.log('Composer UI smoke test passed: score reset, note following, bass scroll, drum input, and split layout.');
 } finally {
   await context.close();
   await browser.close();

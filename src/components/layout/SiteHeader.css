@@ -21,7 +21,7 @@
   height: 55px;
   min-height: 55px;
   margin: 0 auto;
-  padding: 0 48px;
+  padding: 0 8px 0 48px;
 }
 
 .site-header .site-header-brand,
@@ -182,21 +182,21 @@
 }
 
 .site-header-account .topbar-account-profile {
-  gap: 6px;
+  gap: 8px;
 }
 
 .site-header-account .topbar-account-avatar {
-  width: 20px;
-  height: 20px;
+  width: 26px;
+  height: 26px;
   background: linear-gradient(145deg, #1e2126 0%, #3b4048 100%);
   color: #ffffff;
-  font-size: 10px;
+  font-size: 12px;
 }
 
 .site-header-account .topbar-account-name {
-  max-width: 90px;
-  font-size: 12px;
-  font-weight: 700;
+  max-width: 110px;
+  font-size: 14px;
+  font-weight: 750;
 }
 
 .site-header .topbar-account-menu {
@@ -234,7 +234,7 @@
 @media (max-width: 1180px) {
   .site-header-inner {
     gap: 22px;
-    padding: 0 28px;
+    padding: 0 8px 0 28px;
   }
 
   .site-header-nav {

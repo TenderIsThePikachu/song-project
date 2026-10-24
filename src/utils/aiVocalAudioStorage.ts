@@ -1,3 +1,9 @@
+import { ref, uploadBytes, getDownloadURL } from 'firebase/storage';
+import { storage } from '../firebase';
+import type { ExtraInstrumentTrack } from '../store/songStore';
+import { isLocalDevelopmentHost } from './localEnvironment';
+import { uploadServerFile } from './serverApi';
+
 const DB_NAME = 'song-maker-audio';
 const DB_VERSION = 1;
 const STORE_NAME = 'ai-vocal-clips';
@@ -49,4 +55,56 @@ export function loadAiVocalAudio(trackId: string) {
 
 export function deleteAiVocalAudio(trackId: string) {
   return runTransaction('readwrite', (store) => store.delete(trackId));
+}
+
+export type AiVocalAudioSource = {
+  audioUrl: string;
+  audioStorageKey: string;
+  audioFileName: string;
+};
+
+export async function uploadAiVocalAudio(
+  trackId: string,
+  blob: Blob,
+  creatorEmail?: string
+): Promise<AiVocalAudioSource> {
+  const fileName = `ai-vocal-${trackId}.wav`;
+  const file = new File([blob], fileName, { type: blob.type || 'audio/wav' });
+
+  if (isLocalDevelopmentHost()) {
+    const params = new URLSearchParams({ fileName });
+    if (creatorEmail?.trim()) params.set('creatorEmail', creatorEmail.trim());
+    return uploadServerFile<AiVocalAudioSource>(
+      `/api/composer/vocal-upload?${params.toString()}`,
+      file,
+      'AI 보컬 음원을 로컬 서버에 저장하지 못했습니다.'
+    );
+  }
+
+  const audioStorageKey = `composer_vocals/${Date.now()}_${fileName}`;
+  const audioRef = ref(storage, audioStorageKey);
+  await uploadBytes(audioRef, file, { contentType: file.type });
+
+  return {
+    audioUrl: await getDownloadURL(audioRef),
+    audioStorageKey,
+    audioFileName: fileName,
+  };
+}
+
+export async function loadAiVocalAudioSource(
+  track: Pick<ExtraInstrumentTrack, 'id' | 'audioUrl'>
+) {
+  const cachedBlob = await loadAiVocalAudio(track.id);
+  if (cachedBlob) return cachedBlob;
+  if (!track.audioUrl) return undefined;
+
+  const response = await fetch(track.audioUrl);
+  if (!response.ok) {
+    throw new Error(`AI 보컬 음원을 불러오지 못했습니다. (${response.status})`);
+  }
+
+  const blob = await response.blob();
+  await saveAiVocalAudio(track.id, blob);
+  return blob;
 }

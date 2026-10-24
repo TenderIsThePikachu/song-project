@@ -241,9 +241,9 @@ export function ScoreViewer({
   const noteLyrics = useSongStore((state) => state.noteLyrics);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const rendererRef = useRef<ScoreRenderer | null>(null);
-  const zoomRef = useRef(0.9);
+  const zoomRef = useRef(0.7);
   const [selectedTrackId, setSelectedTrackId] = useState('all');
-  const [zoom, setZoom] = useState(0.9);
+  const [zoom, setZoom] = useState(0.7);
   const [isLoading, setIsLoading] = useState(false);
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [renderError, setRenderError] = useState('');
@@ -364,6 +364,13 @@ export function ScoreViewer({
       setSelectedTrackId('all');
     }
   }, [selectedTrackId, trackOptions]);
+
+  useEffect(() => {
+    if (!open) return;
+    zoomRef.current = 0.7;
+    setSelectedTrackId('all');
+    setZoom(0.7);
+  }, [open]);
 
   useEffect(() => {
     if (!open) return undefined;

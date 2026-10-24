@@ -100,6 +100,9 @@ export type ExtraInstrumentTrack = {
   volume: number;
   grid: boolean[][];
   melodyLengths?: number[][];
+  audioUrl?: string;
+  audioStorageKey?: string;
+  audioFileName?: string;
 };
 
 export type SerializedExtraInstrumentTrack = {
@@ -108,6 +111,9 @@ export type SerializedExtraInstrumentTrack = {
   label?: string;
   volume?: number;
   events: MusicEvent[];
+  audioUrl?: string;
+  audioStorageKey?: string;
+  audioFileName?: string;
 };
 
 type BarClipboard = {
@@ -155,6 +161,7 @@ type SongHistorySnapshot = {
   bass: boolean[][];
   bassLengths: number[][];
   extraTracks: ExtraInstrumentTrack[];
+  hiddenArrangementTrackIds: string[];
   loopRange: LoopRange | null;
 };
 
@@ -184,6 +191,7 @@ export type SongState = {
   bass: boolean[][];
   bassLengths: number[][];
   extraTracks: ExtraInstrumentTrack[];
+  hiddenArrangementTrackIds: string[];
   loopRange: LoopRange | null;
   barClipboard: BarClipboard;
   historyPast: SongHistorySnapshot[];
@@ -214,6 +222,11 @@ export type SongState = {
   toggleExtraTrackCell: (trackId: string, row: number, col: number, length?: number) => void;
   applyExtraTrackChord: (trackId: string, chord: string, col: number, length?: number) => void;
   setExtraTrackVolume: (trackId: string, volume: number) => void;
+  setExtraTrackAudioSource: (
+    trackId: string,
+    source: Pick<ExtraInstrumentTrack, 'audioUrl' | 'audioStorageKey' | 'audioFileName'>
+  ) => void;
+  setArrangementTrackHidden: (trackId: string, hidden: boolean) => void;
   applyChord: (chord: string, col: number, isBass: boolean, length?: number) => void;
   copyCurrentBar: () => void;
   pasteCurrentBar: () => void;
@@ -262,6 +275,7 @@ export type SongProject = {
     bass: MusicEvent[];
   };
   extraTracks?: SerializedExtraInstrumentTrack[];
+  hiddenArrangementTrackIds?: string[];
 };
 
 type SongProjectSnapshotInput = Pick<
@@ -289,7 +303,13 @@ type SongProjectSnapshotInput = Pick<
   | 'bass'
   | 'bassLengths'
   | 'extraTracks'
+  | 'hiddenArrangementTrackIds'
 >;
+
+function normalizeHiddenArrangementTrackIds(value: unknown) {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((item): item is string => typeof item === 'string' && item.length > 0))];
+}
 
 function createEmptyMatrix(rows: number, cols: number): boolean[][] {
   return Array.from({ length: rows }, () =>
@@ -889,6 +909,15 @@ function setTimedNote(
   return true;
 }
 
+function cloneTimedNoteRow(grid: boolean[][], lengths: number[][], row: number) {
+  if (!grid[row] || !lengths[row]) return null;
+  const nextGrid = [...grid];
+  const nextLengths = [...lengths];
+  nextGrid[row] = [...grid[row]];
+  nextLengths[row] = [...lengths[row]];
+  return { grid: nextGrid, lengths: nextLengths };
+}
+
 function createHistorySnapshot(state: Pick<
   SongState,
   | 'compositionMode'
@@ -914,6 +943,7 @@ function createHistorySnapshot(state: Pick<
   | 'bass'
   | 'bassLengths'
   | 'extraTracks'
+  | 'hiddenArrangementTrackIds'
   | 'loopRange'
 >): SongHistorySnapshot {
   return {
@@ -931,19 +961,22 @@ function createHistorySnapshot(state: Pick<
     noteLyrics: { ...state.noteLyrics },
     barLyrics: [...state.barLyrics],
     lyricsStartBar: state.lyricsStartBar,
-    melody: cloneMatrix(state.melody),
-    melodyLengths: cloneLengthMatrix(state.melodyLengths),
-    melodyVelocities: cloneVelocityMatrix(state.melodyVelocities),
-    violin: cloneMatrix(state.violin),
-    violinLengths: cloneLengthMatrix(state.violinLengths),
-    saxophone: cloneMatrix(state.saxophone),
-    saxophoneLengths: cloneLengthMatrix(state.saxophoneLengths),
-    guitar: cloneMatrix(state.guitar),
-    guitarLengths: cloneLengthMatrix(state.guitarLengths),
-    drums: cloneMatrix(state.drums),
-    bass: cloneMatrix(state.bass),
-    bassLengths: cloneLengthMatrix(state.bassLengths),
-    extraTracks: cloneExtraTracks(state.extraTracks),
+    // Store snapshots can share immutable grids. Undo/redo clones them before restoring,
+    // avoiding a full-project deep copy for every piano-roll edit.
+    melody: state.melody,
+    melodyLengths: state.melodyLengths,
+    melodyVelocities: state.melodyVelocities,
+    violin: state.violin,
+    violinLengths: state.violinLengths,
+    saxophone: state.saxophone,
+    saxophoneLengths: state.saxophoneLengths,
+    guitar: state.guitar,
+    guitarLengths: state.guitarLengths,
+    drums: state.drums,
+    bass: state.bass,
+    bassLengths: state.bassLengths,
+    extraTracks: state.extraTracks,
+    hiddenArrangementTrackIds: [...state.hiddenArrangementTrackIds],
     loopRange: state.loopRange ? { ...state.loopRange } : null,
   };
 }
@@ -1238,6 +1271,9 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
       label: track.label,
       volume: clampVolume(track.volume),
       events,
+      audioUrl: track.audioUrl,
+      audioStorageKey: track.audioStorageKey,
+      audioFileName: track.audioFileName,
     });
   });
 
@@ -1279,6 +1315,7 @@ export function buildSongProjectSnapshot(state: SongProjectSnapshotInput): SongP
       bass: bassEvents,
     },
     extraTracks,
+    hiddenArrangementTrackIds: normalizeHiddenArrangementTrackIds(state.hiddenArrangementTrackIds),
   };
 }
 function buildHistoryUpdate(state: SongState, nextState: Partial<SongState>) {
@@ -1329,6 +1366,7 @@ function restoreHistorySnapshot(
     bass: cloneMatrix(snapshot.bass),
     bassLengths: cloneLengthMatrix(snapshot.bassLengths),
     extraTracks: cloneExtraTracks(snapshot.extraTracks),
+    hiddenArrangementTrackIds: [...snapshot.hiddenArrangementTrackIds],
     loopRange: snapshot.loopRange ? { ...snapshot.loopRange } : null,
     historyPast,
     historyFuture,
@@ -1445,6 +1483,9 @@ function parseV2TracksToGrids(project: SongProject, steps: number) {
         ? 80
         : savedVolume
     );
+    track.audioUrl = savedTrack.audioUrl;
+    track.audioStorageKey = savedTrack.audioStorageKey;
+    track.audioFileName = savedTrack.audioFileName;
     const noteToRow = getInstrumentNoteToRowMap(instrument);
 
     savedTrack.events?.forEach((event) => {
@@ -1519,6 +1560,7 @@ export const useSongStore = create<SongState>()(
   bass: createEmptyMatrix(BASS_ROWS, DEFAULT_STEPS),
   bassLengths: createEmptyLengthMatrix(BASS_ROWS, DEFAULT_STEPS),
   extraTracks: withLyricsMelodyTrack([], DEFAULT_STEPS),
+  hiddenArrangementTrackIds: [],
   loopRange: null,
   barClipboard: null,
   historyPast: [],
@@ -1529,9 +1571,16 @@ export const useSongStore = create<SongState>()(
 
   toggleMelody: (row, col, length = 1, recordHistory = true) =>
     set((state) => {
-      const melody = cloneMatrix(state.melody);
-      const melodyLengths = cloneLengthMatrix(state.melodyLengths);
-      const melodyVelocities = cloneVelocityMatrix(state.melodyVelocities);
+      if (!state.melody[row] || !state.melodyLengths[row] || !state.melodyVelocities[row]) {
+        return {};
+      }
+
+      const melody = [...state.melody];
+      const melodyLengths = [...state.melodyLengths];
+      const melodyVelocities = [...state.melodyVelocities];
+      melody[row] = [...state.melody[row]];
+      melodyLengths[row] = [...state.melodyLengths[row]];
+      melodyVelocities[row] = [...state.melodyVelocities[row]];
       const existingNote = findMelodyNoteAt(melody[row] ?? [], melodyLengths[row] ?? [], col);
       const requestedLength = Math.floor(length);
 
@@ -1576,8 +1625,9 @@ export const useSongStore = create<SongState>()(
 
   toggleViolin: (row, col, length = 1) =>
     set((state) => {
-      const violin = cloneMatrix(state.violin);
-      const violinLengths = cloneLengthMatrix(state.violinLengths);
+      const next = cloneTimedNoteRow(state.violin, state.violinLengths, row);
+      if (!next) return {};
+      const { grid: violin, lengths: violinLengths } = next;
 
       if (!toggleTimedNote(violin, violinLengths, row, col, state.steps, length)) {
         return {};
@@ -1588,8 +1638,9 @@ export const useSongStore = create<SongState>()(
 
   toggleSaxophone: (row, col, length = 1) =>
     set((state) => {
-      const saxophone = cloneMatrix(state.saxophone);
-      const saxophoneLengths = cloneLengthMatrix(state.saxophoneLengths);
+      const next = cloneTimedNoteRow(state.saxophone, state.saxophoneLengths, row);
+      if (!next) return {};
+      const { grid: saxophone, lengths: saxophoneLengths } = next;
 
       if (!toggleTimedNote(saxophone, saxophoneLengths, row, col, state.steps, length)) {
         return {};
@@ -1600,8 +1651,9 @@ export const useSongStore = create<SongState>()(
 
   toggleGuitar: (row, col, length = 1) =>
     set((state) => {
-      const guitar = cloneMatrix(state.guitar);
-      const guitarLengths = cloneLengthMatrix(state.guitarLengths);
+      const next = cloneTimedNoteRow(state.guitar, state.guitarLengths, row);
+      if (!next) return {};
+      const { grid: guitar, lengths: guitarLengths } = next;
 
       if (!toggleTimedNote(guitar, guitarLengths, row, col, state.steps, length)) {
         return {};
@@ -1620,8 +1672,9 @@ export const useSongStore = create<SongState>()(
 
   toggleBass: (row, col, length = 1) =>
     set((state) => {
-      const bass = cloneMatrix(state.bass);
-      const bassLengths = cloneLengthMatrix(state.bassLengths);
+      const next = cloneTimedNoteRow(state.bass, state.bassLengths, row);
+      if (!next) return {};
+      const { grid: bass, lengths: bassLengths } = next;
 
       if (!toggleTimedNote(bass, bassLengths, row, col, state.steps, length)) {
         return {};
@@ -1670,8 +1723,9 @@ export const useSongStore = create<SongState>()(
       }
 
       const updatePrimaryTrack = (grid: boolean[][], lengths: number[][]) => {
-        const nextGrid = cloneMatrix(grid);
-        const nextLengths = cloneLengthMatrix(lengths);
+        const next = cloneTimedNoteRow(grid, lengths, row);
+        if (!next) return null;
+        const { grid: nextGrid, lengths: nextLengths } = next;
         return setTimedNote(nextGrid, nextLengths, row, col, state.steps, length)
           ? { grid: nextGrid, lengths: nextLengths }
           : null;
@@ -1956,6 +2010,22 @@ export const useSongStore = create<SongState>()(
 
       return { extraTracks };
     }),
+
+  setExtraTrackAudioSource: (trackId, source) =>
+    set((state) => ({
+      extraTracks: state.extraTracks.map((track) =>
+        track.id === trackId ? { ...track, ...source } : track
+      ),
+    })),
+
+  setArrangementTrackHidden: (trackId, hidden) =>
+    set((state) =>
+      buildHistoryUpdate(state, {
+        hiddenArrangementTrackIds: hidden
+          ? normalizeHiddenArrangementTrackIds([...state.hiddenArrangementTrackIds, trackId])
+          : state.hiddenArrangementTrackIds.filter((id) => id !== trackId),
+      })
+    ),
 
   applyChord: (chord, col, isBass, length = 1) =>
     set((state) => {
@@ -2675,6 +2745,7 @@ export const useSongStore = create<SongState>()(
         bass: createEmptyMatrix(BASS_ROWS, state.steps),
         bassLengths: createEmptyLengthMatrix(BASS_ROWS, state.steps),
         extraTracks: withLyricsMelodyTrack([], state.steps),
+        hiddenArrangementTrackIds: [],
       })
     ),
 
@@ -2744,6 +2815,9 @@ export const useSongStore = create<SongState>()(
         bass: grids.bass,
         bassLengths: grids.bassLengths,
         extraTracks: grids.extraTracks,
+        hiddenArrangementTrackIds: normalizeHiddenArrangementTrackIds(
+          project.hiddenArrangementTrackIds
+        ),
         loopRange: normalizeLoopRange(null, steps),
         projectLoadRevision: state.projectLoadRevision + 1,
       })
@@ -2813,6 +2887,9 @@ export const useSongStore = create<SongState>()(
       bass: grids.bass,
       bassLengths: grids.bassLengths,
       extraTracks: grids.extraTracks,
+      hiddenArrangementTrackIds: normalizeHiddenArrangementTrackIds(
+        project.hiddenArrangementTrackIds
+      ),
       loopRange: normalizeLoopRange(state.loopRange, steps),
       projectLoadRevision: state.projectLoadRevision + 1,
       historyPast: [],
@@ -2849,6 +2926,7 @@ export const useSongStore = create<SongState>()(
         bass: state.bass,
         bassLengths: state.bassLengths,
         extraTracks: state.extraTracks,
+        hiddenArrangementTrackIds: state.hiddenArrangementTrackIds,
         loopRange: state.loopRange,
       }),
     }

@@ -10,9 +10,9 @@ import {
   renderAquaPlanetVocal,
 } from '../utils/vocalSynth';
 import {
-  deleteAiVocalAudio,
-  loadAiVocalAudio,
+  loadAiVocalAudioSource,
   saveAiVocalAudio,
+  uploadAiVocalAudio,
 } from '../utils/aiVocalAudioStorage.ts';
 import {
   initTransport,
@@ -727,6 +727,50 @@ function isPitchedTab(tab: ComposerTab): tab is PitchedTab {
   return tab !== 'lyrics' && tab !== 'drums';
 }
 
+function getPlaybackPitchedTrack(
+  state: ReturnType<typeof useSongStore.getState>,
+  scrollKey: string
+) {
+  switch (scrollKey) {
+    case 'melody':
+      return { grid: state.melody, lengths: state.melodyLengths };
+    case 'violin':
+      return { grid: state.violin, lengths: state.violinLengths };
+    case 'saxophone':
+      return { grid: state.saxophone, lengths: state.saxophoneLengths };
+    case 'guitar':
+      return { grid: state.guitar, lengths: state.guitarLengths };
+    case 'bass':
+      return { grid: state.bass, lengths: state.bassLengths };
+    default: {
+      const track = state.extraTracks.find((item) => item.id === scrollKey);
+      return track && track.instrument !== 'drums'
+        ? { grid: track.grid, lengths: track.melodyLengths }
+        : null;
+    }
+  }
+}
+
+function getActivePitchedRowsAtStep(
+  grid: boolean[][],
+  lengths: number[][] | undefined,
+  step: number
+) {
+  const activeRows: number[] = [];
+
+  grid.forEach((rowValues, row) => {
+    for (let start = Math.min(step, rowValues.length - 1); start >= 0; start -= 1) {
+      if (!rowValues[start]) continue;
+      if (start + Math.max(1, lengths?.[row]?.[start] ?? 1) > step) {
+        activeRows.push(row);
+      }
+      break;
+    }
+  });
+
+  return activeRows;
+}
+
 function readComposerTabDraft() {
   const defaultTrackOrder = DEFAULT_ARRANGEMENT_TRACK_ORDER;
   if (typeof window === 'undefined') {
@@ -836,6 +880,7 @@ export function Composer() {
     bass,
     bassLengths,
     extraTracks,
+    hiddenArrangementTrackIds: hiddenArrangementTrackIdList,
     isPlaying,
     volumes,
     setInstrumentVolume,
@@ -848,6 +893,8 @@ export function Composer() {
     toggleExtraTrackCell,
     applyExtraTrackChord,
     setExtraTrackVolume,
+    setExtraTrackAudioSource,
+    setArrangementTrackHidden,
     toggleViolin,
     toggleSaxophone,
     toggleGuitar,
@@ -1031,7 +1078,13 @@ export function Composer() {
   const liveSequencerPlayheadsRef = useRef<HTMLElement[]>([]);
   const liveArrangementPlayheadsRef = useRef<HTMLElement[]>([]);
   const liveScrollerPairsRef = useRef<
-    Array<{ scroller: HTMLElement; header: HTMLElement | null; stepSpan: number }>
+    Array<{
+      scroller: HTMLElement;
+      header: HTMLElement | null;
+      scrollKey: string;
+      stepSpan: number;
+      rowSpan: number;
+    }>
   >([]);
   const liveDrumScrollersRef = useRef<HTMLElement[]>([]);
   const arrangementTrackListRef = useRef<HTMLDivElement | null>(null);
@@ -1131,8 +1184,9 @@ export function Composer() {
   const loadingAiVocalTrackIdsRef = useRef(new Set<string>());
   const aiVocalPlaybackTimerRef = useRef<number | null>(null);
   const [openTrackMenuId, setOpenTrackMenuId] = useState<string | null>(null);
-  const [hiddenArrangementTrackIds, setHiddenArrangementTrackIds] = useState<Set<string>>(
-    () => new Set()
+  const hiddenArrangementTrackIds = useMemo(
+    () => new Set(hiddenArrangementTrackIdList),
+    [hiddenArrangementTrackIdList]
   );
   const [isArrangementCollapsed, setIsArrangementCollapsed] = useState(false);
   const pianoEditTool: PianoEditTool = 'pencil';
@@ -1328,6 +1382,7 @@ export function Composer() {
   );
   const arrangementTimelineBars = arrangementBars.filter((bar) => bar.index % 4 === 0);
   const [pitchedRollScrollTop, setPitchedRollScrollTop] = useState<Record<string, number>>({});
+  const [drumRollScrollLeft, setDrumRollScrollLeft] = useState(0);
   const tutorialAdvanceTimeoutRef = useRef<number | null>(null);
   const lastAutoAdvancedStepRef = useRef<number | null>(null);
   const tutorialCameraTimeoutRef = useRef<number | null>(null);
@@ -1578,11 +1633,6 @@ export function Composer() {
       clip.audio.pause();
       URL.revokeObjectURL(clip.url);
     });
-    removedEntries.forEach(([trackId]) => {
-      void deleteAiVocalAudio(trackId).catch((error) => {
-        console.error('[AI Vocal] stored audio cleanup failed:', error);
-      });
-    });
     setAiVocalAudioClips((current) =>
       Object.fromEntries(Object.entries(current).filter(([trackId]) => liveTrackIds.has(trackId)))
     );
@@ -1597,7 +1647,7 @@ export function Composer() {
         }
 
         loadingAiVocalTrackIdsRef.current.add(track.id);
-        void loadAiVocalAudio(track.id)
+        void loadAiVocalAudioSource(track)
           .then(async (blob) => {
             if (!blob || !useSongStore.getState().extraTracks.some((item) => item.id === track.id)) {
               return;
@@ -2229,6 +2279,27 @@ export function Composer() {
         });
         liveStepElementsRef.current = nextLiveElements;
         liveVisualStepRef.current = visualStep;
+
+        const liveState = useSongStore.getState();
+        liveScrollerPairsRef.current.forEach(({ scroller, scrollKey, rowSpan }) => {
+          const track = getPlaybackPitchedTrack(liveState, scrollKey);
+          if (!track) return;
+
+          const activeRows = getActivePitchedRowsAtStep(track.grid, track.lengths, visualStep);
+          if (!activeRows.length) return;
+
+          const focusRow = activeRows.reduce((sum, row) => sum + row, 0) / activeRows.length;
+          const noteCenter = focusRow * rowSpan + rowSpan / 2;
+          const safeTop = scroller.scrollTop + scroller.clientHeight * 0.2;
+          const safeBottom = scroller.scrollTop + scroller.clientHeight * 0.8;
+          if (noteCenter >= safeTop && noteCenter <= safeBottom) return;
+
+          const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+          scroller.scrollTo({
+            top: Math.min(maxScrollTop, Math.max(0, noteCenter - scroller.clientHeight / 2)),
+            behavior: 'smooth',
+          });
+        });
       }
 
       livePianoPlayheadsRef.current.forEach((playhead) => {
@@ -2312,10 +2383,15 @@ export function Composer() {
           const gridGap = Number.parseFloat(
             rollStyle?.getPropertyValue('--piano-grid-gap') ?? ''
           ) || 2;
+          const rowHeight = Number.parseFloat(
+            rollStyle?.getPropertyValue('--piano-row-height') ?? ''
+          ) || MELODY_PIANO_ROW_HEIGHT;
           return {
             scroller,
             header: roll?.querySelector<HTMLElement>('.piano-roll-step-header--melody') ?? null,
+            scrollKey: roll?.dataset.scrollKey ?? 'melody',
             stepSpan: stepWidth + gridGap,
+            rowSpan: rowHeight + gridGap,
           };
         });
         liveDrumScrollersRef.current = [
@@ -2389,6 +2465,7 @@ export function Composer() {
         bass,
         bassLengths,
         extraTracks,
+        hiddenArrangementTrackIds: hiddenArrangementTrackIdList,
       }),
     [
       bass,
@@ -2403,6 +2480,7 @@ export function Composer() {
       extraTracks,
       guitar,
       guitarLengths,
+      hiddenArrangementTrackIdList,
       melody,
       melodyLengths,
       melodyVelocities,
@@ -3374,12 +3452,7 @@ export function Composer() {
       const isRestoringBaseTrack = Boolean(baseTrackId && hiddenArrangementTrackIds.has(baseTrackId));
 
       if (baseTrackId) {
-        setHiddenArrangementTrackIds((current) => {
-          if (!current.has(baseTrackId)) return current;
-          const next = new Set(current);
-          next.delete(baseTrackId);
-          return next;
-        });
+        setArrangementTrackHidden(baseTrackId, false);
         if (isRestoringBaseTrack) {
           setArrangementTrackOrder((current) => {
             const itemId = `primary-${tab}`;
@@ -3390,7 +3463,7 @@ export function Composer() {
 
       handleOpenTab(tab, !isRestoringBaseTrack);
     },
-    [handleOpenTab, hiddenArrangementTrackIds]
+    [handleOpenTab, hiddenArrangementTrackIds, setArrangementTrackHidden]
   );
 
   const handleLyricsToggle = useCallback(() => {
@@ -3501,7 +3574,7 @@ export function Composer() {
         } else {
           clearInstrument(track.tab);
         }
-        setHiddenArrangementTrackIds((current) => new Set(current).add(track.id));
+        setArrangementTrackHidden(track.id, true);
       }
 
       releaseInstrumentSounds(track.tab);
@@ -3523,6 +3596,7 @@ export function Composer() {
       arrangementVisibleTracks,
       clearInstrument,
       removeInstrumentTrack,
+      setArrangementTrackHidden,
     ]
   );
 
@@ -3823,6 +3897,7 @@ export function Composer() {
         bass: useSongStore.getState().bass,
         bassLengths: useSongStore.getState().bassLengths,
         extraTracks: useSongStore.getState().extraTracks,
+        hiddenArrangementTrackIds: useSongStore.getState().hiddenArrangementTrackIds,
       })
     );
 
@@ -4786,9 +4861,13 @@ export function Composer() {
       const trackId = addAiVocalTrack(voice);
       const duration = result.audioBuffer.duration;
 
-      void saveAiVocalAudio(trackId, result.blob).catch((error) => {
-        console.error('[AI Vocal] generated audio persistence failed:', error);
-      });
+      await saveAiVocalAudio(trackId, result.blob);
+      try {
+        const source = await uploadAiVocalAudio(trackId, result.blob, user?.email);
+        setExtraTrackAudioSource(trackId, source);
+      } catch (error) {
+        console.error('[AI Vocal] remote audio persistence failed:', error);
+      }
 
       setAiVocalAudioClips((current) => ({
         ...current,
@@ -4833,7 +4912,9 @@ export function Composer() {
     addAiVocalTrack,
     bpm,
     melodyLyricNotes,
+    setExtraTrackAudioSource,
     steps,
+    user?.email,
   ]
 );
 
@@ -5059,25 +5140,52 @@ export function Composer() {
     const stepSpan = stepWidth + gridGap;
     const rowSpan = rowHeight + gridGap;
     const viewportStepCount = Math.ceil(
-      Math.max(1280, typeof window === 'undefined' ? 1920 : window.innerWidth) / stepSpan
+      (typeof window === 'undefined' ? 1280 : window.innerWidth) / stepSpan
     );
     const firstVisibleStep = Math.floor(scrollLeft / stepSpan);
-    const visibleStepStart = Math.max(0, firstVisibleStep - 24);
-    const visibleStepEnd = Math.min(steps, firstVisibleStep + viewportStepCount + 24);
+    const visibleStepStart = Math.max(0, firstVisibleStep - 6);
+    const visibleStepEnd = Math.min(steps, firstVisibleStep + viewportStepCount + 6);
     const visibleSteps = Array.from(
       { length: Math.max(0, visibleStepEnd - visibleStepStart) },
       (_, index) => visibleStepStart + index
     );
     const viewportRowCount = Math.ceil(
-      Math.max(600, typeof window === 'undefined' ? 900 : window.innerHeight) / rowSpan
+      (typeof window === 'undefined'
+        ? 640
+        : Math.max(480, Math.min(720, window.innerHeight * 0.72))) / rowSpan
     );
     const firstVisibleRow = Math.floor(scrollTop / rowSpan);
-    const visibleRowStart = Math.max(0, firstVisibleRow - 5);
-    const visibleRowEnd = Math.min(notes.length, firstVisibleRow + viewportRowCount + 5);
+    const visibleRowStart = Math.max(0, firstVisibleRow - 3);
+    const visibleRowEnd = Math.min(notes.length, firstVisibleRow + viewportRowCount + 3);
     const visibleRows = Array.from(
       { length: Math.max(0, visibleRowEnd - visibleRowStart) },
       (_, index) => visibleRowStart + index
     );
+    const visibleNoteInfo = new Map<
+      number,
+      Array<{ start: number; length: number } | null>
+    >();
+    if (options.melodyLengths) {
+      visibleRows.forEach((row) => {
+        const infoRow = Array.from(
+          { length: visibleStepEnd - visibleStepStart },
+          () => null as { start: number; length: number } | null
+        );
+        const gridRow = grid[row] ?? [];
+        const lengthRow = options.melodyLengths?.[row] ?? [];
+
+        gridRow.forEach((active, start) => {
+          if (!active) return;
+          const length = Math.max(1, lengthRow[start] ?? 1);
+          const startCol = Math.max(start, visibleStepStart);
+          const endCol = Math.min(start + length, visibleStepEnd);
+          for (let col = startCol; col < endCol; col += 1) {
+            infoRow[col - visibleStepStart] = { start, length };
+          }
+        });
+        visibleNoteInfo.set(row, infoRow);
+      });
+    }
     const showTopbar = false;
     const noteLengthSteps = options.noteLengthSteps ?? 4;
     const rollStyle = {
@@ -5173,7 +5281,7 @@ export function Composer() {
                   transform: isPlaying ? undefined : `translateX(-${scrollLeft}px)`,
                 } as CSSProperties}
               >
-                {Array.from({ length: steps }).map((_, col) => (
+                {visibleSteps.map((col) => (
                   <button
                     key={`${scrollKey}-header-${col}`}
                     type="button"
@@ -5188,6 +5296,7 @@ export function Composer() {
                         : ''
                     }`}
                     style={{
+                      gridColumnStart: col + 1,
                       '--collab-member-color':
                         currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index]?.color,
                     } as CSSProperties}
@@ -5301,11 +5410,7 @@ export function Composer() {
                     return (
                     visibleSteps.map((col) => {
                       const noteInfo = options.melodyLengths
-                        ? findMelodyNoteForTutorial(
-                            grid[row] ?? [],
-                            options.melodyLengths[row] ?? [],
-                            col
-                          )
+                        ? visibleNoteInfo.get(row)?.[col - visibleStepStart] ?? null
                         : null;
                       const isNoteStart = Boolean(noteInfo && noteInfo.start === col);
                       const isNoteTail = Boolean(noteInfo && noteInfo.start !== col);
@@ -5471,10 +5576,32 @@ export function Composer() {
     );
   };
 
+  const drumStepSpan = DRUM_STEP_WIDTH + 10;
+  const drumViewportStepCount = Math.ceil(
+    (typeof window === 'undefined' ? 1280 : window.innerWidth) / drumStepSpan
+  );
+  const drumFirstVisibleStep = Math.floor(drumRollScrollLeft / drumStepSpan);
+  const drumVisibleStepStart = Math.max(0, drumFirstVisibleStep - 4);
+  const drumVisibleStepEnd = Math.min(
+    steps,
+    drumFirstVisibleStep + drumViewportStepCount + 4
+  );
+  const drumVisibleSteps = Array.from(
+    { length: Math.max(0, drumVisibleStepEnd - drumVisibleStepStart) },
+    (_, index) => drumVisibleStepStart + index
+  );
+  const handleDrumRollScroll = (scrollLeft: number) => {
+    const quantized = Math.floor(scrollLeft / (drumStepSpan * 2)) * drumStepSpan * 2;
+    setDrumRollScrollLeft((current) => (current === quantized ? current : quantized));
+  };
+
   const renderExtraDrumSequencer = (track: ExtraInstrumentTrack) => (
     <section className="composer-drum-shell" key={`${track.id}-drums`}>
       <div className="composer-drum-panel">
-        <div className="composer-drums-wrap">
+        <div
+          className="composer-drums-wrap"
+          onScroll={(event) => handleDrumRollScroll(event.currentTarget.scrollLeft)}
+        >
           <div className="composer-sequencer-body">
             <div
               className="composer-sequencer-playhead"
@@ -5499,11 +5626,12 @@ export function Composer() {
                   ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                 }}
               >
-                {Array.from({ length: steps }).map((_, col) => (
+                {drumVisibleSteps.map((col) => (
                   <button
                     key={`${track.id}-drum-header-${col}`}
                     type="button"
                     data-playhead-step={col}
+                    style={{ gridColumnStart: col + 1 }}
                     className={`composer-drum-step-number${getSubdivisionClassName(col, timeSignatureChanges, timeSignature)}${
                       loopRange && col >= loopRange.start && col <= loopRange.end
                         ? ' is-loop-active'
@@ -5539,7 +5667,7 @@ export function Composer() {
                       ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                     }}
                   >
-                    {Array.from({ length: steps }).map((_, col) => {
+                    {drumVisibleSteps.map((col) => {
                       const active = track.grid[row]?.[col];
                       const lock = currentTabLockMap[getBarInfoAtStep(timeSignatureChanges, timeSignature, col).index];
                       const isLocked = Boolean(lock && !lock.mine);
@@ -5566,7 +5694,10 @@ export function Composer() {
                             timeSignatureChanges,
                             timeSignature
                           )}${collabNoteColor ? ' is-collab-authored' : ''}${lock?.mine ? ' is-own-locked' : isLocked ? ' is-locked' : ''}`}
-                          style={{ '--collab-note-color': collabNoteColor } as CSSProperties}
+                          style={{
+                            gridColumnStart: col + 1,
+                            '--collab-note-color': collabNoteColor,
+                          } as CSSProperties}
                           title={collabNoteAuthor ? `작성자: ${collabNoteAuthor}` : undefined}
                           aria-label={collabNoteAuthor ? `${drumTrack.name}, 작성자 ${collabNoteAuthor}` : undefined}
                           onClick={() => {
@@ -5636,7 +5767,6 @@ export function Composer() {
             setActiveTrackId(null);
             setVisitedTabs([]);
             setMutedArrangementTracks(new Set());
-            setHiddenArrangementTrackIds(new Set());
             setOpenTrackMenuId(null);
             setIsTabPickerOpen(false);
             setIsLyricsWorkspaceOpen(false);
@@ -6931,7 +7061,10 @@ export function Composer() {
             className={`composer-drum-shell${getGuideHighlightClass('drums-grid')}`}
           >
             <div className="composer-drum-panel">
-              <div className="composer-drums-wrap">
+              <div
+                className="composer-drums-wrap"
+                onScroll={(event) => handleDrumRollScroll(event.currentTarget.scrollLeft)}
+              >
                 <div className="composer-sequencer-body">
                   <div
                     className="composer-sequencer-playhead"
@@ -6956,11 +7089,12 @@ export function Composer() {
                         ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                       }}
                       >
-                        {Array.from({ length: steps }).map((_, col) => (
+                        {drumVisibleSteps.map((col) => (
                         <button
                           key={`drum-header-${col}`}
                           type="button"
                           data-playhead-step={col}
+                          style={{ gridColumnStart: col + 1 }}
                           className={`composer-drum-step-number${getSubdivisionClassName(col, timeSignatureChanges, timeSignature)}${
                             loopRange && col >= loopRange.start && col <= loopRange.end
                               ? ' is-loop-active'
@@ -6996,7 +7130,7 @@ export function Composer() {
                             ['--sequencer-bar-span' as string]: `${(DRUM_STEP_WIDTH + 10) * stepsPerBar}px`,
                           }}
                         >
-                          {Array.from({ length: steps }).map((_, col) => {
+                          {drumVisibleSteps.map((col) => {
                             const active = drums[row]?.[col];
                             const isCurrent = col === currentStep;
                             const collabNoteColor = active
@@ -7024,7 +7158,10 @@ export function Composer() {
                                       ? ' is-locked'
                                       : ''
                                 }`}
-                                style={{ '--collab-note-color': collabNoteColor } as CSSProperties}
+                                style={{
+                                  gridColumnStart: col + 1,
+                                  '--collab-note-color': collabNoteColor,
+                                } as CSSProperties}
                                 title={collabNoteAuthor ? `작성자: ${collabNoteAuthor}` : undefined}
                                 aria-label={collabNoteAuthor ? `${track.name}, 작성자 ${collabNoteAuthor}` : undefined}
                                 onClick={() => {

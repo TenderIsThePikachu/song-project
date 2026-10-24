@@ -1,5 +1,5 @@
 import { createReadStream, existsSync, mkdirSync, statSync, writeFileSync } from 'node:fs';
-import { dirname, extname, join } from 'node:path';
+import { basename, dirname, extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { getSqlDriver, loadSqlState, saveSqlState } from './sqliteState.mjs';
 import { loadLibraryMysqlState, saveLibraryMysqlState } from './mysqlTables.mjs';
@@ -9,6 +9,7 @@ const __dirname = dirname(__filename);
 
 const LIBRARY_LEGACY_DATA_PATH = join(__dirname, 'library-data.json');
 const MUSIC_SHARE_UPLOAD_DIR = join(__dirname, 'uploads', 'music-share');
+const COMPOSER_VOCAL_UPLOAD_DIR = join(__dirname, 'uploads', 'composer-vocals');
 const MUSIC_SHARE_TRACK_IMAGES = {
   'share-base-1': '/seed-images/music/canon.svg',
   'share-base-2': '/seed-images/music/let-it-be.svg',
@@ -192,6 +193,10 @@ function ensureUploadDirs() {
 
   if (!existsSync(MUSIC_SHARE_UPLOAD_DIR)) {
     mkdirSync(MUSIC_SHARE_UPLOAD_DIR, { recursive: true });
+  }
+
+  if (!existsSync(COMPOSER_VOCAL_UPLOAD_DIR)) {
+    mkdirSync(COMPOSER_VOCAL_UPLOAD_DIR, { recursive: true });
   }
 }
 
@@ -513,6 +518,34 @@ export function saveMusicShareAudioFile(payload) {
     audioStorageKey: storageKey,
     audioFileName: payload.fileName || storageKey,
   };
+}
+
+export function saveComposerVocalAudioFile(payload) {
+  ensureUploadDirs();
+  const storageKey = `${createId('ai-vocal')}.wav`;
+  writeFileSync(join(COMPOSER_VOCAL_UPLOAD_DIR, storageKey), payload.buffer);
+
+  return {
+    audioUrl: `${payload.baseUrl}/uploads/composer-vocals/${encodeURIComponent(storageKey)}`,
+    audioStorageKey: storageKey,
+    audioFileName: payload.fileName || storageKey,
+  };
+}
+
+export function serveComposerVocalUpload(request, response, fileName) {
+  if (basename(fileName) !== fileName) return false;
+  const filePath = join(COMPOSER_VOCAL_UPLOAD_DIR, fileName);
+  if (!existsSync(filePath)) return false;
+
+  const stat = statSync(filePath);
+  response.writeHead(200, {
+    'Content-Type': 'audio/wav',
+    'Content-Length': stat.size,
+    'Cache-Control': 'public, max-age=3600',
+    'Access-Control-Allow-Origin': '*',
+  });
+  createReadStream(filePath).pipe(response);
+  return true;
 }
 
 export function serveMusicShareUpload(request, response, fileName) {

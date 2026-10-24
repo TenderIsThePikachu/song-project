@@ -16,6 +16,7 @@ export type ShortItem = {
   description: string;
   creatorName: string;
   creatorEmail: string;
+  genre: string;
   tags: string[];
   createdAt: number;
   durationLabel: string;

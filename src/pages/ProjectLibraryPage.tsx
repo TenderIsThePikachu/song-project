@@ -27,17 +27,98 @@ const statusLabels: Record<CollabStatus, string> = {
   feedback: '피드백',
 };
 
-const NEW_PROJECT_GENRES = [
-  { value: 'ballad', label: '발라드' },
-  { value: 'pop', label: '팝' },
-  { value: 'indie-pop', label: '인디팝' },
-  { value: 'jazz', label: '재즈' },
-  { value: 'rnb', label: 'R&B' },
-  { value: 'hiphop', label: '힙합' },
-  { value: 'rock', label: '록' },
-  { value: 'electronic', label: '일렉트로닉' },
-  { value: 'ost', label: 'OST' },
-  { value: 'lofi', label: '로파이' },
+const NEW_PROJECT_GENRE_GROUPS = [
+  {
+    label: '동요 / 교육',
+    options: [
+      { value: 'childrens-song', label: '동요' },
+      { value: 'lullaby', label: '자장가' },
+      { value: 'educational', label: '교육 음악' },
+      { value: 'nursery-rhyme', label: '놀이 음악' },
+    ],
+  },
+  {
+    label: '감성 / 팝',
+    options: [
+      { value: 'ballad', label: '발라드' },
+      { value: 'pop', label: '팝' },
+      { value: 'k-pop', label: 'K-POP' },
+      { value: 'j-pop', label: 'J-POP' },
+      { value: 'indie-pop', label: '인디팝' },
+      { value: 'acoustic-pop', label: '어쿠스틱 팝' },
+      { value: 'new-age', label: '뉴에이지' },
+      { value: 'lofi', label: '로파이' },
+      { value: 'dream-pop', label: '드림팝' },
+      { value: 'citypop', label: '시티팝' },
+    ],
+  },
+  {
+    label: '재즈 / R&B',
+    options: [
+      { value: 'jazz', label: '재즈' },
+      { value: 'jazz-pop', label: '재즈 팝' },
+      { value: 'smooth-jazz', label: '스무스 재즈' },
+      { value: 'bossa-nova', label: '보사노바' },
+      { value: 'rnb', label: 'R&B' },
+      { value: 'neo-soul', label: '네오 소울' },
+      { value: 'blues', label: '블루스' },
+      { value: 'gospel', label: '가스펠' },
+    ],
+  },
+  {
+    label: '전자 / 댄스',
+    options: [
+      { value: 'electronic', label: '일렉트로닉' },
+      { value: 'synth-pop', label: '신스팝' },
+      { value: 'house', label: '하우스' },
+      { value: 'deep-house', label: '딥하우스' },
+      { value: 'tropical-house', label: '트로피컬 하우스' },
+      { value: 'future-bass', label: '퓨처 베이스' },
+      { value: 'synthwave', label: '신스웨이브' },
+      { value: 'disco', label: '디스코' },
+      { value: 'funk', label: '펑크' },
+    ],
+  },
+  {
+    label: '힙합 / 밴드',
+    options: [
+      { value: 'hiphop', label: '힙합' },
+      { value: 'boombap', label: '붐뱁' },
+      { value: 'trap', label: '트랩' },
+      { value: 'jazz-hiphop', label: '재즈 힙합' },
+      { value: 'rock', label: '록' },
+      { value: 'pop-rock', label: '팝 록' },
+      { value: 'indie-rock', label: '인디 록' },
+      { value: 'metal', label: '메탈' },
+      { value: 'punk', label: '펑크 록' },
+    ],
+  },
+  {
+    label: '전통 / 월드',
+    options: [
+      { value: 'trot', label: '트로트' },
+      { value: 'folk', label: '포크' },
+      { value: 'country', label: '컨트리' },
+      { value: 'reggae', label: '레게' },
+      { value: 'latin', label: '라틴' },
+      { value: 'traditional-korean', label: '국악' },
+      { value: 'world', label: '월드 뮤직' },
+    ],
+  },
+  {
+    label: '영상 / 테마',
+    options: [
+      { value: 'ost', label: 'OST' },
+      { value: 'classical', label: '클래식' },
+      { value: 'cinematic', label: '시네마틱' },
+      { value: 'orchestra', label: '오케스트라' },
+      { value: 'fantasy', label: '판타지' },
+      { value: 'ambient', label: '앰비언트' },
+      { value: 'game', label: '게임 음악' },
+      { value: 'chiptune', label: '8비트 / 칩튠' },
+      { value: 'carol', label: '캐럴' },
+    ],
+  },
 ] as const;
 
 const COMMON_TIME_SIGNATURES = [
@@ -400,8 +481,12 @@ export default function ProjectLibraryPage() {
                   value={newProjectGenre}
                   onChange={(event) => setNewProjectGenre(event.target.value)}
                 >
-                  {NEW_PROJECT_GENRES.map((genre) => (
-                    <option key={genre.value} value={genre.value}>{genre.label}</option>
+                  {NEW_PROJECT_GENRE_GROUPS.map((group) => (
+                    <optgroup key={group.label} label={group.label}>
+                      {group.options.map((genre) => (
+                        <option key={genre.value} value={genre.value}>{genre.label}</option>
+                      ))}
+                    </optgroup>
                   ))}
                 </select>
               </label>

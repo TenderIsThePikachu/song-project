@@ -211,6 +211,7 @@ function ShareDialogIcon({ name }: { name: ShareDialogIconName }) {
 
 type ComposerDialog = 'save' | 'share' | null;
 type SaveFormat = 'wav' | 'mp3' | 'flac';
+type SaveMode = 'overwrite' | 'saveAs';
 
 function downloadBlob(blob: Blob, filename: string) {
   const url = URL.createObjectURL(blob);
@@ -413,8 +414,15 @@ export const TransportBar = ({
   const user = useAuthStore((state) => state.user);
   const saveComposerProject = useComposerLibraryStore((state) => state.saveProject);
   const shareComposerProject = useComposerLibraryStore((state) => state.shareProject);
+  const currentLibraryProject = useComposerLibraryStore((state) =>
+    currentProjectId ? state.projects.find((project) => project.id === currentProjectId) : undefined
+  );
 
   const [isExporting, setIsExporting] = useState(false);
+  const mp3ExportCacheRef = useRef<{
+    projectKey: string;
+    promise: Promise<Blob>;
+  } | null>(null);
   const [aiCompletionToast, setAiCompletionToast] = useState<'vocal' | null>(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [isAiVocalPanelOpen, setIsAiVocalPanelOpen] = useState(false);
@@ -424,6 +432,8 @@ export const TransportBar = ({
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
+  const [isSaveMenuOpen, setIsSaveMenuOpen] = useState(false);
+  const [saveMode, setSaveMode] = useState<SaveMode>('overwrite');
   const [aiSummary, setAiSummary] = useState('');
   const [aiDetails, setAiDetails] = useState(DEFAULT_AI_TEMPLATE);
   const [isGeneratingComposition, setIsGeneratingComposition] = useState(false);
@@ -572,6 +582,7 @@ export const TransportBar = ({
 
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const collabMenuRef = useRef<HTMLDivElement | null>(null);
+  const saveMenuRef = useRef<HTMLDivElement | null>(null);
   const backingTrackAudioRef = useRef<HTMLAudioElement | null>(null);
   const backingTrackUrlRef = useRef('');
   const backingTrackTimerRef = useRef<number | null>(null);
@@ -600,6 +611,26 @@ export const TransportBar = ({
     window.addEventListener('mousedown', handleOutsideClick);
     return () => window.removeEventListener('mousedown', handleOutsideClick);
   }, [isCollabMenuOpen]);
+
+  useEffect(() => {
+    if (!isSaveMenuOpen) return undefined;
+
+    const handleOutsideClick = (event: MouseEvent) => {
+      if (!saveMenuRef.current?.contains(event.target as Node)) {
+        setIsSaveMenuOpen(false);
+      }
+    };
+    const handleKeyDown = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setIsSaveMenuOpen(false);
+    };
+
+    window.addEventListener('mousedown', handleOutsideClick);
+    window.addEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('mousedown', handleOutsideClick);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [isSaveMenuOpen]);
   const totalBars = getBarCountForSteps(timeSignatureChanges, timeSignature, steps);
 
   useEffect(() => {
@@ -713,15 +744,41 @@ export const TransportBar = ({
     return buildSongProjectSnapshot(useSongStore.getState());
   };
 
+  const getCachedMp3Export = (project: SongProject) => {
+    const projectKey = JSON.stringify(project);
+    const cached = mp3ExportCacheRef.current;
+    if (cached?.projectKey === projectKey) {
+      return cached.promise;
+    }
+
+    const promise = exportSongAsMp3().catch((error) => {
+      if (mp3ExportCacheRef.current?.promise === promise) {
+        mp3ExportCacheRef.current = null;
+      }
+      throw error;
+    });
+    mp3ExportCacheRef.current = { projectKey, promise };
+    return promise;
+  };
+
   const openDialog = (dialog: Exclude<ComposerDialog, null>) => {
     setIsAiPanelOpen(false);
-    if (dialog === 'save') {
-      if (!saveTitle.trim()) {
-        setSaveTitle(editableSongTitle.trim());
-      }
-      setSaveGenre(initialGenre);
-    }
     setActiveDialog(dialog);
+  };
+
+  const openSaveDialog = (mode: SaveMode) => {
+    const currentTitle = editableSongTitle.trim();
+    setSaveMode(mode);
+    setSaveTitle(
+      mode === 'saveAs' && currentProjectId && currentTitle
+        ? `${currentTitle} 복사본`
+        : currentTitle
+    );
+    setSaveDescription(currentLibraryProject?.description ?? '');
+    setSaveGenre(currentLibraryProject?.genre ?? initialGenre);
+    setSaveFormat(currentLibraryProject?.exportFormat ?? 'wav');
+    setIsSaveMenuOpen(false);
+    openDialog('save');
   };
 
   const closeDialog = () => {
@@ -887,28 +944,40 @@ export const TransportBar = ({
         });
       }
 
-      const savedProjectId = await saveComposerProject({
-        id: currentProjectId ?? undefined,
-        title,
-        description: saveDescription.trim(),
-        genre: saveGenre,
-        bpm,
-        steps,
-        project,
-        creatorName: user?.name ?? '게스트',
-        creatorEmail: user?.email ?? 'guest@songmaker.local',
-        exportFormat: saveFormat,
-      });
-      if (!currentProjectId && workMode === 'personal') {
+      const targetProjectId = saveMode === 'overwrite' ? currentProjectId ?? undefined : undefined;
+      const audioExportPromise = (
+        saveFormat === 'wav' ? exportSongAsWav() : getCachedMp3Export(project)
+      )
+        .then((blob) => ({ blob, error: null as unknown }))
+        .catch((error: unknown) => ({ blob: null, error }));
+      const [savedProjectId, audioExportResult] = await Promise.all([
+        saveComposerProject({
+          id: targetProjectId,
+          title,
+          description: saveDescription.trim(),
+          genre: saveGenre,
+          bpm,
+          steps,
+          project,
+          creatorName: user?.name ?? '게스트',
+          creatorEmail: user?.email ?? 'guest@songmaker.local',
+          exportFormat: saveFormat,
+        }),
+        audioExportPromise,
+      ]);
+      if (!targetProjectId && workMode === 'personal') {
         navigate(`/composer?project=${encodeURIComponent(savedProjectId)}`, { replace: true });
       }
       setEditableSongTitle(title);
       onSongTitleChange?.(title);
       onGenreChange?.(saveGenre);
 
-      let exportError: unknown = null;
+      let exportError = audioExportResult.error;
       try {
-        const blob = saveFormat === 'wav' ? await exportSongAsWav() : await exportSongAsMp3();
+        if (!audioExportResult.blob) {
+          throw audioExportResult.error;
+        }
+        const blob = audioExportResult.blob;
         const extension = saveFormat === 'wav' ? 'wav' : 'mp3';
         downloadBlob(blob, `${filenameBase}.${extension}`);
 
@@ -947,6 +1016,13 @@ export const TransportBar = ({
 
     setIsUploadingShareCover(true);
     try {
+      const project = createProjectSnapshot();
+      const audioUploadPromise = getCachedMp3Export(project).then((audioBlob) =>
+        uploadMusicShareAudioOnServer({
+          file: new File([audioBlob], `${sanitizeFileName(title)}.mp3`, { type: 'audio/mpeg' }),
+          creatorEmail: user?.email,
+        })
+      );
       let uploadedCover:
         | {
             imageUrl: string;
@@ -963,12 +1039,7 @@ export const TransportBar = ({
         });
       }
 
-      const project = createProjectSnapshot();
-      const audioBlob = await exportSongAsMp3();
-      const uploadedAudio = await uploadMusicShareAudioOnServer({
-        file: new File([audioBlob], `${sanitizeFileName(title)}.mp3`, { type: 'audio/mpeg' }),
-        creatorEmail: user?.email,
-      });
+      const uploadedAudio = await audioUploadPromise;
 
       await shareComposerProject({
         title,
@@ -1343,9 +1414,35 @@ export const TransportBar = ({
           <ResetIcon />
           <span>초기화</span>
         </button>
-        <button type="button" className="transport-button" onClick={() => openDialog('save')}>
-          저장하기
-        </button>
+        <div className="transport-save-menu" ref={saveMenuRef}>
+          <button
+            type="button"
+            className={`transport-button${isSaveMenuOpen ? ' is-open' : ''}`}
+            onClick={() => setIsSaveMenuOpen((open) => !open)}
+            aria-haspopup="menu"
+            aria-expanded={isSaveMenuOpen}
+          >
+            저장하기
+          </button>
+          {isSaveMenuOpen ? (
+            <div className="transport-save-menu-popover" role="menu">
+              <button type="button" role="menuitem" onClick={() => openSaveDialog('overwrite')}>
+                <span className="transport-save-menu-icon"><ShareDialogIcon name="save" /></span>
+                <span>
+                  <strong>저장하기</strong>
+                  <small>{currentProjectId ? '현재 음악에 변경 내용을 저장합니다.' : '새 음악으로 저장합니다.'}</small>
+                </span>
+              </button>
+              <button type="button" role="menuitem" onClick={() => openSaveDialog('saveAs')}>
+                <span className="transport-save-menu-icon"><ShareDialogIcon name="document" /></span>
+                <span>
+                  <strong>다른 이름으로 저장</strong>
+                  <small>현재 음악을 새 프로젝트로 복사합니다.</small>
+                </span>
+              </button>
+            </div>
+          ) : null}
+        </div>
         <button type="button" className="transport-button" onClick={() => openDialog('share')}>
           공유하기
         </button>
@@ -1463,8 +1560,12 @@ export const TransportBar = ({
                       <ShareDialogIcon name="save" />
                     </span>
                     <div className="transport-save-dialog-title-copy">
-                      <strong>저장하기</strong>
-                      <p>지금까지 작업한 프로젝트를 저장해보세요.</p>
+                      <strong>{saveMode === 'saveAs' ? '다른 이름으로 저장' : '저장하기'}</strong>
+                      <p>
+                        {saveMode === 'saveAs'
+                          ? '현재 음악을 새로운 프로젝트로 저장합니다.'
+                          : '현재 음악의 변경 내용을 저장합니다.'}
+                      </p>
                     </div>
                   </div>
                   <button
@@ -1548,7 +1649,11 @@ export const TransportBar = ({
                     onClick={handleSaveConfirm}
                     disabled={isExporting}
                   >
-                    {isExporting ? '저장 중...' : '저장하기'}
+                    {isExporting
+                      ? '저장 중...'
+                      : saveMode === 'saveAs'
+                        ? '새 프로젝트로 저장'
+                        : '저장하기'}
                   </button>
                 </div>
               </>

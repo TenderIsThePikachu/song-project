@@ -4473,16 +4473,20 @@ html[data-theme="light"] .music-share-detail-hero .music-share-detail-waveform s
   box-shadow: none !important;
 }
 
+html[data-theme="light"] .shorts-page {
+  background: #eef2f3 !important;
+}
+
 html[data-theme="light"] .shorts-player-frame {
-  border-color: var(--light-border) !important;
-  background: #ffffff !important;
+  border-color: transparent !important;
+  background: transparent !important;
   color: var(--light-text) !important;
-  box-shadow: var(--light-shadow) !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .shorts-player-toolbar {
   border-bottom-color: var(--light-border) !important;
-  background: #ffffff !important;
+  background: transparent !important;
 }
 
 html[data-theme="light"] .shorts-player-toolbar :is(h1, strong) {
@@ -4495,7 +4499,7 @@ html[data-theme="light"] .shorts-player-toolbar :is(p, span) {
 
 html[data-theme="light"] .shorts-filter-row {
   border-color: var(--light-border) !important;
-  background: var(--light-surface-soft) !important;
+  background: #e4eaec !important;
 }
 
 html[data-theme="light"] :is(.shorts-filter-button, .shorts-toolbar-button) {
@@ -4540,9 +4544,9 @@ html[data-theme="light"] :is(
   .shorts-empty-actions .shorts-helper-button
 ) {
   border-color: transparent !important;
-  background: linear-gradient(135deg, #36c99f, #1ba77f) !important;
+  background: #1eae85 !important;
   color: #ffffff !important;
-  box-shadow: 0 10px 24px rgba(27, 167, 127, 0.2) !important;
+  box-shadow: none !important;
 }
 
 html[data-theme="light"] .shorts-empty-state {
@@ -4590,6 +4594,21 @@ html[data-theme="light"] :is(
   color: var(--light-text-soft) !important;
 }
 
+html[data-theme="light"] .shorts-comment-close {
+  border-color: #b9c8c4 !important;
+  background: #edf3f1 !important;
+  color: #20322d !important;
+}
+
+html[data-theme="light"] .shorts-comment-close span {
+  color: #20322d !important;
+}
+
+html[data-theme="light"] .shorts-comment-close:hover {
+  border-color: #7f9d95 !important;
+  background: #dfeae7 !important;
+}
+
 html[data-theme="light"] .shorts-modal-overlay {
   background: rgba(27, 38, 56, 0.38) !important;
   backdrop-filter: blur(8px) !important;
@@ -4603,9 +4622,19 @@ html[data-theme="light"] .shorts-modal {
 }
 
 html[data-theme="light"] .shorts-modal-kicker {
-  border: 1px solid rgba(22, 134, 106, 0.2) !important;
-  background: var(--light-accent-soft) !important;
+  border: 0 !important;
+  background: transparent !important;
   color: #0b654f !important;
+}
+
+html[data-theme="light"] .shorts-modal-section-head > span {
+  background: #dff5ee !important;
+  color: #087b60 !important;
+}
+
+html[data-theme="light"] .shorts-modal-section-head small,
+html[data-theme="light"] .shorts-modal-head p {
+  color: #72807d !important;
 }
 
 html[data-theme="light"] .shorts-modal-head h2 {

@@ -45,7 +45,7 @@ import {
   SUPPORTING_PIANO_NOTES,
   VIOLIN_NOTES,
 } from "../constants/composer.ts";
-import { loadAiVocalAudio } from "../utils/aiVocalAudioStorage.ts";
+import { loadAiVocalAudioSource } from "../utils/aiVocalAudioStorage.ts";
 
 let loopId: number | null = null;
 let playbackStep = 0;
@@ -866,9 +866,10 @@ export function initTransport(initialStep?: number) {
 }
 
 export async function playMelodyPreview(row: number, durationSteps = 1): Promise<void> {
-  await ensureToneReady();
+  const activeInstruments = new Set<InstrumentKey>(["melody"]);
+  await ensureToneReady(activeInstruments);
   const state = useSongStore.getState();
-  applyLiveVolumes(state.volumes, state.extraTracks);
+  applyLiveVolumes(state.volumes, state.extraTracks, activeInstruments);
   const bpm = state.bpm;
   const note = getMelodyPlaybackNote(row);
   triggerLiveMelodyNote(
@@ -880,23 +881,26 @@ export async function playMelodyPreview(row: number, durationSteps = 1): Promise
 }
 
 export async function playViolinPreview(row: number, durationSteps = 1): Promise<void> {
-  await ensureToneReady();
+  const activeInstruments = new Set<InstrumentKey>(["violin"]);
+  await ensureToneReady(activeInstruments);
   const state = useSongStore.getState();
-  applyLiveVolumes(state.volumes, state.extraTracks);
+  applyLiveVolumes(state.volumes, state.extraTracks, activeInstruments);
   triggerLiveViolinNote(row, getMelodyGateSeconds(durationSteps, state.bpm), Tone.now(), 0.86);
 }
 
 export async function playSaxophonePreview(row: number, durationSteps = 1): Promise<void> {
-  await ensureToneReady();
+  const activeInstruments = new Set<InstrumentKey>(["saxophone"]);
+  await ensureToneReady(activeInstruments);
   const state = useSongStore.getState();
-  applyLiveVolumes(state.volumes, state.extraTracks);
+  applyLiveVolumes(state.volumes, state.extraTracks, activeInstruments);
   triggerLiveSaxophoneNote(row, getMelodyGateSeconds(durationSteps, state.bpm), Tone.now(), 0.78);
 }
 
 export async function playGuitarPreview(row: number, durationSteps = 1): Promise<void> {
-  await ensureToneReady();
+  const activeInstruments = new Set<InstrumentKey>(["guitar"]);
+  await ensureToneReady(activeInstruments);
   const state = useSongStore.getState();
-  applyLiveVolumes(state.volumes, state.extraTracks);
+  applyLiveVolumes(state.volumes, state.extraTracks, activeInstruments);
   triggerLiveGuitarNote(row, getMelodyGateSeconds(durationSteps, state.bpm), Tone.now(), 1);
 }
 
@@ -905,9 +909,10 @@ export async function playSampledInstrumentPreview(
   row: number,
   durationSteps = 1
 ): Promise<void> {
-  await ensureToneReady();
+  const activeInstruments = new Set<InstrumentKey>([instrument]);
+  await ensureToneReady(activeInstruments);
   const state = useSongStore.getState();
-  applyLiveVolumes(state.volumes, state.extraTracks);
+  applyLiveVolumes(state.volumes, state.extraTracks, activeInstruments);
   const config = getSampledInstrumentRuntime(instrument);
   triggerLiveSampledInstrumentNote(
     config.synth,
@@ -920,9 +925,10 @@ export async function playSampledInstrumentPreview(
 }
 
 export async function playDrumPreview(row: number): Promise<void> {
-  await ensureToneReady();
+  const activeInstruments = new Set<InstrumentKey>(["drums"]);
+  await ensureToneReady(activeInstruments);
   const state = useSongStore.getState();
-  applyLiveVolumes(state.volumes, state.extraTracks);
+  applyLiveVolumes(state.volumes, state.extraTracks, activeInstruments);
   triggerLiveDrumSample(row, Tone.now());
 }
 
@@ -1234,8 +1240,10 @@ async function renderSongBuffer(stateOverride?: SongState): Promise<AudioBuffer>
 
 export async function exportSongAsMp3(): Promise<Blob> {
   const state = useSongStore.getState();
-  const instrumentalBuffer = await renderSongBuffer(state);
-  const vocalSources = await loadAiVocalMixSources(state.extraTracks);
+  const [instrumentalBuffer, vocalSources] = await Promise.all([
+    renderSongBuffer(state),
+    loadAiVocalMixSources(state.extraTracks),
+  ]);
   const mixedBuffer = await mixAudioBuffers(instrumentalBuffer, vocalSources);
   return audioBufferToMp3(mixedBuffer);
 }
@@ -1253,7 +1261,7 @@ async function loadAiVocalMixSources(
   const sources = await Promise.all(
     vocalTracks.map(async (track) => {
       try {
-        const blob = await loadAiVocalAudio(track.id);
+        const blob = await loadAiVocalAudioSource(track);
         if (!blob) return null;
 
         return {

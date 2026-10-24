@@ -206,24 +206,15 @@ export default function MusicShareDetail() {
   const linkedShort = useMemo(() => {
     if (!track) return null;
 
-    const normalizedTrackTitle = normalizeText(track.title);
-    const normalizedTrackCreatorEmail = normalizeText(track.creatorEmail);
-
     return [...shorts]
       .filter((short) => {
         if (!short.videoUrl) return false;
         if (short.visibility === 'private' && short.creatorEmail !== user?.email) return false;
 
-        const hasMatchingId =
+        return (
           short.musicShareTrackId === track.id ||
-          short.musicProjectId === track.id ||
-          Boolean(track.projectId && short.musicProjectId === track.projectId);
-        const hasMatchingIdentity =
-          Boolean(normalizedTrackTitle) &&
-          normalizeText(short.musicProjectTitle) === normalizedTrackTitle &&
-          (!normalizedTrackCreatorEmail || normalizeText(short.creatorEmail) === normalizedTrackCreatorEmail);
-
-        return hasMatchingId || hasMatchingIdentity;
+          (!short.musicShareTrackId && Boolean(track.projectId && short.musicProjectId === track.projectId))
+        );
       })
       .sort((left, right) => right.createdAt - left.createdAt)[0] ?? null;
   }, [shorts, track, user?.email]);
@@ -352,16 +343,6 @@ export default function MusicShareDetail() {
     } finally {
       setIsPreviewPreparing(false);
     }
-  };
-
-  const handleOpenYouTube = () => {
-    if (track.youtubeUrl && /^https?:\/\//i.test(track.youtubeUrl)) {
-      window.open(track.youtubeUrl, '_blank', 'noopener,noreferrer');
-      return;
-    }
-
-    const query = encodeURIComponent(`${track.title} ${track.creatorName}`);
-    window.open(`https://www.youtube.com/results?search_query=${query}`, '_blank', 'noopener,noreferrer');
   };
 
   const handleShareTrack = async () => {
@@ -553,214 +534,175 @@ const handleDeleteTrack = async () => {
     <div className="music-share-detail-page">
       <SiteHeader activeSection="community" />
 
-      <main className="music-share-detail-shell">
-        <section className="music-share-detail-hero">
-          <div className="music-share-detail-copy">
-            <span className="music-share-detail-kicker">{track.category ? track.category.toUpperCase() : 'ETC'}</span>
-            <h1>{track.title}</h1>
-            <p>{track.reference}</p>
-            <div className="music-share-detail-meta">
-              <span>{track.creatorName}</span>
-              <span>{formatDate(track.createdAt)}</span>
-              <span>{track.progression}</span>
+      <main className="music-detail-v2-shell">
+        <button type="button" className="music-detail-v2-back" onClick={() => navigate('/community/music')}>
+          <span aria-hidden="true">‹</span> 음악 공유
+        </button>
+
+        <section className="music-detail-v2-feature">
+          <div className="music-detail-v2-media">
+            <button
+              type="button"
+              className="music-detail-v2-cover-player"
+              onClick={() => void handleTogglePreview()}
+              disabled={isPreviewPreparing}
+              aria-label={isPreviewPlaying ? '미리듣기 일시정지' : '미리듣기 재생'}
+            >
+              <img src={trackImageUrl} alt={`${track.title} 커버`} />
+              <span className="music-detail-v2-cover-shade" />
+              <span className={`music-detail-v2-cover-play${isPreviewPlaying ? ' is-playing' : ''}`} aria-hidden="true"><i /></span>
+              <b>{isPreviewPreparing ? '음원을 준비하고 있습니다' : isPreviewPlaying ? '재생 중' : '곡 재생'}</b>
+            </button>
+            <div className="music-detail-v2-media-caption">
+              <span>공유 음원</span>
+              <strong>{track.title}</strong>
             </div>
-            <TrackWaveform
-              className="music-share-detail-waveform"
-              project={track.project}
-              seed={track.id}
-              bars={112}
-            />
           </div>
-          <div className="music-share-detail-hero-cover">
-            <img src={trackImageUrl} alt={`${track.title} 커버`} />
+
+          <div className="music-detail-v2-summary">
+            <div className="music-detail-v2-labels">
+              <span>공유곡</span>
+              <span>{getGenreLabel(track.category)}</span>
+            </div>
+            <h1>{track.title}</h1>
+            <p className="music-detail-v2-description">{track.reference || '곡에 대한 설명이 아직 없습니다.'}</p>
+
+            <div className="music-detail-v2-creator">
+              <span aria-hidden="true">{track.creatorName.slice(0, 1)}</span>
+              <div><strong>{track.creatorName}</strong><small>{formatDate(track.createdAt)} 공개</small></div>
+            </div>
+
+            <div className="music-detail-v2-progression">
+              <span>코드 진행</span>
+              <strong>{track.progression || '정보 없음'}</strong>
+            </div>
+
+            <TrackWaveform className="music-detail-v2-waveform" project={track.project} seed={track.id} bars={72} />
+
+            <div className="music-detail-v2-primary-actions">
+              <button type="button" className="is-play" onClick={() => void handleTogglePreview()} disabled={isPreviewPreparing}>
+                <span className={isPreviewPlaying ? 'is-pause-icon' : 'is-play-icon'} aria-hidden="true" />
+                {isPreviewPreparing ? '준비 중' : isPreviewPlaying ? '일시정지' : 'MP3 재생'}
+              </button>
+              <button type="button" className={liked ? 'is-liked' : ''} onClick={handleToggleLike}>{liked ? '좋아요 취소' : '좋아요'}</button>
+              <button type="button" onClick={() => void handleShareTrack()}>공유</button>
+            </div>
+
+            <div className="music-detail-v2-secondary-actions">
+              <button type="button" onClick={handleDownload}>다운로드</button>
+              <button type="button" onClick={handleOpenComposer}>작곡 화면에서 열기</button>
+              {isOwner ? <button type="button" onClick={handleOpenEdit}>수정</button> : null}
+            </div>
           </div>
         </section>
 
-        <section className="music-share-detail-layout">
-          <article className="music-share-detail-panel">
-            <div className="music-share-detail-panel-head">
-              <strong>곡 정보</strong>
-              <span>진행과 레퍼런스를 기준으로 바로 열어볼 수 있습니다.</span>
+        <section className="music-detail-v2-video-card" aria-label={`${track.title} 연결 영상`}>
+          <header>
+            <div>
+              <span>VIDEO</span>
+              <h2>연결 영상</h2>
+              <p>공유곡에 연결된 유튜브 또는 숏폼 영상을 확인할 수 있습니다.</p>
             </div>
+          </header>
 
-            <div className="music-share-detail-tags">
-              {track.tags?.map((tag) => (
-                <span key={tag}>#{tag}</span>
-              ))}
-            </div>
-
-            <section className="music-share-detail-player-card" aria-label={`${track.title} 미리듣기`}>
-              <div className="music-share-detail-player-head">
-                <div>
-                  <span>공유곡</span>
-                  <strong>{track.title}</strong>
-                </div>
-                <button
-                  type="button"
-                  className={`music-share-detail-play-button${isPreviewPlaying ? ' is-playing' : ''}`}
-                  onClick={() => void handleTogglePreview()}
-                  disabled={isPreviewPreparing}
-                  aria-label={isPreviewPlaying ? '미리듣기 일시정지' : '미리듣기 재생'}
-                >
-                  <i aria-hidden="true" />
-                </button>
-              </div>
-
-              <p className="music-share-detail-player-meta">
-                {getGenreLabel(track.category)} · {track.progression}
-              </p>
-
+          <div className="music-detail-v2-video-body">
+            <div className="music-detail-v2-video-frame">
               {linkedShort?.videoUrl ? (
-                <div className="music-share-detail-player-preview has-short-video">
-                  <video
-                    ref={linkedShortVideoRef}
-                    src={linkedShort.videoUrl}
-                    controls
-                    playsInline
-                    preload="metadata"
-                    aria-label={`${linkedShort.title} 숏폼 영상`}
-                    muted={Boolean(linkedShort.audioUrl)}
-                    onPlay={(event) => {
-                      const audio = linkedShortAudioRef.current;
-                      if (!audio) return;
-                      syncShortAudioToVideo(event.currentTarget, audio);
-                      void audio.play().catch(() => undefined);
-                    }}
-                    onPause={() => linkedShortAudioRef.current?.pause()}
-                    onSeeked={(event) => {
-                      const audio = linkedShortAudioRef.current;
-                      if (audio) syncShortAudioToVideo(event.currentTarget, audio);
-                    }}
-                    onTimeUpdate={(event) => {
-                      const audio = linkedShortAudioRef.current;
-                      if (audio) syncShortAudioToVideo(event.currentTarget, audio);
-                    }}
-                  />
-                  {linkedShort.audioUrl ? (
-                    <audio
-                      ref={linkedShortAudioRef}
-                      src={linkedShort.audioUrl}
-                      preload="metadata"
-                      aria-hidden="true"
-                    />
-                  ) : null}
-                </div>
+                <video
+                  ref={linkedShortVideoRef}
+                  src={linkedShort.videoUrl}
+                  controls
+                  playsInline
+                  preload="metadata"
+                  aria-label={`${linkedShort.title} 숏폼 영상`}
+                  muted={Boolean(linkedShort.audioUrl)}
+                  onPlay={(event) => {
+                    const audio = linkedShortAudioRef.current;
+                    if (!audio) return;
+                    syncShortAudioToVideo(event.currentTarget, audio);
+                    void audio.play().catch(() => undefined);
+                  }}
+                  onPause={() => linkedShortAudioRef.current?.pause()}
+                  onSeeked={(event) => {
+                    const audio = linkedShortAudioRef.current;
+                    if (audio) syncShortAudioToVideo(event.currentTarget, audio);
+                  }}
+                  onTimeUpdate={(event) => {
+                    const audio = linkedShortAudioRef.current;
+                    if (audio) syncShortAudioToVideo(event.currentTarget, audio);
+                  }}
+                />
               ) : youtubeEmbedUrl ? (
-                <div className="music-share-detail-player-preview has-youtube-video">
-                  <iframe
-                    src={youtubeEmbedUrl}
-                    title={`${track.title} 유튜브 영상`}
-                    loading="lazy"
-                    allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
-                    referrerPolicy="strict-origin-when-cross-origin"
-                    allowFullScreen
-                  />
-                </div>
+                <iframe
+                  src={youtubeEmbedUrl}
+                  title={`${track.title} 유튜브 영상`}
+                  loading="lazy"
+                  allow="accelerometer; autoplay; clipboard-write; encrypted-media; gyroscope; picture-in-picture; web-share"
+                  referrerPolicy="strict-origin-when-cross-origin"
+                  allowFullScreen
+                />
               ) : (
-                <button
-                  type="button"
-                  className="music-share-detail-player-preview"
-                  onClick={() => void handleTogglePreview()}
-                  disabled={isPreviewPreparing}
-                  aria-label={isPreviewPlaying ? '미리듣기 일시정지' : '미리듣기 재생'}
-                >
-                  <span className={`music-share-detail-preview-play${isPreviewPlaying ? ' is-playing' : ''}`}>
-                    <i aria-hidden="true" />
-                  </span>
-                  {isPreviewPreparing ? <b>미리듣기 준비 중</b> : null}
-                </button>
+                <div className="music-detail-v2-video-empty">
+                  <span className="music-detail-v2-video-empty-icon" aria-hidden="true"><i /></span>
+                  <strong>연결된 영상이 없습니다.</strong>
+                  <p>유튜브 링크를 등록하면 이 영역에서 바로 재생됩니다.</p>
+                  {isOwner ? <button type="button" onClick={handleOpenEdit}>영상 링크 등록</button> : null}
+                </div>
               )}
-
-              <button type="button" className="music-share-detail-service-link" onClick={handleOpenYouTube}>
-                <span className="music-share-detail-youtube-icon" aria-hidden="true"><i /></span>
-                <strong>유튜브</strong>
-                <em aria-hidden="true">›</em>
-              </button>
-
-              <div className="music-share-detail-player-actions">
-                <button type="button" onClick={() => void handleShareTrack()}>공유</button>
-                {isOwner ? <button type="button" onClick={handleOpenEdit}>수정</button> : null}
-              </div>
-            </section>
-
-            <div className="music-share-detail-actions">
-              <button
-                type="button"
-                className={`music-share-detail-button${liked ? ' is-active' : ''}`}
-                onClick={handleToggleLike}
-              >
-                {liked ? '좋아요 취소' : '좋아요'}
-              </button>
-              <button
-                type="button"
-                className="music-share-detail-button"
-                onClick={handleDownload}
-              >
-                다운로드
-              </button>
-              <button
-                type="button"
-                className="music-share-detail-button is-primary"
-                onClick={handleOpenComposer}
-              >
-                작곡 화면에서 열기
-              </button>
+              {linkedShort?.audioUrl ? (
+                <audio ref={linkedShortAudioRef} src={linkedShort.audioUrl} preload="metadata" aria-hidden="true" />
+              ) : null}
             </div>
+
+            <div className="music-detail-v2-video-info">
+              <span>{linkedShort?.videoUrl ? '숏폼 영상' : youtubeEmbedUrl ? 'YouTube' : '영상 미등록'}</span>
+              <h3>{linkedShort?.title ?? track.title}</h3>
+              <p>{linkedShort?.description ?? track.reference ?? '공유곡 연결 영상입니다.'}</p>
+              <div><strong>{track.creatorName}</strong><small>{track.progression}</small></div>
+              <button type="button" onClick={() => void handleShareTrack()}>공유</button>
+            </div>
+          </div>
+        </section>
+
+        <section className="music-detail-v2-stats" aria-label="공유곡 반응">
+          <div><span>재생</span><strong>{metrics.viewCount.toLocaleString()}</strong></div>
+          <div><span>좋아요</span><strong>{metrics.likeCount.toLocaleString()}</strong></div>
+          <div><span>댓글</span><strong>{comments.length.toLocaleString()}</strong></div>
+          <div><span>다운로드</span><strong>{metrics.downloadCount.toLocaleString()}</strong></div>
+        </section>
+
+        <section className="music-detail-v2-lower">
+          <article className="music-detail-v2-about">
+            <header><span>TRACK INFO</span><h2>곡 정보</h2></header>
+            <p>{track.reference || '작곡자가 곡 설명을 작성하지 않았습니다.'}</p>
+            <div className="music-share-detail-tags">
+              {track.tags?.map((tag) => <span key={tag}>#{tag}</span>)}
+            </div>
+            {isOwner ? (
+              <button type="button" className="music-detail-v2-delete" onClick={handleDeleteTrack}>공유곡 삭제</button>
+            ) : null}
           </article>
 
-          <article className="music-share-detail-panel">
-            <div className="music-share-detail-panel-head">
-              <strong>댓글</strong>
-              <span>{comments.length}개의 반응이 이어지고 있습니다.</span>
-            </div>
-
+          <article className="music-detail-v2-comments">
+            <header><div><span>FEEDBACK</span><h2>댓글 <b>{comments.length}</b></h2></div></header>
             <div className="music-share-detail-comment-form">
-              <label className="music-share-detail-bar-field">
-                <span>피드백 마디</span>
-                <input
-                  type="number"
-                  min="1"
-                  max="999"
-                  value={feedbackBar}
-                  onChange={(event) => setFeedbackBar(event.target.value)}
-                />
-              </label>
-              <textarea
-                value={commentInput}
-                onChange={(event) => setCommentInput(event.target.value)}
-                placeholder="선택한 마디에 대한 피드백을 남겨보세요"
-              />
-              <button type="button" onClick={handleCommentSubmit}>
-                댓글 등록
-              </button>
-              {isOwner && (
-                <button
-                  type="button"
-                  className="music-share-detail-button"
-                  onClick={handleDeleteTrack}
-                  style={{ color: '#ff4d4f', borderColor: '#ff4d4f' }} // 빨간색으로 위험(삭제) 버튼임을 강조
-                >
-                  삭제하기
-                </button>
-                )}
+              <div className="music-detail-v2-comment-fields">
+                <label className="music-share-detail-bar-field">
+                  <span>피드백 마디</span>
+                  <input type="number" min="1" max="999" value={feedbackBar} onChange={(event) => setFeedbackBar(event.target.value)} />
+                </label>
+                <textarea value={commentInput} onChange={(event) => setCommentInput(event.target.value)} placeholder="선택한 마디에 대한 피드백을 남겨보세요" />
+              </div>
+              <button type="button" onClick={handleCommentSubmit}>댓글 등록</button>
             </div>
 
             <div className="music-share-detail-comment-list">
-              {comments.length ? (
-                comments.map((comment) => (
-                  <article key={comment.id} className="music-share-detail-comment-card">
-                    <div className="music-share-detail-comment-meta">
-                      <strong>{comment.authorName}</strong>
-                      <span>{formatDate(comment.createdAt)}</span>
-                    </div>
-                    <p>{comment.content}</p>
-                  </article>
-                ))
-              ) : (
-                <div className="music-share-detail-comment-empty">
-                  아직 댓글이 없습니다.
-                </div>
-              )}
+              {comments.length ? comments.map((comment) => (
+                <article key={comment.id} className="music-share-detail-comment-card">
+                  <div className="music-share-detail-comment-meta"><strong>{comment.authorName}</strong><span>{formatDate(comment.createdAt)}</span></div>
+                  <p>{comment.content}</p>
+                </article>
+              )) : <div className="music-share-detail-comment-empty">아직 댓글이 없습니다. 첫 피드백을 남겨보세요.</div>}
             </div>
           </article>
         </section>

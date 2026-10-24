@@ -63,6 +63,7 @@ function normalizeShort(short: Partial<ShortItem> & { id?: string }, index: numb
     description: short.description ?? '',
     creatorName: short.creatorName ?? 'composer',
     creatorEmail: short.creatorEmail ?? '',
+    genre: short.genre?.trim() || '기타',
     tags,
     createdAt: Number.isFinite(short.createdAt) ? Number(short.createdAt) : Date.now(),
     durationLabel: short.durationLabel ?? '0:15',

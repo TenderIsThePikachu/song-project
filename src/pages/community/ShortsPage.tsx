@@ -22,17 +22,22 @@ import { uploadShortAudioOnServer, uploadShortVideoOnServer } from '../../utils/
 import './ShortsPage.css';
 
 type ShortsFilter = 'all' | 'mine' | 'liked';
+type ShortsSort = 'latest' | 'popular' | 'views';
+type ShortsDurationFilter = 'all' | 'short' | 'medium' | 'long' | 'extended';
+type MusicSourceTab = 'shared' | 'work';
 
-type SelectableMusicProject = Pick<
-  ComposerProjectRecord,
-  'id' | 'title' | 'bpm' | 'steps' | 'updatedAt' | 'project'
-> & {
-  source: 'studio' | 'collab';
+type SelectableMusicProject = Pick<ComposerProjectRecord, 'id' | 'title' | 'bpm' | 'steps' | 'updatedAt'> & {
+  project?: ComposerProjectRecord['project'];
+  source: 'studio' | 'collab' | 'shared';
+  audioUrl?: string;
+  projectId?: string;
+  musicShareTrackId?: string;
 };
 
 type ShortsFormState = {
   title: string;
   description: string;
+  genre: string;
   tags: string;
   durationLabel: string;
   tone: ShortTone;
@@ -45,6 +50,7 @@ type ShortsFormState = {
   audioFileName: string;
   musicProjectId: string;
   musicProjectTitle: string;
+  musicShareTrackId: string;
 };
 
 const MAX_VIDEO_SIZE = 50 * 1024 * 1024;
@@ -79,6 +85,36 @@ const FILTER_OPTIONS: Array<{ key: ShortsFilter; label: string }> = [
   { key: 'liked', label: '좋아요한 숏폼' },
 ];
 
+const SORT_OPTIONS: Array<{ key: ShortsSort; label: string }> = [
+  { key: 'latest', label: '최신순' },
+  { key: 'popular', label: '좋아요순' },
+  { key: 'views', label: '조회순' },
+];
+
+const DURATION_OPTIONS: Array<{ key: ShortsDurationFilter; label: string }> = [
+  { key: 'all', label: '전체' },
+  { key: 'short', label: '15초 이하' },
+  { key: 'medium', label: '16~30초' },
+  { key: 'long', label: '31~60초' },
+  { key: 'extended', label: '1분 초과' },
+];
+
+const GENRE_OPTIONS = [
+  '발라드',
+  '팝',
+  'K-POP',
+  '인디',
+  '힙합',
+  'R&B',
+  '록',
+  '재즈',
+  '일렉트로닉',
+  '로파이',
+  'OST',
+  '동요',
+  '기타',
+] as const;
+
 const TONE_OPTIONS: Array<{ key: ShortTone; label: string }> = [
   { key: 'lime', label: 'Lime' },
   { key: 'cyan', label: 'Cyan' },
@@ -89,6 +125,7 @@ const TONE_OPTIONS: Array<{ key: ShortTone; label: string }> = [
 const EMPTY_FORM: ShortsFormState = {
   title: '',
   description: '',
+  genre: '팝',
   tags: '',
   durationLabel: '0:15',
   tone: 'lime',
@@ -101,6 +138,7 @@ const EMPTY_FORM: ShortsFormState = {
   audioFileName: '',
   musicProjectId: '',
   musicProjectTitle: '',
+  musicShareTrackId: '',
 };
 
 function formatCount(value: number) {
@@ -126,6 +164,18 @@ function formatRelativeDate(timestamp: number) {
   }
 
   return `${Math.max(1, Math.floor(diff / day))}일 전`;
+}
+
+function parseDurationSeconds(durationLabel: string) {
+  const parts = durationLabel
+    .trim()
+    .split(':')
+    .map((part) => Number(part));
+
+  if (parts.some((part) => !Number.isFinite(part) || part < 0)) return 0;
+  if (parts.length === 2) return parts[0] * 60 + parts[1];
+  if (parts.length === 3) return parts[0] * 3600 + parts[1] * 60 + parts[2];
+  return Number(durationLabel) || 0;
 }
 
 function parseTags(value: string) {
@@ -154,6 +204,40 @@ function formatFileSize(bytes: number) {
   }
 
   return `${Math.max(1, Math.round(bytes / 1024))}KB`;
+}
+
+type ShortsIconName = 'arrowUp' | 'arrowDown' | 'eye' | 'heart' | 'comment' | 'music' | 'plus' | 'close' | 'search' | 'reset';
+
+function ShortsIcon({ name, filled = false }: { name: ShortsIconName; filled?: boolean }) {
+  return (
+    <svg className="shorts-icon" viewBox="0 0 24 24" aria-hidden="true">
+      {name === 'arrowUp' ? <path d="m6 14 6-6 6 6" /> : null}
+      {name === 'arrowDown' ? <path d="m6 10 6 6 6-6" /> : null}
+      {name === 'eye' ? (
+        <>
+          <path d="M3 12s3.3-5 9-5 9 5 9 5-3.3 5-9 5-9-5-9-5Z" />
+          <circle cx="12" cy="12" r="2.3" />
+        </>
+      ) : null}
+      {name === 'heart' ? (
+        <path
+          className={filled ? 'is-filled' : undefined}
+          d="M20.8 4.7a5.4 5.4 0 0 0-7.6 0L12 5.9l-1.2-1.2a5.4 5.4 0 0 0-7.6 7.6L12 21l8.8-8.7a5.4 5.4 0 0 0 0-7.6Z"
+        />
+      ) : null}
+      {name === 'comment' ? <path d="M20 15a3 3 0 0 1-3 3H8l-5 3V7a3 3 0 0 1 3-3h11a3 3 0 0 1 3 3v8Z" /> : null}
+      {name === 'music' ? <path d="M9 18V5l10-2v13M9 8l10-2M6 21a3 3 0 1 0 0-6 3 3 0 0 0 0 6Zm10-2a3 3 0 1 0 0-6 3 3 0 0 0 0 6Z" /> : null}
+      {name === 'plus' ? <path d="M12 5v14M5 12h14" /> : null}
+      {name === 'close' ? <path d="m7 7 10 10M17 7 7 17" /> : null}
+      {name === 'search' ? (
+        <>
+          <circle cx="11" cy="11" r="6" />
+          <path d="m16 16 4 4" />
+        </>
+      ) : null}
+      {name === 'reset' ? <path d="M4 8V4m0 0h4M4 4l3 3a7 7 0 1 1-1.5 7.5" /> : null}
+    </svg>
+  );
 }
 
 function getProjectDurationLabel(project: SelectableMusicProject) {
@@ -188,6 +272,7 @@ function createFormState(short?: ShortItem, resolvedVideoUrl?: string): ShortsFo
   return {
     title: short.title,
     description: short.description,
+    genre: short.genre?.trim() || '기타',
     tags: getShortTags(short).join(', '),
     durationLabel: short.durationLabel,
     tone: getShortTone(short),
@@ -204,6 +289,7 @@ function createFormState(short?: ShortItem, resolvedVideoUrl?: string): ShortsFo
       (hasExistingAudio ? '현재 업로드된 MP3' : ''),
     musicProjectId: short.musicProjectId ?? '',
     musicProjectTitle: short.musicProjectTitle ?? '',
+    musicShareTrackId: short.musicShareTrackId ?? '',
   };
 }
 
@@ -229,6 +315,10 @@ export default function ShortsPage() {
   const seedShorts = useShortsStore((state) => state.seedShorts);
   const pushNotification = useNotificationStore((state) => state.pushNotification);
   const [selectedFilter, setSelectedFilter] = useState<ShortsFilter>('all');
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedSort, setSelectedSort] = useState<ShortsSort>('latest');
+  const [selectedGenre, setSelectedGenre] = useState('all');
+  const [durationFilter, setDurationFilter] = useState<ShortsDurationFilter>('all');
   const [activeIndex, setActiveIndex] = useState(0);
   const [movementDirection, setMovementDirection] = useState<'up' | 'down' | null>(null);
   const [activeCommentShortId, setActiveCommentShortId] = useState<string | null>(null);
@@ -244,6 +334,7 @@ export default function ShortsPage() {
   const [formError, setFormError] = useState('');
   const [isSubmittingShort, setIsSubmittingShort] = useState(false);
   const [preparingMusicProjectId, setPreparingMusicProjectId] = useState<string | null>(null);
+  const [musicSourceTab, setMusicSourceTab] = useState<MusicSourceTab>('shared');
   const [animatedLikeShortId, setAnimatedLikeShortId] = useState<string | null>(null);
   const feedRef = useRef<HTMLDivElement | null>(null);
   const reelRefs = useRef<Array<HTMLElement | null>>([]);
@@ -275,33 +366,15 @@ export default function ShortsPage() {
     });
   }, [initializeCollabRealtime, seedLibrary, seedMusicShare, user]);
 
-  const findMusicShareTrackId = useCallback(
-    (musicProjectId?: string, musicProjectTitle?: string, creatorEmail?: string) => {
-      if (!musicProjectId && !musicProjectTitle) return undefined;
-
-      const normalizedTitle = musicProjectTitle?.trim().toLocaleLowerCase('ko-KR');
-      return (
-        musicShareTracks.find(
-          (track) => track.id === musicProjectId || track.projectId === musicProjectId
-        )?.id ??
-        musicShareTracks.find(
-          (track) =>
-            Boolean(normalizedTitle) &&
-            track.title.trim().toLocaleLowerCase('ko-KR') === normalizedTitle &&
-            (!creatorEmail || track.creatorEmail === creatorEmail)
-        )?.id
-      );
-    },
-    [musicShareTracks]
-  );
-
-  const myMusicProjects = useMemo(
+  const myWorkProjects = useMemo(
     () => {
       const normalizedUserEmail = user?.email.trim().toLowerCase();
       if (!normalizedUserEmail) return [];
 
       const studioProjects: SelectableMusicProject[] = libraryProjects
-        .filter((project) => project.creatorEmail.trim().toLowerCase() === normalizedUserEmail)
+        .filter((project) =>
+          project.creatorEmail.trim().toLowerCase() === normalizedUserEmail && !project.isShared
+        )
         .map((project) => ({
           id: project.id,
           title: project.title,
@@ -335,15 +408,77 @@ export default function ShortsPage() {
     [collabProjects, libraryProjects, user?.email]
   );
 
+  const mySharedMusicProjects = useMemo(() => {
+    const normalizedUserEmail = user?.email.trim().toLowerCase();
+    if (!normalizedUserEmail) return [];
+
+    const sharedTracks = musicShareTracks
+      .filter((track) =>
+        track.creatorEmail?.trim().toLowerCase() === normalizedUserEmail ||
+        track.creatorName === user?.name
+      )
+      .map<SelectableMusicProject>((track) => {
+        const linkedProject = track.projectId
+          ? libraryProjects.find((project) => project.id === track.projectId)?.project
+          : undefined;
+        const project = track.project ?? linkedProject;
+
+        return {
+          id: track.id,
+          title: track.title,
+          bpm: project?.bpm ?? 120,
+          steps: project?.steps ?? 16,
+          updatedAt: track.createdAt,
+          project,
+          source: 'shared',
+          audioUrl: track.audioUrl,
+          projectId: track.projectId,
+          musicShareTrackId: track.id,
+        };
+      });
+
+    const sharedProjectIds = new Set(
+      sharedTracks.flatMap((track) => track.projectId ? [track.projectId] : [])
+    );
+    const sharedLibraryProjects: SelectableMusicProject[] = libraryProjects
+      .filter((project) =>
+        project.isShared &&
+        project.creatorEmail.trim().toLowerCase() === normalizedUserEmail &&
+        !sharedProjectIds.has(project.id)
+      )
+      .map((project) => ({
+        id: project.id,
+        title: project.title,
+        bpm: project.bpm,
+        steps: project.steps,
+        updatedAt: project.updatedAt,
+        project: project.project,
+        source: 'shared',
+        audioUrl: project.audioUrl,
+        projectId: project.id,
+        musicShareTrackId: project.id,
+      }));
+
+    return [...sharedTracks, ...sharedLibraryProjects]
+      .sort((left, right) => right.updatedAt - left.updatedAt);
+  }, [libraryProjects, musicShareTracks, user?.email, user?.name]);
+
+  const visibleMusicProjects = musicSourceTab === 'shared' ? mySharedMusicProjects : myWorkProjects;
+
+  const availableGenres = useMemo(
+    () => Array.from(new Set(shorts.map((short) => short.genre?.trim() || '기타'))).sort(),
+    [shorts]
+  );
+
   const filteredShorts = useMemo(() => {
-    const orderedShorts = [...shorts].sort((left, right) => right.createdAt - left.createdAt);
+    let nextShorts = [...shorts];
 
     if (selectedFilter === 'mine') {
       if (!user) {
         return [];
       }
 
-      return orderedShorts.filter((short) => short.creatorEmail === user.email);
+      nextShorts = nextShorts.filter((short) => short.creatorEmail === user.email);
     }
 
     if (selectedFilter === 'liked') {
@@ -351,11 +486,47 @@ export default function ShortsPage() {
         return [];
       }
 
-      return orderedShorts.filter((short) => getShortLikedBy(short).includes(user.email));
+      nextShorts = nextShorts.filter((short) => getShortLikedBy(short).includes(user.email));
     }
 
-    return orderedShorts;
-  }, [selectedFilter, shorts, user]);
+    const normalizedQuery = searchQuery.trim().toLocaleLowerCase('ko-KR');
+    if (normalizedQuery) {
+      nextShorts = nextShorts.filter((short) =>
+        [short.title, short.creatorName, short.description, short.genre, ...getShortTags(short)]
+          .join(' ')
+          .toLocaleLowerCase('ko-KR')
+          .includes(normalizedQuery)
+      );
+    }
+
+    if (selectedGenre !== 'all') {
+      nextShorts = nextShorts.filter(
+        (short) => (short.genre?.trim() || '기타') === selectedGenre
+      );
+    }
+
+    if (durationFilter !== 'all') {
+      nextShorts = nextShorts.filter((short) => {
+        const seconds = parseDurationSeconds(short.durationLabel);
+        if (durationFilter === 'short') return seconds <= 15;
+        if (durationFilter === 'medium') return seconds >= 16 && seconds <= 30;
+        if (durationFilter === 'long') return seconds >= 31 && seconds <= 60;
+        return seconds > 60;
+      });
+    }
+
+    return nextShorts.sort((left, right) => {
+      if (selectedSort === 'popular') return right.likeCount - left.likeCount;
+      if (selectedSort === 'views') return right.viewCount - left.viewCount;
+      return right.createdAt - left.createdAt;
+    });
+  }, [durationFilter, searchQuery, selectedFilter, selectedGenre, selectedSort, shorts, user]);
+
+  const hasAdvancedFilters =
+    Boolean(searchQuery.trim()) ||
+    selectedSort !== 'latest' ||
+    selectedGenre !== 'all' ||
+    durationFilter !== 'all';
 
   const filterCounts: Record<ShortsFilter, number> = useMemo(
     () => ({
@@ -380,6 +551,11 @@ export default function ShortsPage() {
   const safeActiveIndex = Math.min(activeIndex, Math.max(filteredShorts.length - 1, 0));
   const activeShort = filteredShorts[safeActiveIndex] ?? null;
   const activeShortComments = activeShort ? commentsByShortId[activeShort.id] ?? [] : [];
+  const activeLinkedMusicShareTrackId = activeShort?.musicShareTrackId;
+  const activeLinkedMusicShareTrack = activeLinkedMusicShareTrackId
+    ? musicShareTracks.find((track) => track.id === activeLinkedMusicShareTrackId) ??
+      mySharedMusicProjects.find((track) => track.musicShareTrackId === activeLinkedMusicShareTrackId)
+    : undefined;
   const isDesktopCommentOpen = Boolean(activeShort && activeCommentShortId === activeShort.id);
 
   const clearPreviewVideo = useCallback(() => {
@@ -626,6 +802,7 @@ export default function ShortsPage() {
     resetPreviews();
     setEditingShortId(null);
     setFormState(EMPTY_FORM);
+    setMusicSourceTab('shared');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -657,6 +834,7 @@ export default function ShortsPage() {
       previewVideoUrlRef.current = resolvedVideoUrl;
     }
     setFormState(createFormState(short, resolvedVideoUrl));
+    setMusicSourceTab(short.musicShareTrackId ? 'shared' : 'work');
     setFormError('');
     setIsModalOpen(true);
   };
@@ -667,6 +845,7 @@ export default function ShortsPage() {
     setEditingShortId(null);
     setFormError('');
     setFormState(EMPTY_FORM);
+    setMusicSourceTab('shared');
   };
 
   const handleFilterChange = (nextFilter: ShortsFilter) => {
@@ -676,6 +855,15 @@ export default function ShortsPage() {
     }
 
     setSelectedFilter(nextFilter);
+    setActiveIndex(0);
+    setActiveCommentShortId(null);
+  };
+
+  const resetAdvancedFilters = () => {
+    setSearchQuery('');
+    setSelectedSort('latest');
+    setSelectedGenre('all');
+    setDurationFilter('all');
     setActiveIndex(0);
     setActiveCommentShortId(null);
   };
@@ -704,6 +892,17 @@ export default function ShortsPage() {
         videoStorageKey: current.videoStorageKey || '',
         fileName: file.name,
       }));
+      const video = document.createElement('video');
+      video.preload = 'metadata';
+      video.src = videoUrl;
+      video.onloadedmetadata = () => {
+        const totalSeconds = Math.max(1, Math.round(video.duration));
+        const minutes = Math.floor(totalSeconds / 60);
+        const seconds = String(totalSeconds % 60).padStart(2, '0');
+        setFormState((current) => ({ ...current, durationLabel: `${minutes}:${seconds}` }));
+        video.removeAttribute('src');
+        video.load();
+      };
       setFormError('');
     } catch (error) {
       console.error(error);
@@ -746,6 +945,7 @@ export default function ShortsPage() {
         audioFileName: file.name,
         musicProjectId: '',
         musicProjectTitle: '',
+        musicShareTrackId: '',
       }));
       setFormError('');
     } catch (error) {
@@ -761,6 +961,31 @@ export default function ShortsPage() {
     setFormError('');
 
     try {
+      if (project.source === 'shared') {
+        if (!project.audioUrl || !project.musicShareTrackId) {
+          throw new Error('공유곡 MP3를 찾을 수 없습니다. 스튜디오에서 다시 공유해 주세요.');
+        }
+
+        clearPreviewAudio();
+        setUploadedAudioFile(null);
+        setFormState((current) => ({
+          ...current,
+          title: current.title || project.title,
+          durationLabel: getProjectDurationLabel(project),
+          audioUrl: project.audioUrl ?? '',
+          audioStorageKey: '',
+          audioFileName: getProjectAudioFileName(project.title),
+          musicProjectId: project.projectId ?? '',
+          musicProjectTitle: project.title,
+          musicShareTrackId: project.musicShareTrackId ?? '',
+        }));
+        return;
+      }
+
+      if (!project.project) {
+        throw new Error('공유곡 음원을 찾을 수 없습니다. 스튜디오에서 다시 공유해 주세요.');
+      }
+
       const audioBlob = await exportSongProjectAsMp3(project.project);
       const fileName = getProjectAudioFileName(project.title);
       const audioFile = new File([audioBlob], fileName, { type: 'audio/mpeg' });
@@ -782,6 +1007,7 @@ export default function ShortsPage() {
         audioFileName: fileName,
         musicProjectId: project.id,
         musicProjectTitle: project.title,
+        musicShareTrackId: '',
       }));
     } catch (error) {
       console.error(error);
@@ -809,6 +1035,7 @@ export default function ShortsPage() {
 
     const title = formState.title.trim();
     const description = formState.description.trim();
+    const genre = formState.genre.trim() || '기타';
     const tags = parseTags(formState.tags);
     const durationLabel = formState.durationLabel.trim() || '0:15';
 
@@ -830,20 +1057,14 @@ export default function ShortsPage() {
     const editingShort = editingShortId
       ? shorts.find((short) => short.id === editingShortId) ?? null
       : null;
-    const musicShareTrackId =
-      findMusicShareTrackId(
-        formState.musicProjectId,
-        formState.musicProjectTitle,
-        user.email
-      ) ?? editingShort?.musicShareTrackId;
 
     let videoStorageKey = formState.videoStorageKey || editingShort?.videoStorageKey;
     let videoUrl = editingShort?.videoUrl;
     let videoFileName = editingShort?.videoFileName;
     let videoSizeBytes = editingShort?.videoSizeBytes;
     let audioStorageKey = formState.audioStorageKey || editingShort?.audioStorageKey;
-    let audioUrl = editingShort?.audioUrl;
-    let audioFileName = editingShort?.audioFileName;
+    let audioUrl = formState.audioUrl || editingShort?.audioUrl;
+    let audioFileName = formState.audioFileName || editingShort?.audioFileName;
     let audioSizeBytes = editingShort?.audioSizeBytes;
 
     setFormError('');
@@ -882,6 +1103,7 @@ export default function ShortsPage() {
           creatorEmail: user.email,
           title,
           description,
+          genre,
           tags,
           durationLabel,
           tone: formState.tone,
@@ -894,9 +1116,9 @@ export default function ShortsPage() {
           audioStorageKey,
           audioFileName,
           audioSizeBytes,
-          musicProjectId: formState.musicProjectId || undefined,
-          musicProjectTitle: formState.musicProjectTitle || undefined,
-          musicShareTrackId,
+          musicProjectId: formState.musicProjectId,
+          musicProjectTitle: formState.musicProjectTitle,
+          musicShareTrackId: formState.musicShareTrackId,
         });
 
         pushNotification({
@@ -910,6 +1132,7 @@ export default function ShortsPage() {
         await createShort({
           title,
           description,
+          genre,
           creatorName: user.name,
           creatorEmail: user.email,
           tags,
@@ -926,7 +1149,7 @@ export default function ShortsPage() {
           audioSizeBytes,
           musicProjectId: formState.musicProjectId || undefined,
           musicProjectTitle: formState.musicProjectTitle || undefined,
-          musicShareTrackId,
+          musicShareTrackId: formState.musicShareTrackId || undefined,
         });
 
         pushNotification({
@@ -1065,7 +1288,8 @@ export default function ShortsPage() {
           className="shorts-comment-close"
           onClick={() => setActiveCommentShortId(null)}
         >
-          닫기
+          <ShortsIcon name="close" />
+          <span>닫기</span>
         </button>
       </div>
 
@@ -1141,6 +1365,7 @@ export default function ShortsPage() {
                 className="shorts-toolbar-button is-primary"
                 onClick={openCreateModal}
               >
+                <ShortsIcon name="plus" />
                 숏폼 올리기
               </button>
             </div>
@@ -1148,6 +1373,113 @@ export default function ShortsPage() {
 
           {filteredShorts.length ? (
             <div className={`shorts-stage${isDesktopCommentOpen ? ' has-comment-sidebar' : ''}`}>
+              <aside className="shorts-filter-panel" aria-label="숏폼 상세 필터">
+                <div className="shorts-filter-panel-head">
+                  <div>
+                    <span>DISCOVER</span>
+                    <strong>필터</strong>
+                  </div>
+                  <em>{filteredShorts.length}</em>
+                </div>
+
+                <label className="shorts-filter-search">
+                  <ShortsIcon name="search" />
+                  <input
+                    type="search"
+                    value={searchQuery}
+                    onChange={(event) => {
+                      setSearchQuery(event.target.value);
+                      setActiveIndex(0);
+                      setActiveCommentShortId(null);
+                    }}
+                    placeholder="제목 또는 작성자 검색"
+                  />
+                </label>
+
+                <div className="shorts-filter-group">
+                  <strong>정렬</strong>
+                  <div className="shorts-filter-segments">
+                    {SORT_OPTIONS.map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        className={selectedSort === option.key ? 'is-active' : ''}
+                        onClick={() => {
+                          setSelectedSort(option.key);
+                          setActiveIndex(0);
+                          setActiveCommentShortId(null);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <div className="shorts-filter-group">
+                  <strong>장르</strong>
+                  <div className="shorts-filter-chips">
+                    <button
+                      type="button"
+                      className={selectedGenre === 'all' ? 'is-active' : ''}
+                      onClick={() => {
+                        setSelectedGenre('all');
+                        setActiveIndex(0);
+                        setActiveCommentShortId(null);
+                      }}
+                    >
+                      전체
+                    </button>
+                    {availableGenres.map((genre) => {
+                      return (
+                        <button
+                          key={genre}
+                          type="button"
+                          className={selectedGenre === genre ? 'is-active' : ''}
+                          onClick={() => {
+                            setSelectedGenre(genre);
+                            setActiveIndex(0);
+                            setActiveCommentShortId(null);
+                          }}
+                        >
+                          {genre}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="shorts-filter-group">
+                  <strong>영상 길이</strong>
+                  <div className="shorts-filter-duration">
+                    {DURATION_OPTIONS.map((option) => (
+                      <button
+                        key={option.key}
+                        type="button"
+                        className={durationFilter === option.key ? 'is-active' : ''}
+                        onClick={() => {
+                          setDurationFilter(option.key);
+                          setActiveIndex(0);
+                          setActiveCommentShortId(null);
+                        }}
+                      >
+                        {option.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+
+                <button
+                  type="button"
+                  className="shorts-filter-reset"
+                  onClick={resetAdvancedFilters}
+                  disabled={!hasAdvancedFilters}
+                >
+                  <ShortsIcon name="reset" />
+                  필터 초기화
+                </button>
+              </aside>
+
               <div
                 ref={feedRef}
                 className={`shorts-feed${
@@ -1164,13 +1496,15 @@ export default function ShortsPage() {
                   const resolvedVideoUrl =
                     resolvedVideoUrlByShortId[short.id] ?? short.videoUrl ?? '';
                   const resolvedAudioUrl = short.audioUrl ?? '';
-                  const linkedMusicShareTrackId =
-                    short.musicShareTrackId ||
-                    findMusicShareTrackId(
-                      short.musicProjectId,
-                      short.musicProjectTitle,
-                      short.creatorEmail
-                    );
+                  const linkedMusicShareTrack = short.musicShareTrackId
+                    ? musicShareTracks.find((track) => track.id === short.musicShareTrackId) ??
+                      mySharedMusicProjects.find(
+                        (track) => track.musicShareTrackId === short.musicShareTrackId
+                      )
+                    : undefined;
+                  const linkedMusicShareTrackId = linkedMusicShareTrack
+                    ? short.musicShareTrackId
+                    : undefined;
 
                   return (
                     <article
@@ -1262,6 +1596,9 @@ export default function ShortsPage() {
                             <p>{short.description}</p>
 
                             <div className="shorts-reel-tags">
+                              <span className="shorts-tag is-genre">
+                                {short.genre?.trim() || '기타'}
+                              </span>
                               {getShortTags(short).map((tag) => (
                                 <span key={`${short.id}-${tag}`} className="shorts-tag">
                                   #{tag}
@@ -1283,9 +1620,9 @@ export default function ShortsPage() {
                                     `/community/music/${encodeURIComponent(linkedMusicShareTrackId)}`
                                   )
                                 }
-                                aria-label={`${short.musicProjectTitle || '연결된 음악'} 상세보기`}
+                                aria-label={`${linkedMusicShareTrack?.title ?? '연결된 음악'} 상세보기`}
                               >
-                                <span aria-hidden="true">♪</span>
+                                <ShortsIcon name="music" />
                                 <strong>상세보기</strong>
                               </button>
                             ) : null}
@@ -1294,9 +1631,7 @@ export default function ShortsPage() {
                               className="shorts-reel-stat"
                               aria-label={`조회수 ${formatCount(short.viewCount)}`}
                             >
-                              <span className="shorts-reel-stat-icon" aria-hidden="true">
-                                ◔
-                              </span>
+                              <span className="shorts-reel-stat-icon" aria-hidden="true"><ShortsIcon name="eye" /></span>
                               <strong>{formatCount(short.viewCount)}</strong>
                             </div>
 
@@ -1309,9 +1644,7 @@ export default function ShortsPage() {
                               aria-pressed={isLiked}
                               aria-label={isLiked ? '좋아요 취소' : '좋아요'}
                             >
-                              <span className="shorts-reel-stat-icon" aria-hidden="true">
-                                {isLiked ? '♥' : '♡'}
-                              </span>
+                              <span className="shorts-reel-stat-icon" aria-hidden="true"><ShortsIcon name="heart" filled={isLiked} /></span>
                               <strong>{formatCount(short.likeCount)}</strong>
                             </button>
 
@@ -1326,9 +1659,7 @@ export default function ShortsPage() {
                               aria-pressed={isCommentOpen}
                               aria-label="댓글 열기"
                             >
-                              <span className="shorts-reel-stat-icon" aria-hidden="true">
-                                ⌁
-                              </span>
+                              <span className="shorts-reel-stat-icon" aria-hidden="true"><ShortsIcon name="comment" /></span>
                               <strong>{formatCount(reelComments.length)}</strong>
                             </button>
                           </div>
@@ -1343,7 +1674,8 @@ export default function ShortsPage() {
                                 className="shorts-comment-close"
                                 onClick={() => setActiveCommentShortId(null)}
                               >
-                                닫기
+                                <ShortsIcon name="close" />
+                                <span>닫기</span>
                               </button>
                             </div>
 
@@ -1395,7 +1727,76 @@ export default function ShortsPage() {
 
               {isDesktopCommentOpen && activeShort
                 ? renderCommentPanel(activeShort, activeShortComments, 'sidebar')
-                : null}
+                : activeShort ? (
+                    <aside className="shorts-info-sidebar" aria-label="현재 숏폼 정보">
+                      <div className="shorts-info-kicker">NOW PLAYING</div>
+                      <h2>{activeShort.title}</h2>
+                      <div className="shorts-info-author">
+                        <span>{activeShort.creatorName.slice(0, 1).toUpperCase()}</span>
+                        <div>
+                          <strong>{activeShort.creatorName}</strong>
+                          <em>{formatRelativeDate(activeShort.createdAt)}</em>
+                        </div>
+                      </div>
+
+                      <p>{activeShort.description || '등록된 소개가 없습니다.'}</p>
+
+                      <dl className="shorts-info-metrics">
+                        <div>
+                          <dt>조회</dt>
+                          <dd>{formatCount(activeShort.viewCount)}</dd>
+                        </div>
+                        <div>
+                          <dt>좋아요</dt>
+                          <dd>{formatCount(activeShort.likeCount)}</dd>
+                        </div>
+                        <div>
+                          <dt>댓글</dt>
+                          <dd>{formatCount(activeShortComments.length)}</dd>
+                        </div>
+                      </dl>
+
+                      <div className="shorts-info-music">
+                        <ShortsIcon name="music" />
+                        <div>
+                          <span>연결된 음악</span>
+                          <strong>
+                            {activeLinkedMusicShareTrack?.title || activeShort.musicProjectTitle || '첨부된 음악'}
+                          </strong>
+                        </div>
+                      </div>
+
+                      <div className="shorts-info-actions">
+                        <button
+                          type="button"
+                          className="shorts-info-detail-button"
+                          disabled={!activeLinkedMusicShareTrackId}
+                          onClick={() => {
+                            if (!activeLinkedMusicShareTrackId) return;
+                            navigate(
+                              `/community/music/${encodeURIComponent(activeLinkedMusicShareTrackId)}`
+                            );
+                          }}
+                          title={
+                            activeLinkedMusicShareTrackId
+                              ? '연결된 음악 상세 페이지로 이동'
+                              : '음악 공유 게시글이 연결되지 않았습니다.'
+                          }
+                        >
+                          <ShortsIcon name="music" />
+                          음악 상세보기
+                        </button>
+                        <button
+                          type="button"
+                          className="shorts-info-comment-button"
+                          onClick={() => setActiveCommentShortId(activeShort.id)}
+                        >
+                          <ShortsIcon name="comment" />
+                          댓글 보기
+                        </button>
+                      </div>
+                    </aside>
+                  ) : null}
 
               <div className="shorts-nav-rail">
                 <button
@@ -1405,7 +1806,7 @@ export default function ShortsPage() {
                   disabled={safeActiveIndex === 0}
                   aria-label="이전 숏폼"
                 >
-                  ↑
+                  <ShortsIcon name="arrowUp" />
                 </button>
                 <button
                   type="button"
@@ -1414,7 +1815,7 @@ export default function ShortsPage() {
                   disabled={safeActiveIndex >= filteredShorts.length - 1}
                   aria-label="다음 숏폼"
                 >
-                  ↓
+                  <ShortsIcon name="arrowDown" />
                 </button>
               </div>
             </div>
@@ -1427,6 +1828,15 @@ export default function ShortsPage() {
               </strong>
               <span>첫 영상을 올리거나 필터를 바꿔서 다시 살펴보세요.</span>
               <div className="shorts-empty-actions">
+                {hasAdvancedFilters ? (
+                  <button
+                    type="button"
+                    className="shorts-helper-button"
+                    onClick={resetAdvancedFilters}
+                  >
+                    필터 초기화
+                  </button>
+                ) : null}
                 <button
                   type="button"
                   className="shorts-helper-button"
@@ -1454,6 +1864,7 @@ export default function ShortsPage() {
             <div className="shorts-modal-head">
               <div>
                 <h2>{editingShortId ? '숏폼 수정하기' : '숏폼 올리기'}</h2>
+                <p>영상 정보와 사용할 음악을 설정해 주세요.</p>
               </div>
               <button
                 type="button"
@@ -1466,6 +1877,16 @@ export default function ShortsPage() {
             </div>
 
             <form className="shorts-modal-form" onSubmit={handleSubmitShort}>
+              <div className="shorts-modal-grid">
+                <div className="shorts-modal-column">
+                  <div className="shorts-modal-section-head">
+                    <span>01</span>
+                    <div>
+                      <strong>콘텐츠 정보</strong>
+                      <small>제목과 설명, 공개 범위를 설정합니다.</small>
+                    </div>
+                  </div>
+
               <label className="shorts-field">
                 <span>제목</span>
                 <input
@@ -1496,18 +1917,20 @@ export default function ShortsPage() {
               </label>
 
               <label className="shorts-field">
-                <span>태그</span>
-                <input
-                  type="text"
-                  value={formState.tags}
+                <span>장르</span>
+                <select
+                  value={formState.genre}
                   onChange={(event) =>
                     setFormState((current) => ({
                       ...current,
-                      tags: event.target.value,
+                      genre: event.target.value,
                     }))
                   }
-                  placeholder="예: 코드진행, 베이스, 루프"
-                />
+                >
+                  {GENRE_OPTIONS.map((genre) => (
+                    <option key={genre} value={genre}>{genre}</option>
+                  ))}
+                </select>
               </label>
 
               <label className="shorts-field">
@@ -1548,6 +1971,42 @@ export default function ShortsPage() {
                 </div>
               </div>
 
+                  <button
+                    type="button"
+                    className="shorts-toggle-row"
+                    onClick={() =>
+                      setFormState((current) => ({
+                        ...current,
+                        visibility: current.visibility === 'public' ? 'private' : 'public',
+                      }))
+                    }
+                  >
+                    <div className="shorts-toggle-copy">
+                      <div className="shorts-toggle-title">
+                        <ShortsIcon name="eye" />
+                        <strong>공개 여부</strong>
+                      </div>
+                      <span>끄면 나만 볼 수 있어요.</span>
+                    </div>
+                    <span
+                      className={`shorts-toggle${
+                        formState.visibility === 'public' ? ' is-active' : ''
+                      }`}
+                    >
+                      <span />
+                    </span>
+                  </button>
+                </div>
+
+                <div className="shorts-modal-column shorts-modal-media-column">
+                  <div className="shorts-modal-section-head">
+                    <span>02</span>
+                    <div>
+                      <strong>미디어와 음악</strong>
+                      <small>영상과 함께 재생할 음악을 선택합니다.</small>
+                    </div>
+                  </div>
+
               <div className="shorts-upload-box">
                 <div className="shorts-upload-copy">
                   <strong>영상 업로드</strong>
@@ -1585,43 +2044,77 @@ export default function ShortsPage() {
                 </div>
               ) : null}
 
-              <section className="shorts-music-library" aria-label="내 음악 선택">
+              <section className="shorts-music-library" aria-label="클립 음악 선택">
                 <div className="shorts-music-library-head">
                   <div>
-                    <strong>내 음악</strong>
-                    <span>저장한 곡을 선택하면 숏폼 오디오로 바로 설정됩니다.</span>
+                    <strong>음악 선택</strong>
+                    <span>공유한 음악 또는 스튜디오 작업곡을 선택하세요.</span>
                   </div>
-                  <span>{myMusicProjects.length}곡</span>
+                  <span>{visibleMusicProjects.length}곡</span>
+                </div>
+
+                <div className="shorts-music-source-tabs" role="tablist" aria-label="음악 출처">
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={musicSourceTab === 'shared'}
+                    className={musicSourceTab === 'shared' ? 'is-active' : ''}
+                    onClick={() => setMusicSourceTab('shared')}
+                  >
+                    공유한 음악 <span>{mySharedMusicProjects.length}</span>
+                  </button>
+                  <button
+                    type="button"
+                    role="tab"
+                    aria-selected={musicSourceTab === 'work'}
+                    className={musicSourceTab === 'work' ? 'is-active' : ''}
+                    onClick={() => setMusicSourceTab('work')}
+                  >
+                    내 작업곡 <span>{myWorkProjects.length}</span>
+                  </button>
                 </div>
 
                 <div className="shorts-music-list">
-                  {libraryStatus === 'loading' || collabConnectionStatus === 'connecting' ? (
-                    <div className="shorts-music-status">내 음악을 불러오는 중...</div>
-                  ) : myMusicProjects.length ? (
-                    myMusicProjects.map((project) => {
-                      const isSelected = formState.musicProjectId === project.id;
+                  {musicSourceTab === 'work' && (libraryStatus === 'loading' || collabConnectionStatus === 'connecting') ? (
+                    <div className="shorts-music-status">음악을 불러오는 중...</div>
+                  ) : visibleMusicProjects.length ? (
+                    visibleMusicProjects.map((project) => {
+                      const isSelected = project.source === 'shared'
+                        ? formState.musicShareTrackId === project.musicShareTrackId
+                        : !formState.musicShareTrackId && formState.musicProjectId === project.id;
                       const isPreparing = preparingMusicProjectId === project.id;
+                      const isUnavailable = project.source === 'shared' && !project.audioUrl;
                       return (
                         <button
                           key={project.id}
                           type="button"
                           className={`shorts-music-option${isSelected ? ' is-selected' : ''}`}
                           onClick={() => void handleSelectLibraryMusic(project)}
-                          disabled={Boolean(preparingMusicProjectId)}
+                          disabled={Boolean(preparingMusicProjectId) || isUnavailable}
                         >
                           <span>
                             <strong>{project.title}</strong>
                             <small>
-                              {project.source === 'collab' ? '합작 / ' : ''}
+                              {project.source === 'shared' ? '음악공유 / ' : project.source === 'collab' ? '합작 / ' : '스튜디오 / '}
                               {project.bpm} BPM / {getProjectDurationLabel(project)}
                             </small>
                           </span>
-                          <em>{isPreparing ? '음원 만드는 중...' : isSelected ? '설정됨' : '노래 설정'}</em>
+                          <em>
+                            {isUnavailable
+                              ? 'MP3 없음'
+                              : isPreparing
+                                ? project.source === 'shared' ? '연결 중...' : '음원 만드는 중...'
+                                : isSelected ? '설정됨' : '노래 설정'}
+                          </em>
                         </button>
                       );
                     })
                   ) : (
-                    <div className="shorts-music-status">내 음악에 저장된 곡이 없습니다.</div>
+                    <div className="shorts-music-status">
+                      {musicSourceTab === 'shared'
+                        ? '음악공유에 올린 곡이 없습니다.'
+                        : '스튜디오에 저장된 작업곡이 없습니다.'}
+                    </div>
                   )}
                 </div>
               </section>
@@ -1630,7 +2123,7 @@ export default function ShortsPage() {
                 <div className="shorts-upload-copy">
                   <strong>다른 MP3 추가</strong>
                   <span>
-                    내 음악 대신 {formatFileSize(MAX_AUDIO_SIZE)} 이하 MP3를 사용할 수 있어요.
+                    선택한 음악 대신 {formatFileSize(MAX_AUDIO_SIZE)} 이하 MP3를 사용할 수 있어요.
                   </span>
                 </div>
                 <label className="shorts-upload-button">
@@ -1650,7 +2143,7 @@ export default function ShortsPage() {
                     <strong>{formState.audioFileName || '업로드한 MP3'}</strong>
                     <span>
                       {formState.musicProjectTitle
-                        ? `내 음악 "${formState.musicProjectTitle}"이 설정되었습니다.`
+                        ? `"${formState.musicProjectTitle}"이 클립 음악으로 설정되었습니다.`
                         : '숏폼 재생 시 함께 사용할 오디오입니다.'}
                       {uploadedAudioFile ? ` (${formatFileSize(uploadedAudioFile.size)})` : ''}
                     </span>
@@ -1658,29 +2151,8 @@ export default function ShortsPage() {
                   </div>
                 </div>
               ) : null}
-
-              <button
-                type="button"
-                className="shorts-toggle-row"
-                onClick={() =>
-                  setFormState((current) => ({
-                    ...current,
-                    visibility: current.visibility === 'public' ? 'private' : 'public',
-                  }))
-                }
-              >
-                <div className="shorts-toggle-copy">
-                  <strong>공개 여부</strong>
-                  <span>끄면 나만 볼 수 있어요.</span>
                 </div>
-                <span
-                  className={`shorts-toggle${
-                    formState.visibility === 'public' ? ' is-active' : ''
-                  }`}
-                >
-                  <span />
-                </span>
-              </button>
+              </div>
 
               {formError ? <p className="shorts-error-text">{formError}</p> : null}
 

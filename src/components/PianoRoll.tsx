@@ -222,11 +222,22 @@ export const PianoRoll = ({
   const steps = useSongStore((state) => state.steps);
   const timeSignature = useSongStore((state) => state.timeSignature);
   const timeSignatureChanges = useSongStore((state) => state.timeSignatureChanges);
-  const currentStep = useSongStore((state) => state.currentStep);
+  const activeTimeSignatureKey = useSongStore((state) => {
+    const meter = getTimeSignatureAtStep(
+      state.timeSignatureChanges,
+      state.timeSignature,
+      state.currentStep
+    );
+    return `${meter.beats}/${meter.beatType}`;
+  });
   const toggleMelody = useSongStore((state) => state.toggleMelody);
   const toggleBass = useSongStore((state) => state.toggleBass);
   const applyChord = useSongStore((state) => state.applyChord);
-  const activeTimeSignature = getTimeSignatureAtStep(timeSignatureChanges, timeSignature, currentStep);
+  const [activeBeats, activeBeatType] = activeTimeSignatureKey.split('/').map(Number);
+  const activeTimeSignature = {
+    beats: activeBeats,
+    beatType: activeBeatType,
+  } as TimeSignature;
   const stepsPerBar = getStepsPerBar(activeTimeSignature);
   const beatSteps = getBeatSteps(activeTimeSignature);
   const primaryBeatSteps = getPrimaryBeatSteps(activeTimeSignature);
@@ -336,10 +347,12 @@ export const PianoRoll = ({
 
       const isPlaybackScrolling = useSongStore.getState().isPlaying;
       setMelodyViewport((current) => {
-        const horizontalThreshold = isPlaybackScrolling ? colSpan * 4 : 0;
+        const horizontalThreshold = colSpan * (isPlaybackScrolling ? 4 : 2);
+        const verticalThreshold = rowSpan * 2;
         const horizontalChanged =
           Math.abs(nextScrollLeft - current.scrollLeft) >= horizontalThreshold;
-        const verticalChanged = scroller.scrollTop !== current.scrollTop;
+        const verticalChanged =
+          Math.abs(scroller.scrollTop - current.scrollTop) >= verticalThreshold;
         const sizeChanged =
           scroller.clientWidth !== current.width || scroller.clientHeight !== current.height;
 
@@ -392,8 +405,8 @@ export const PianoRoll = ({
   const sidebarTopOffset = bodyTopPadding + controlBarHeight + headerHeight + headerMargin;
   const rowSpan = rowHeight + gridGap;
   const colSpan = stepWidth + gridGap;
-  const virtualRowPadding = 8;
-  const virtualColPadding = 8;
+  const virtualRowPadding = 3;
+  const virtualColPadding = 4;
   const visibleRowStart = isBass
     ? 0
     : Math.max(0, Math.floor(melodyViewport.scrollTop / rowSpan) - virtualRowPadding);
@@ -929,6 +942,7 @@ export const PianoRoll = ({
         className={`piano-roll piano-roll--melody piano-roll--melody-detached${
           isGuitar ? ' piano-roll--guitar' : ''
         }`}
+        data-scroll-key="melody"
         style={pianoRollStyle}
         onMouseUp={() => {
           setMarqueeOrigin(null);
