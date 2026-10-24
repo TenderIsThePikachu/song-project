@@ -432,6 +432,7 @@ export const TransportBar = ({
   const [isVocalPreviewing, setIsVocalPreviewing] = useState(false);
   const [isAddingVocal, setIsAddingVocal] = useState(false);
   const vocalAudioInputRef = useRef<HTMLInputElement | null>(null);
+  const vocalImportingRef = useRef(false);
   const [activeDialog, setActiveDialog] = useState<ComposerDialog>(null);
   const [isResetDialogOpen, setIsResetDialogOpen] = useState(false);
   const [isCollabMenuOpen, setIsCollabMenuOpen] = useState(false);
@@ -538,7 +539,7 @@ export const TransportBar = ({
   const handleVocalAudioImport = async (event: ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     event.target.value = '';
-    if (!file) return;
+    if (!file || vocalImportingRef.current) return;
 
     const isSupported =
       file.type === 'audio/mpeg' ||
@@ -549,6 +550,7 @@ export const TransportBar = ({
       return;
     }
 
+    vocalImportingRef.current = true;
     setIsAddingVocal(true);
     try {
       await onImportVocalAudio?.(file);
@@ -559,6 +561,7 @@ export const TransportBar = ({
       const message = error instanceof Error ? error.message : String(error);
       alert(`보컬 음원을 추가하지 못했습니다.\n\n${message}`);
     } finally {
+      vocalImportingRef.current = false;
       setIsAddingVocal(false);
     }
   };

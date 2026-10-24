@@ -2099,7 +2099,9 @@ export function Composer() {
 
     setOpenExtraTrackIds((current) => {
       const existingIds = new Set(extraTracks.map((track) => track.id));
-      const keptIds = current.filter((id) => existingIds.has(id));
+      const keptIds = current.filter(
+        (id, index) => existingIds.has(id) && current.indexOf(id) === index
+      );
       const missingIds = extraTracks
         .map((track) => track.id)
         .filter((id) => !keptIds.includes(id));
@@ -3505,8 +3507,13 @@ export function Composer() {
       if (track.fixed) return;
 
       const trackId = duplicateInstrumentTrack(track.tab, track.trackId);
-      setOpenExtraTrackIds((current) => [...current, trackId]);
-      setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
+      setOpenExtraTrackIds((current) =>
+        current.includes(trackId) ? current : [...current, trackId]
+      );
+      setArrangementTrackOrder((current) => {
+        const arrangementId = `extra-${trackId}`;
+        return current.includes(arrangementId) ? current : [...current, arrangementId];
+      });
 
       const sourceLength = track.trackId
         ? extraTrackNoteLengths[track.trackId]
@@ -4967,8 +4974,13 @@ export function Composer() {
           ...current,
           [trackId]: { url, duration, voice: 'female', audio },
         }));
-        setOpenExtraTrackIds((current) => [...current, trackId]);
-        setArrangementTrackOrder((current) => [...current, `extra-${trackId}`]);
+        setOpenExtraTrackIds((current) =>
+          current.includes(trackId) ? current : [...current, trackId]
+        );
+        setArrangementTrackOrder((current) => {
+          const arrangementId = `extra-${trackId}`;
+          return current.includes(arrangementId) ? current : [...current, arrangementId];
+        });
         setArrangementClipLayouts((current) => ({
           ...current,
           [`extra-${trackId}-full`]: {
