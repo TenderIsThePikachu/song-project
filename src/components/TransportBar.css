@@ -3656,3 +3656,123 @@ html[data-theme='light'] .transport-reset-actions button.is-danger:focus-visible
     padding: 12px;
   }
 }
+
+.transport-share-toast {
+  position: fixed;
+  z-index: 2600;
+  right: 22px;
+  bottom: 22px;
+  width: min(340px, calc(100vw - 24px));
+  min-height: 72px;
+  box-sizing: border-box;
+  padding: 14px 16px;
+  display: grid;
+  grid-template-columns: 38px minmax(0, 1fr);
+  align-items: center;
+  gap: 11px;
+  overflow: hidden;
+  border: 1px solid #cfe5de;
+  border-radius: 8px;
+  background: #ffffff;
+  color: #172238;
+  box-shadow: 0 14px 34px rgba(30, 54, 69, 0.16);
+  animation: transport-share-toast-in 200ms ease-out;
+}
+
+.transport-share-toast-icon {
+  width: 34px;
+  height: 34px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: #e4f7f0;
+}
+
+.transport-share-toast-icon svg {
+  width: 20px;
+  height: 20px;
+  fill: none;
+  stroke: #0d9d78;
+  stroke-width: 2.2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+.transport-share-toast-copy {
+  min-width: 0;
+  display: grid;
+  gap: 3px;
+}
+
+.transport-share-toast-copy strong {
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 800;
+}
+
+.transport-share-toast-copy small {
+  color: #6c788c;
+  font-size: 11px;
+  line-height: 1.45;
+}
+
+.transport-share-toast-timer {
+  position: absolute;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  height: 3px;
+  background: #19b98d;
+  transform-origin: left;
+  animation: transport-share-toast-timer 2.6s linear forwards;
+}
+
+html[data-theme='dark'] .transport-share-toast {
+  border-color: #314c47;
+  background: #17201f;
+  color: #f4f8f7;
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.34);
+}
+
+html[data-theme='dark'] .transport-share-toast-icon {
+  background: #173d34;
+}
+
+html[data-theme='dark'] .transport-share-toast-copy small {
+  color: #aab9b5;
+}
+
+@keyframes transport-share-toast-in {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+@keyframes transport-share-toast-timer {
+  from {
+    transform: scaleX(1);
+  }
+  to {
+    transform: scaleX(0);
+  }
+}
+
+@media (max-width: 600px) {
+  .transport-share-toast {
+    right: 12px;
+    bottom: 12px;
+    width: calc(100vw - 24px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .transport-share-toast,
+  .transport-share-toast-timer {
+    animation: none;
+  }
+}

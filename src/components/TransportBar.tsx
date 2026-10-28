@@ -426,6 +426,7 @@ export const TransportBar = ({
     promise: Promise<Blob>;
   } | null>(null);
   const [aiCompletionToast, setAiCompletionToast] = useState<'generated' | 'imported' | null>(null);
+  const [shareSuccessToast, setShareSuccessToast] = useState<{ id: number } | null>(null);
   const [isAiPanelOpen, setIsAiPanelOpen] = useState(false);
   const [isAiVocalPanelOpen, setIsAiVocalPanelOpen] = useState(false);
   const [aiVocalVoice, setAiVocalVoice] = useState<'female' | 'male'>('female');
@@ -581,6 +582,16 @@ export const TransportBar = ({
 
     return () => window.clearTimeout(timeout);
   }, [aiCompletionToast]);
+
+  useEffect(() => {
+    if (!shareSuccessToast) return undefined;
+
+    const timeout = window.setTimeout(() => {
+      setShareSuccessToast(null);
+    }, 2600);
+
+    return () => window.clearTimeout(timeout);
+  }, [shareSuccessToast]);
 
   useEffect(() => {
     if (!isResetDialogOpen) return undefined;
@@ -1096,7 +1107,7 @@ export const TransportBar = ({
 
       clearShareCover();
       closeDialog();
-      alert('공유했습니다.');
+      setShareSuccessToast({ id: Date.now() });
     } catch (error) {
       console.error('Project share failed:', error);
       const message = error instanceof Error ? error.message : String(error);
@@ -2027,6 +2038,21 @@ export const TransportBar = ({
               <i key={index} style={{ animationDelay: `${index * 46}ms` }} />
             ))}
           </div>
+        </div>
+      ) : null}
+
+      {shareSuccessToast ? (
+        <div className="transport-share-toast" role="status" aria-live="polite">
+          <span className="transport-share-toast-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24">
+              <path d="m6.5 12.5 3.5 3.5 7.5-8" />
+            </svg>
+          </span>
+          <span className="transport-share-toast-copy">
+            <strong>공유 완료</strong>
+            <small>음악공유에 곡을 올렸습니다.</small>
+          </span>
+          <span className="transport-share-toast-timer" aria-hidden="true" />
         </div>
       ) : null}
     </div>
