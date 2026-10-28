@@ -264,6 +264,8 @@
     0
   );
   will-change: transform;
+  contain: layout paint style;
+  backface-visibility: hidden;
   z-index: 14;
   width: 3px;
   border-radius: 999px;
@@ -458,6 +460,7 @@
 .piano-roll-grid--melody.piano-roll-grid--virtualized {
   display: block;
   position: relative;
+  contain: strict;
 }
 
 .piano-roll-grid--virtualized .piano-roll-cell {
@@ -813,6 +816,9 @@
   z-index: 1;
   margin-bottom: 0;
   box-shadow: none;
+  will-change: transform;
+  contain: layout paint style;
+  backface-visibility: hidden;
 }
 
 .piano-roll--melody-detached .piano-roll-step-header--melody::before {
@@ -824,6 +830,7 @@
   flex: 1;
   min-height: 0;
   overflow: auto;
+  contain: layout paint style;
 }
 
 .piano-roll,

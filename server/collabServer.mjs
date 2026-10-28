@@ -1382,6 +1382,30 @@ function handleToggleTask(projectId, taskId) {
   broadcastSnapshot();
 }
 
+function handleDeleteTask(projectId, taskId) {
+  const taskExists = state.tasks.some(
+    (task) => task.id === taskId && task.projectId === projectId
+  );
+  if (!taskExists) {
+    throw createServerError(404, '삭제할 작업을 찾을 수 없습니다.');
+  }
+
+  const timestamp = Date.now();
+  state = {
+    ...state,
+    version: timestamp,
+    projects: state.projects.map((project) =>
+      project.id === projectId ? { ...project, updatedAt: timestamp } : project
+    ),
+    tasks: state.tasks.filter(
+      (task) => task.id !== taskId || task.projectId !== projectId
+    ),
+  };
+
+  saveState();
+  broadcastSnapshot();
+}
+
 function handleSetStatus(projectId, status) {
   const timestamp = Date.now();
 
@@ -1458,6 +1482,74 @@ function handleRenameProject(projectId, payload) {
     projects: state.projects.map((entry) =>
       entry.id === projectId ? { ...entry, title, updatedAt: timestamp } : entry
     ),
+  };
+  saveState();
+  broadcastSnapshot();
+}
+
+function handleUpdateCollabProject(projectId, payload) {
+  const project = state.projects.find((entry) => entry.id === projectId);
+  if (!project) throw createServerError(404, '작업실을 찾을 수 없습니다.');
+  if (String(project.ownerEmail).trim().toLowerCase() !== String(payload.userEmail).trim().toLowerCase()) {
+    throw createServerError(403, '방장만 작업실 정보를 수정할 수 있습니다.');
+  }
+
+  const title = String(payload.title || '').trim();
+  if (!title) throw createServerError(400, '작업실 이름을 입력해주세요.');
+  const bpm = Math.max(40, Math.min(240, Math.round(Number(payload.bpm) || project.bpm)));
+  const timestamp = Date.now();
+  state = {
+    ...state,
+    version: timestamp,
+    projects: state.projects.map((entry) =>
+      entry.id === projectId
+        ? {
+            ...entry,
+            title,
+            summary: String(payload.summary || '').trim(),
+            genre: String(payload.genre || '').trim(),
+            bpm,
+            updatedAt: timestamp,
+          }
+        : entry
+    ),
+  };
+  saveState();
+  broadcastSnapshot();
+}
+
+function handleManageCollabMember(projectId, payload) {
+  const project = state.projects.find((entry) => entry.id === projectId);
+  if (!project) throw createServerError(404, '작업실을 찾을 수 없습니다.');
+  const ownerEmail = String(project.ownerEmail).trim().toLowerCase();
+  const userEmail = String(payload.userEmail).trim().toLowerCase();
+  const memberEmail = String(payload.memberEmail).trim().toLowerCase();
+  if (ownerEmail !== userEmail) throw createServerError(403, '방장만 멤버를 관리할 수 있습니다.');
+  if (ownerEmail === memberEmail) throw createServerError(400, '방장은 강퇴하거나 권한을 변경할 수 없습니다.');
+  if (!project.members.some((member) => String(member.email).trim().toLowerCase() === memberEmail)) {
+    throw createServerError(404, '멤버를 찾을 수 없습니다.');
+  }
+
+  const action = String(payload.action || '');
+  const role = payload.role === 'viewer' ? 'viewer' : 'editor';
+  const timestamp = Date.now();
+  state = {
+    ...state,
+    version: timestamp,
+    projects: state.projects.map((entry) => {
+      if (entry.id !== projectId) return entry;
+      return {
+        ...entry,
+        updatedAt: timestamp,
+        members: action === 'remove'
+          ? entry.members.filter((member) => String(member.email).trim().toLowerCase() !== memberEmail)
+          : entry.members.map((member) =>
+              String(member.email).trim().toLowerCase() === memberEmail
+                ? { ...member, role }
+                : member
+            ),
+      };
+    }),
   };
   saveState();
   broadcastSnapshot();
@@ -2263,6 +2355,22 @@ const server = createServer(async (request, response) => {
       return;
     }
 
+    const updateCollabMatch = pathname.match(/^\/api\/collab\/projects\/([^/]+)\/update$/);
+    if (request.method === 'POST' && updateCollabMatch) {
+      const body = await readBody(request);
+      handleUpdateCollabProject(updateCollabMatch[1], body);
+      writeJson(response, 200, { ok: true, snapshot: createSnapshot() });
+      return;
+    }
+
+    const manageCollabMemberMatch = pathname.match(/^\/api\/collab\/projects\/([^/]+)\/members\/manage$/);
+    if (request.method === 'POST' && manageCollabMemberMatch) {
+      const body = await readBody(request);
+      handleManageCollabMember(manageCollabMemberMatch[1], body);
+      writeJson(response, 200, { ok: true, snapshot: createSnapshot() });
+      return;
+    }
+
     const deleteCollabMatch = pathname.match(/^\/api\/collab\/projects\/([^/]+)\/delete$/);
     if (request.method === 'POST' && deleteCollabMatch) {
       const body = await readBody(request);
@@ -2513,6 +2621,15 @@ const server = createServer(async (request, response) => {
     );
     if (request.method === 'POST' && taskToggleMatch) {
       handleToggleTask(taskToggleMatch[1], taskToggleMatch[2]);
+      writeJson(response, 200, { ok: true, snapshot: createSnapshot() });
+      return;
+    }
+
+    const taskDeleteMatch = pathname.match(
+      /^\/api\/collab\/projects\/([^/]+)\/tasks\/([^/]+)\/delete$/
+    );
+    if (request.method === 'POST' && taskDeleteMatch) {
+      handleDeleteTask(taskDeleteMatch[1], taskDeleteMatch[2]);
       writeJson(response, 200, { ok: true, snapshot: createSnapshot() });
       return;
     }

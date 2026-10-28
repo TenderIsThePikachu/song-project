@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState, type CSSProperties } from 'react';
+import { useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import { useNavigate, useParams } from 'react-router-dom';
 import SiteHeader from '../components/layout/SiteHeader';
 import { useAuthStore } from '../store/authStore';
@@ -7,6 +7,8 @@ import {
   COLLAB_PRESENCE_TIMEOUT_MS,
   useCollabStore,
   type CollabStatus,
+  type CollabMember,
+  type CollabTask,
 } from '../store/collabStore';
 import { useComposerLibraryStore } from '../store/composerLibraryStore';
 import type { SongProject } from '../store/songStore';
@@ -81,6 +83,10 @@ export default function CollabRoomPage() {
   const addMessage = useCollabStore((state) => state.addMessage);
   const addTask = useCollabStore((state) => state.addTask);
   const toggleTask = useCollabStore((state) => state.toggleTask);
+  const deleteTask = useCollabStore((state) => state.deleteTask);
+  const updateProjectDetails = useCollabStore((state) => state.updateProjectDetails);
+  const manageMember = useCollabStore((state) => state.manageMember);
+  const deleteProject = useCollabStore((state) => state.deleteProject);
   const setStatus = useCollabStore((state) => state.setStatus);
   const presenceByProject = useCollabStore((state) => state.presenceByProject);
   const touchPresence = useCollabStore((state) => state.touchPresence);
@@ -96,6 +102,17 @@ export default function CollabRoomPage() {
   const [isJoiningLocalGuest, setIsJoiningLocalGuest] = useState(false);
   const [localGuestJoinFailed, setLocalGuestJoinFailed] = useState(false);
   const [isOpeningComposer, setIsOpeningComposer] = useState(false);
+  const [openTaskMenuId, setOpenTaskMenuId] = useState<string | null>(null);
+  const [taskDeleteTarget, setTaskDeleteTarget] = useState<CollabTask | 'completed' | null>(null);
+  const [isDeletingTask, setIsDeletingTask] = useState(false);
+  const [isProjectMenuOpen, setIsProjectMenuOpen] = useState(false);
+  const [openMemberMenuEmail, setOpenMemberMenuEmail] = useState<string | null>(null);
+  const [isRoomEditOpen, setIsRoomEditOpen] = useState(false);
+  const [isRoomDeleteOpen, setIsRoomDeleteOpen] = useState(false);
+  const [memberRemoveTarget, setMemberRemoveTarget] = useState<CollabMember | null>(null);
+  const [isManagingRoom, setIsManagingRoom] = useState(false);
+  const [roomEditForm, setRoomEditForm] = useState({ title: '', summary: '', genre: '', bpm: 120 });
+  const messageListRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     void initializeRealtime().catch(console.error);
@@ -112,9 +129,19 @@ export default function CollabRoomPage() {
     () =>
       messages
         .filter((message) => message.projectId === projectId)
-        .sort((left, right) => right.createdAt - left.createdAt),
+        .sort((left, right) => left.createdAt - right.createdAt),
     [messages, projectId]
   );
+
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(() => {
+      const messageList = messageListRef.current;
+      if (!messageList) return;
+      messageList.scrollTo({ top: messageList.scrollHeight, behavior: 'smooth' });
+    });
+
+    return () => window.cancelAnimationFrame(frame);
+  }, [projectMessages]);
 
   const projectTasks = useMemo(
     () => tasks
@@ -139,11 +166,58 @@ export default function CollabRoomPage() {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isHistoryOpen]);
 
+  useEffect(() => {
+    if (!openTaskMenuId) return;
+
+    const closeTaskMenu = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.collab-task-menu-wrap')) return;
+      setOpenTaskMenuId(null);
+    };
+    const closeTaskMenuWithEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') setOpenTaskMenuId(null);
+    };
+
+    window.addEventListener('pointerdown', closeTaskMenu);
+    window.addEventListener('keydown', closeTaskMenuWithEscape);
+    return () => {
+      window.removeEventListener('pointerdown', closeTaskMenu);
+      window.removeEventListener('keydown', closeTaskMenuWithEscape);
+    };
+  }, [openTaskMenuId]);
+
+  useEffect(() => {
+    if (!isProjectMenuOpen && !openMemberMenuEmail) return;
+
+    const closeManageMenus = (event: PointerEvent) => {
+      const target = event.target;
+      if (target instanceof Element && target.closest('.collab-room-manage-menu-wrap, .collab-member-menu-wrap')) return;
+      setIsProjectMenuOpen(false);
+      setOpenMemberMenuEmail(null);
+    };
+    const closeManageMenusWithEscape = (event: KeyboardEvent) => {
+      if (event.key === 'Escape') {
+        setIsProjectMenuOpen(false);
+        setOpenMemberMenuEmail(null);
+      }
+    };
+
+    window.addEventListener('pointerdown', closeManageMenus);
+    window.addEventListener('keydown', closeManageMenusWithEscape);
+    return () => {
+      window.removeEventListener('pointerdown', closeManageMenus);
+      window.removeEventListener('keydown', closeManageMenusWithEscape);
+    };
+  }, [isProjectMenuOpen, openMemberMenuEmail]);
+
   const isMember = user ? project?.members.some((member) => member.email === user.email) ?? false : false;
-  const canEdit = isMember;
+  const isOwner = Boolean(
+    user && project && project.ownerEmail.trim().toLowerCase() === user.email.trim().toLowerCase()
+  );
   const currentMember = user
     ? project?.members.find((member) => member.email === user.email) ?? null
     : null;
+  const canEdit = Boolean(currentMember && currentMember.role !== 'viewer');
   const memberColorStorageKey = projectId && user
     ? `collab-member-color:${projectId}:${user.email.toLowerCase()}`
     : null;
@@ -386,6 +460,118 @@ export default function CollabRoomPage() {
     }
   };
 
+  const handleDeleteTasks = async () => {
+    if (!taskDeleteTarget || isDeletingTask) return;
+
+    const targets = taskDeleteTarget === 'completed'
+      ? projectTasks.filter((task) => task.completed)
+      : [taskDeleteTarget];
+    if (!targets.length) {
+      setTaskDeleteTarget(null);
+      return;
+    }
+
+    try {
+      setIsDeletingTask(true);
+      setRoomError('');
+      for (const task of targets) {
+        await deleteTask(project.id, task.id);
+      }
+      setTaskDeleteTarget(null);
+    } catch (error) {
+      console.error(error);
+      setRoomError(error instanceof Error ? error.message : '작업을 삭제하지 못했습니다.');
+    } finally {
+      setIsDeletingTask(false);
+    }
+  };
+
+  const openRoomEditDialog = () => {
+    setIsProjectMenuOpen(false);
+    setRoomEditForm({
+      title: project.title,
+      summary: project.summary,
+      genre: project.genre,
+      bpm: project.bpm,
+    });
+    setIsRoomEditOpen(true);
+  };
+
+  const handleSaveRoom = async () => {
+    if (!user || !isOwner || !roomEditForm.title.trim()) return;
+    try {
+      setIsManagingRoom(true);
+      setRoomError('');
+      await updateProjectDetails(project.id, {
+        userEmail: user.email,
+        title: roomEditForm.title,
+        summary: roomEditForm.summary,
+        genre: roomEditForm.genre,
+        bpm: roomEditForm.bpm,
+      });
+      setIsRoomEditOpen(false);
+    } catch (error) {
+      console.error(error);
+      setRoomError(error instanceof Error ? error.message : '방 정보를 수정하지 못했습니다.');
+    } finally {
+      setIsManagingRoom(false);
+    }
+  };
+
+  const handleDeleteRoom = async () => {
+    if (!user || !isOwner) return;
+    try {
+      setIsManagingRoom(true);
+      setRoomError('');
+      await deleteProject(project.id, user.email);
+      navigate('/collab');
+    } catch (error) {
+      console.error(error);
+      setRoomError(error instanceof Error ? error.message : '방을 삭제하지 못했습니다.');
+    } finally {
+      setIsManagingRoom(false);
+    }
+  };
+
+  const handleMemberRole = async (member: CollabMember, role: 'editor' | 'viewer') => {
+    if (!user || !isOwner) return;
+    try {
+      setIsManagingRoom(true);
+      setOpenMemberMenuEmail(null);
+      setRoomError('');
+      await manageMember(project.id, {
+        userEmail: user.email,
+        memberEmail: member.email,
+        action: 'set-role',
+        role,
+      });
+    } catch (error) {
+      console.error(error);
+      setRoomError(error instanceof Error ? error.message : '멤버 권한을 변경하지 못했습니다.');
+    } finally {
+      setIsManagingRoom(false);
+    }
+  };
+
+  const handleRemoveMember = async () => {
+    if (!user || !isOwner || !memberRemoveTarget) return;
+    try {
+      setIsManagingRoom(true);
+      setRoomError('');
+      await manageMember(project.id, {
+        userEmail: user.email,
+        memberEmail: memberRemoveTarget.email,
+        action: 'remove',
+      });
+      setMemberRemoveTarget(null);
+    } catch (error) {
+      console.error(error);
+      setRoomError(error instanceof Error ? error.message : '멤버를 강퇴하지 못했습니다.');
+    } finally {
+      setIsManagingRoom(false);
+    }
+  };
+
   return (
     <div className="collab-room-page">
       <SiteHeader activeSection="collab" />
@@ -407,7 +593,36 @@ export default function CollabRoomPage() {
               </div>
 
               <div className="collab-room-hero-tools">
-                <button type="button" className="collab-hero-menu" aria-label="프로젝트 메뉴">•••</button>
+                {isOwner ? (
+                  <div className="collab-room-manage-menu-wrap">
+                    <button
+                      type="button"
+                      className="collab-hero-menu"
+                      aria-label="방 관리 메뉴"
+                      aria-haspopup="menu"
+                      aria-expanded={isProjectMenuOpen}
+                      onClick={() => setIsProjectMenuOpen((open) => !open)}
+                    >
+                      •••
+                    </button>
+                    {isProjectMenuOpen ? (
+                      <div className="collab-room-manage-menu" role="menu">
+                        <button type="button" role="menuitem" onClick={openRoomEditDialog}>방 정보 수정</button>
+                        <button
+                          type="button"
+                          role="menuitem"
+                          className="is-danger"
+                          onClick={() => {
+                            setIsProjectMenuOpen(false);
+                            setIsRoomDeleteOpen(true);
+                          }}
+                        >
+                          방 삭제
+                        </button>
+                      </div>
+                    ) : null}
+                  </div>
+                ) : null}
                 <span className="collab-room-music-mark" aria-hidden="true">♫</span>
                 <div className="collab-room-status-group" aria-label="프로젝트 상태">
                   {STATUS_OPTIONS.map((option) => (
@@ -464,13 +679,40 @@ export default function CollabRoomPage() {
                   <strong><i className="collab-section-icon" aria-hidden="true">✓</i> 작업 체크리스트</strong>
                   <span>해야 할 일을 정리하고 완료된 작업을 바로 체크하세요.</span>
                 </div>
-                <button type="button" className="collab-item-menu" aria-label="체크리스트 메뉴">⋮</button>
+                <div className="collab-task-menu-wrap">
+                  <button
+                    type="button"
+                    className="collab-item-menu"
+                    aria-label="체크리스트 메뉴"
+                    aria-haspopup="menu"
+                    aria-expanded={openTaskMenuId === 'checklist'}
+                    onClick={() => setOpenTaskMenuId((current) => current === 'checklist' ? null : 'checklist')}
+                  >
+                    ⋮
+                  </button>
+                  {openTaskMenuId === 'checklist' ? (
+                    <div className="collab-task-menu" role="menu">
+                      <button
+                        type="button"
+                        role="menuitem"
+                        className="is-danger"
+                        disabled={!projectTasks.some((task) => task.completed)}
+                        onClick={() => {
+                          setOpenTaskMenuId(null);
+                          setTaskDeleteTarget('completed');
+                        }}
+                      >
+                        완료 작업 삭제
+                      </button>
+                    </div>
+                  ) : null}
+                </div>
               </div>
 
               <div className="collab-room-task-list">
                 {projectTasks.length ? (
                   projectTasks.map((task) => (
-                    <div key={task.id} className={`collab-task-card${task.completed ? ' is-done' : ''}`}>
+                    <div key={task.id} className={`collab-task-card${task.completed ? ' is-done' : ''}${openTaskMenuId === task.id ? ' is-menu-open' : ''}`}>
                       <input
                         type="checkbox"
                         aria-label={`${task.content} 완료 상태`}
@@ -487,7 +729,33 @@ export default function CollabRoomPage() {
                         <strong>{task.content}</strong>
                         <span>{task.assigneeName}</span>
                       </div>
-                      <button type="button" className="collab-item-menu" aria-label={`${task.content} 메뉴`}>⋮</button>
+                      <div className="collab-task-menu-wrap">
+                        <button
+                          type="button"
+                          className="collab-item-menu"
+                          aria-label={`${task.content} 메뉴`}
+                          aria-haspopup="menu"
+                          aria-expanded={openTaskMenuId === task.id}
+                          onClick={() => setOpenTaskMenuId((current) => current === task.id ? null : task.id)}
+                        >
+                          ⋮
+                        </button>
+                        {openTaskMenuId === task.id ? (
+                          <div className="collab-task-menu" role="menu">
+                            <button
+                              type="button"
+                              role="menuitem"
+                              className="is-danger"
+                              onClick={() => {
+                                setOpenTaskMenuId(null);
+                                setTaskDeleteTarget(task);
+                              }}
+                            >
+                              작업 삭제
+                            </button>
+                          </div>
+                        ) : null}
+                      </div>
                     </div>
                   ))
                 ) : (
@@ -513,7 +781,7 @@ export default function CollabRoomPage() {
                 <strong><i className="collab-section-icon is-round"><RoomIcon name="chat" /></i> 팀 채팅 / 코멘트</strong>
               </div>
 
-              <div className="collab-room-message-list">
+              <div ref={messageListRef} className="collab-room-message-list">
                 {projectMessages.length ? (
                   projectMessages.map((message) => (
                     <article key={message.id} className="collab-message-card">
@@ -587,7 +855,37 @@ export default function CollabRoomPage() {
                         <span>{member.role}</span>
                       </div>
                       <em className={isOnline ? 'is-online' : 'is-offline'}>{isOnline ? '온라인' : '오프라인'}</em>
-                      <button type="button" className="collab-item-menu" aria-label={`${member.name} 메뉴`}>⋮</button>
+                      {isOwner && member.role !== 'owner' ? (
+                        <div className="collab-member-menu-wrap">
+                          <button
+                            type="button"
+                            className="collab-item-menu"
+                            aria-label={`${member.name} 관리 메뉴`}
+                            aria-haspopup="menu"
+                            aria-expanded={openMemberMenuEmail === member.email}
+                            onClick={() => setOpenMemberMenuEmail((email) => email === member.email ? null : member.email)}
+                          >
+                            ⋮
+                          </button>
+                          {openMemberMenuEmail === member.email ? (
+                            <div className="collab-member-menu" role="menu">
+                              <button type="button" role="menuitem" onClick={() => void handleMemberRole(member, 'editor')}>편집 권한</button>
+                              <button type="button" role="menuitem" onClick={() => void handleMemberRole(member, 'viewer')}>보기 전용</button>
+                              <button
+                                type="button"
+                                role="menuitem"
+                                className="is-danger"
+                                onClick={() => {
+                                  setOpenMemberMenuEmail(null);
+                                  setMemberRemoveTarget(member);
+                                }}
+                              >
+                                멤버 강퇴
+                              </button>
+                            </div>
+                          ) : null}
+                        </div>
+                      ) : <span />}
                     </div>
                   );
                 })}
@@ -648,6 +946,133 @@ export default function CollabRoomPage() {
           </aside>
         </section>
       </main>
+
+      {isRoomEditOpen ? (
+        <div className="collab-manage-overlay" role="presentation" onMouseDown={() => !isManagingRoom && setIsRoomEditOpen(false)}>
+          <section
+            className="collab-manage-dialog collab-room-edit-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="collab-room-edit-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div>
+              <strong id="collab-room-edit-title">방 정보 수정</strong>
+              <p>협업방에 표시되는 기본 정보를 변경합니다.</p>
+            </div>
+            <div className="collab-room-edit-form">
+              <label>
+                <span>방 이름</span>
+                <input
+                  value={roomEditForm.title}
+                  maxLength={60}
+                  onChange={(event) => setRoomEditForm((form) => ({ ...form, title: event.target.value }))}
+                />
+              </label>
+              <label>
+                <span>설명</span>
+                <textarea
+                  value={roomEditForm.summary}
+                  maxLength={180}
+                  onChange={(event) => setRoomEditForm((form) => ({ ...form, summary: event.target.value }))}
+                />
+              </label>
+              <div>
+                <label>
+                  <span>장르</span>
+                  <input
+                    value={roomEditForm.genre}
+                    onChange={(event) => setRoomEditForm((form) => ({ ...form, genre: event.target.value }))}
+                  />
+                </label>
+                <label>
+                  <span>BPM</span>
+                  <input
+                    type="number"
+                    min={40}
+                    max={240}
+                    value={roomEditForm.bpm}
+                    onChange={(event) => setRoomEditForm((form) => ({ ...form, bpm: Number(event.target.value) }))}
+                  />
+                </label>
+              </div>
+            </div>
+            <div className="collab-manage-actions">
+              <button type="button" onClick={() => setIsRoomEditOpen(false)} disabled={isManagingRoom}>취소</button>
+              <button type="button" className="is-primary" onClick={() => void handleSaveRoom()} disabled={isManagingRoom || !roomEditForm.title.trim()}>
+                {isManagingRoom ? '저장 중...' : '저장'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isRoomDeleteOpen ? (
+        <div className="collab-manage-overlay" role="presentation" onMouseDown={() => !isManagingRoom && setIsRoomDeleteOpen(false)}>
+          <section className="collab-manage-dialog" role="dialog" aria-modal="true" aria-labelledby="collab-room-delete-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div>
+              <strong id="collab-room-delete-title">협업방을 삭제할까요?</strong>
+              <p><b>{project.title}</b>의 작업, 채팅, 체크리스트와 기록이 모두 삭제됩니다.</p>
+            </div>
+            <div className="collab-manage-actions">
+              <button type="button" onClick={() => setIsRoomDeleteOpen(false)} disabled={isManagingRoom}>취소</button>
+              <button type="button" className="is-danger" onClick={() => void handleDeleteRoom()} disabled={isManagingRoom}>
+                {isManagingRoom ? '삭제 중...' : '방 삭제'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {memberRemoveTarget ? (
+        <div className="collab-manage-overlay" role="presentation" onMouseDown={() => !isManagingRoom && setMemberRemoveTarget(null)}>
+          <section className="collab-manage-dialog" role="dialog" aria-modal="true" aria-labelledby="collab-member-remove-title" onMouseDown={(event) => event.stopPropagation()}>
+            <div>
+              <strong id="collab-member-remove-title">멤버를 강퇴할까요?</strong>
+              <p><b>{memberRemoveTarget.name}</b>님은 이 협업방에 더 이상 접근할 수 없습니다.</p>
+            </div>
+            <div className="collab-manage-actions">
+              <button type="button" onClick={() => setMemberRemoveTarget(null)} disabled={isManagingRoom}>취소</button>
+              <button type="button" className="is-danger" onClick={() => void handleRemoveMember()} disabled={isManagingRoom}>
+                {isManagingRoom ? '처리 중...' : '강퇴'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {taskDeleteTarget ? (
+        <div
+          className="collab-manage-overlay"
+          role="presentation"
+          onMouseDown={() => !isDeletingTask && setTaskDeleteTarget(null)}
+        >
+          <section
+            className="collab-manage-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="collab-task-delete-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div>
+              <strong id="collab-task-delete-title">
+                {taskDeleteTarget === 'completed' ? '완료한 작업을 모두 삭제할까요?' : '작업을 삭제할까요?'}
+              </strong>
+              <p>
+                {taskDeleteTarget === 'completed'
+                  ? `완료한 작업 ${projectTasks.filter((task) => task.completed).length}개가 삭제됩니다.`
+                  : `“${taskDeleteTarget.content}” 작업이 삭제됩니다.`}
+              </p>
+            </div>
+            <div className="collab-manage-actions">
+              <button type="button" onClick={() => setTaskDeleteTarget(null)} disabled={isDeletingTask}>취소</button>
+              <button type="button" className="is-danger" onClick={() => void handleDeleteTasks()} disabled={isDeletingTask}>
+                {isDeletingTask ? '삭제 중...' : '삭제'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
 
       {isHistoryOpen ? (
         <div

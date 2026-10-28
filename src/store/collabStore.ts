@@ -74,6 +74,8 @@ export type CollabComposerOperation =
 
 type ApplyComposerOperationPayload = { operation: CollabComposerOperation; email: string; name: string; color?: string; sessionId?: string; baseRevision?: number; };
 type ComposerLockPayload = { instrument: CollabComposerInstrument; barIndex: number; email?: string; name?: string; color?: string; sessionId?: string; lock: boolean; };
+type UpdateCollabProjectPayload = { userEmail: string; title: string; summary: string; genre: string; bpm: number };
+type ManageCollabMemberPayload = { userEmail: string; memberEmail: string; action: 'set-role' | 'remove'; role?: Exclude<CollabRole, 'owner'> };
 
 type CollabSnapshot = Pick<
   CollabState,
@@ -97,6 +99,7 @@ type CollabState = {
   addMessage: (projectId: string, payload: { email: string; name: string; color?: string; content: string }) => Promise<void>;
   addTask: (projectId: string, payload: { content: string; assigneeName: string }) => Promise<void>;
   toggleTask: (projectId: string, taskId: string) => Promise<void>;
+  deleteTask: (projectId: string, taskId: string) => Promise<void>;
   setStatus: (projectId: string, status: CollabStatus) => Promise<void>;
   updateComposerSnapshot: (projectId: string, payload: UpdateComposerPayload) => Promise<number>;
   applyComposerOperation: (projectId: string, payload: ApplyComposerOperationPayload) => Promise<number>;
@@ -105,6 +108,8 @@ type CollabState = {
   updateCursor: (projectId: string, payload: { email: string; name: string; color?: string; x: number | null; y: number | null }) => Promise<void>;
   leavePresence: (projectId: string) => Promise<void>;
   renameProject: (projectId: string, userEmail: string, title: string) => Promise<void>;
+  updateProjectDetails: (projectId: string, payload: UpdateCollabProjectPayload) => Promise<void>;
+  manageMember: (projectId: string, payload: ManageCollabMemberPayload) => Promise<void>;
   deleteProject: (projectId: string, userEmail: string) => Promise<void>;
 };
 
@@ -114,6 +119,10 @@ export const COLLAB_PRESENCE_PING_INTERVAL_MS = 8_000;
 function createId(prefix: string) {
   const randomId = globalThis.crypto?.randomUUID?.();
   return randomId ? `${prefix}-${randomId}` : `${prefix}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`;
+}
+
+function normalizeEmail(value: string) {
+  return value.trim().toLowerCase();
 }
 
 export const COLLAB_SESSION_ID = createId('collab-session');
@@ -528,6 +537,22 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     if (task) await updateDoc(taskRef, { completed: !task.completed });
   },
 
+  deleteTask: async (projectId, taskId) => {
+    if (isLocalDevelopmentHost()) {
+      const response = await fetchLocalCollabJson<{ snapshot: CollabSnapshot }>(
+        `/api/collab/projects/${projectId}/tasks/${taskId}/delete`,
+        { method: 'POST' }
+      );
+      applyLocalSnapshot(response.snapshot);
+      return;
+    }
+
+    const batch = writeBatch(db);
+    batch.delete(doc(db, 'collab_tasks', taskId));
+    batch.update(doc(db, 'collab_projects', projectId), { updatedAt: Date.now() });
+    await batch.commit();
+  },
+
   setStatus: async (projectId, status) => {
     if (isLocalDevelopmentHost()) {
       const response = await fetchLocalCollabJson<{ snapshot: CollabSnapshot }>(
@@ -774,6 +799,66 @@ export const useCollabStore = create<CollabState>((set, get) => ({
     }
 
     await updateDoc(projectRef, { title: nextTitle, updatedAt: Date.now() });
+  },
+
+  updateProjectDetails: async (projectId, payload) => {
+    if (isLocalDevelopmentHost()) {
+      const response = await fetchLocalCollabJson<{ snapshot: CollabSnapshot }>(
+        `/api/collab/projects/${projectId}/update`,
+        { method: 'POST', body: JSON.stringify(payload) }
+      );
+      applyLocalSnapshot(response.snapshot);
+      return;
+    }
+
+    const projectRef = doc(db, 'collab_projects', projectId);
+    const projectSnapshot = await getDoc(projectRef);
+    if (!projectSnapshot.exists()) throw new CollabRequestError('작업실을 찾을 수 없습니다.', 404);
+    const project = projectSnapshot.data() as CollabProject;
+    if (normalizeEmail(project.ownerEmail) !== normalizeEmail(payload.userEmail)) {
+      throw new CollabRequestError('방장만 작업실 정보를 수정할 수 있습니다.', 403);
+    }
+
+    const title = payload.title.trim();
+    if (!title) throw new CollabRequestError('작업실 이름을 입력해주세요.', 400);
+    await updateDoc(projectRef, {
+      title,
+      summary: payload.summary.trim(),
+      genre: payload.genre.trim(),
+      bpm: Math.max(40, Math.min(240, Math.round(payload.bpm))),
+      updatedAt: Date.now(),
+    });
+  },
+
+  manageMember: async (projectId, payload) => {
+    if (isLocalDevelopmentHost()) {
+      const response = await fetchLocalCollabJson<{ snapshot: CollabSnapshot }>(
+        `/api/collab/projects/${projectId}/members/manage`,
+        { method: 'POST', body: JSON.stringify(payload) }
+      );
+      applyLocalSnapshot(response.snapshot);
+      return;
+    }
+
+    const projectRef = doc(db, 'collab_projects', projectId);
+    const projectSnapshot = await getDoc(projectRef);
+    if (!projectSnapshot.exists()) throw new CollabRequestError('작업실을 찾을 수 없습니다.', 404);
+    const project = projectSnapshot.data() as CollabProject;
+    if (normalizeEmail(project.ownerEmail) !== normalizeEmail(payload.userEmail)) {
+      throw new CollabRequestError('방장만 멤버를 관리할 수 있습니다.', 403);
+    }
+    if (normalizeEmail(project.ownerEmail) === normalizeEmail(payload.memberEmail)) {
+      throw new CollabRequestError('방장은 강퇴하거나 권한을 변경할 수 없습니다.', 400);
+    }
+
+    const members = payload.action === 'remove'
+      ? project.members.filter((member) => normalizeEmail(member.email) !== normalizeEmail(payload.memberEmail))
+      : project.members.map((member) =>
+          normalizeEmail(member.email) === normalizeEmail(payload.memberEmail)
+            ? { ...member, role: payload.role ?? 'editor' }
+            : member
+        );
+    await updateDoc(projectRef, { members, updatedAt: Date.now() });
   },
 
   deleteProject: async (projectId, userEmail) => {

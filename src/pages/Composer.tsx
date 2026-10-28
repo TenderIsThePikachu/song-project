@@ -1,6 +1,7 @@
 ﻿import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react';
 import type { DragEvent as ReactDragEvent } from 'react';
 import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useShallow } from 'zustand/react/shallow';
 import SiteHeader from '../components/layout/SiteHeader';
 import { PianoRoll } from '../components/PianoRoll.tsx';
 import { ScoreViewer } from '../components/ScoreViewer.tsx';
@@ -751,24 +752,39 @@ function getPlaybackPitchedTrack(
   }
 }
 
+const pitchedActiveRowsCache = new WeakMap<
+  boolean[][],
+  { lengths: number[][] | undefined; rowsByStep: number[][] }
+>();
+
 function getActivePitchedRowsAtStep(
   grid: boolean[][],
   lengths: number[][] | undefined,
   step: number
 ) {
-  const activeRows: number[] = [];
+  let cached = pitchedActiveRowsCache.get(grid);
+  if (!cached || cached.lengths !== lengths) {
+    const stepCount = grid.reduce((max, row) => Math.max(max, row.length), 0);
+    const rowsByStep = Array.from({ length: stepCount }, () => [] as number[]);
 
-  grid.forEach((rowValues, row) => {
-    for (let start = Math.min(step, rowValues.length - 1); start >= 0; start -= 1) {
-      if (!rowValues[start]) continue;
-      if (start + Math.max(1, lengths?.[row]?.[start] ?? 1) > step) {
-        activeRows.push(row);
-      }
-      break;
-    }
-  });
+    grid.forEach((rowValues, row) => {
+      rowValues.forEach((active, start) => {
+        if (!active) return;
+        const end = Math.min(
+          stepCount,
+          start + Math.max(1, lengths?.[row]?.[start] ?? 1)
+        );
+        for (let current = start; current < end; current += 1) {
+          rowsByStep[current].push(row);
+        }
+      });
+    });
 
-  return activeRows;
+    cached = { lengths, rowsByStep };
+    pitchedActiveRowsCache.set(grid, cached);
+  }
+
+  return cached.rowsByStep[step] ?? [];
 }
 
 function readComposerTabDraft() {
@@ -857,6 +873,13 @@ export function Composer() {
     (state) => state.profilesByEmail[user?.email ?? '']?.composerTutorialCompleted ?? false
   );
   const markComposerTutorialCompleted = useAuthStore((state) => state.markComposerTutorialCompleted);
+  const songStateWithoutPlaybackStep = useSongStore(
+    useShallow((state) => {
+      const { currentStep: ignoredCurrentStep, ...rest } = state;
+      void ignoredCurrentStep;
+      return rest;
+    })
+  );
   const {
     compositionMode,
     timeSignature,
@@ -902,7 +925,6 @@ export function Composer() {
     toggleBass,
     setPitchedNoteLength,
     applyChord,
-    currentStep,
     setCurrentStep,
     setBpm,
     setTimeSignature,
@@ -917,7 +939,15 @@ export function Composer() {
     applyRemoteProject,
     projectLoadRevision,
     clear,
-  } = useSongStore();
+  } = songStateWithoutPlaybackStep;
+  const stoppedCurrentStep = useSongStore((state) =>
+    state.isPlaying ? null : state.currentStep
+  );
+  const stoppedCurrentStepRef = useRef(useSongStore.getState().currentStep);
+  if (stoppedCurrentStep !== null) {
+    stoppedCurrentStepRef.current = stoppedCurrentStep;
+  }
+  const currentStep = stoppedCurrentStep ?? stoppedCurrentStepRef.current;
   const { activeTab, setActiveTab, setInstrument } = useUIStore();
   const projects = useCollabStore((state) => state.projects);
   const connectionStatus = useCollabStore((state) => state.connectionStatus);
@@ -1069,7 +1099,11 @@ export function Composer() {
   const lastCursorWriteAtRef = useRef(0);
   const loadedProjectIdRef = useRef<string | null>(null);
   const followScrollFrameRef = useRef<number | null>(null);
-  const livePlayheadRef = useRef({ step: 0, bpm: 120, receivedAt: 0 });
+  const livePlayheadRef = useRef({ step: 0, eventStep: 0, bpm: 120, receivedAt: 0 });
+  const liveFrameTimeRef = useRef(0);
+  const liveVerticalScrollTargetsRef = useRef(
+    new Map<HTMLElement, { target: number; velocity: number }>()
+  );
   const liveVisualStepRef = useRef(-1);
   const isPlayingRef = useRef(false);
   const liveStepElementsRef = useRef<HTMLElement[]>([]);
@@ -1382,7 +1416,10 @@ export function Composer() {
   );
   const arrangementTimelineBars = arrangementBars.filter((bar) => bar.index % 4 === 0);
   const [pitchedRollScrollTop, setPitchedRollScrollTop] = useState<Record<string, number>>({});
+  const pitchedRollScrollLeftRef = useRef(pitchedRollScrollLeft);
+  const pitchedRollScrollTopRef = useRef(pitchedRollScrollTop);
   const [drumRollScrollLeft, setDrumRollScrollLeft] = useState(0);
+  const drumRollScrollLeftRef = useRef(0);
   const tutorialAdvanceTimeoutRef = useRef<number | null>(null);
   const lastAutoAdvancedStepRef = useRef<number | null>(null);
   const tutorialCameraTimeoutRef = useRef<number | null>(null);
@@ -1399,6 +1436,14 @@ export function Composer() {
   const drumShellRef = useRef<HTMLElement | null>(null);
   const bassShellRef = useRef<HTMLElement | null>(null);
   const footerRef = useRef<HTMLElement | null>(null);
+
+  useEffect(() => {
+    pitchedRollScrollLeftRef.current = pitchedRollScrollLeft;
+  }, [pitchedRollScrollLeft]);
+
+  useEffect(() => {
+    pitchedRollScrollTopRef.current = pitchedRollScrollTop;
+  }, [pitchedRollScrollTop]);
   const scoreDraftCreatedAtRef = useRef(Date.now());
 
   useEffect(() => {
@@ -2143,7 +2188,16 @@ export function Composer() {
     }
 
     if (!isPlaying) {
+      const stoppedState = useSongStore.getState();
       liveVisualStepRef.current = -1;
+      liveFrameTimeRef.current = 0;
+      liveVerticalScrollTargetsRef.current.clear();
+      livePlayheadRef.current = {
+        step: stoppedState.currentStep,
+        eventStep: stoppedState.currentStep,
+        bpm: stoppedState.bpm,
+        receivedAt: 0,
+      };
       livePianoPlayheadsRef.current = [];
       liveSequencerPlayheadsRef.current = [];
       liveArrangementPlayheadsRef.current = [];
@@ -2156,15 +2210,25 @@ export function Composer() {
       liveStepElementCacheRef.current.clear();
 
       const exactScrollPositions: Record<string, number> = {};
+      const exactVerticalScrollPositions: Record<string, number> = {};
       document
         .querySelectorAll<HTMLElement>('.piano-roll[data-scroll-key]')
         .forEach((roll) => {
           const scrollKey = roll.dataset.scrollKey;
           const scroller = roll.querySelector<HTMLElement>('.piano-roll-melody-scroller');
-          if (scrollKey && scroller) exactScrollPositions[scrollKey] = scroller.scrollLeft;
+          if (scrollKey && scroller) {
+            exactScrollPositions[scrollKey] = scroller.scrollLeft;
+            exactVerticalScrollPositions[scrollKey] = scroller.scrollTop;
+          }
         });
       if (Object.keys(exactScrollPositions).length) {
         setPitchedRollScrollLeft((current) => ({ ...current, ...exactScrollPositions }));
+      }
+      if (Object.keys(exactVerticalScrollPositions).length) {
+        setPitchedRollScrollTop((current) => ({
+          ...current,
+          ...exactVerticalScrollPositions,
+        }));
       }
     }
   }, [isPlaying]);
@@ -2243,12 +2307,17 @@ export function Composer() {
         return;
       }
 
+      const frameNow = window.performance.now();
+      const previousFrameTime = liveFrameTimeRef.current || frameNow - 16.67;
+      const frameDelta = Math.min(50, Math.max(1, frameNow - previousFrameTime));
+      liveFrameTimeRef.current = frameNow;
+
       const liveStepCount = useSongStore.getState().steps;
       const playheadAnchor = livePlayheadRef.current;
       const stepDurationMs = 60_000 / Math.max(1, playheadAnchor.bpm) / 4;
       const stepProgress = Math.min(
         0.999,
-        Math.max(0, (window.performance.now() - playheadAnchor.receivedAt) / stepDurationMs)
+        Math.max(0, (frameNow - playheadAnchor.receivedAt) / stepDurationMs)
       );
       const smoothStep = Math.min(
         Math.max(0, liveStepCount - 1),
@@ -2264,18 +2333,20 @@ export function Composer() {
         liveStepElementsRef.current.forEach((element) => {
           element.classList.remove('is-current-live');
         });
-        const cachedLiveElements = liveStepElementCacheRef.current.get(visualStep);
+        const cachedLiveElements = liveStepElementCacheRef.current
+          .get(visualStep)
+          ?.filter((element) => element.isConnected);
         const nextLiveElements =
-          cachedLiveElements ??
+          cachedLiveElements?.length
+            ? cachedLiveElements
+            :
           [
             ...document.querySelectorAll<HTMLElement>(
               `.piano-roll-step-number[data-playhead-step="${visualStep}"], .composer-drum-step-number[data-playhead-step="${visualStep}"]`
             ),
           ];
 
-        if (!cachedLiveElements) {
-          liveStepElementCacheRef.current.set(visualStep, nextLiveElements);
-        }
+        liveStepElementCacheRef.current.set(visualStep, nextLiveElements);
         nextLiveElements.forEach((element) => {
           element.classList.add('is-current-live');
         });
@@ -2288,21 +2359,70 @@ export function Composer() {
           if (!track) return;
 
           const activeRows = getActivePitchedRowsAtStep(track.grid, track.lengths, visualStep);
-          if (!activeRows.length) return;
+          if (!activeRows.length) {
+            const previous = liveVerticalScrollTargetsRef.current.get(scroller);
+            liveVerticalScrollTargetsRef.current.set(scroller, {
+              target: scroller.scrollTop,
+              velocity: previous?.velocity ?? 0,
+            });
+            return;
+          }
 
           const focusRow = activeRows.reduce((sum, row) => sum + row, 0) / activeRows.length;
           const noteCenter = focusRow * rowSpan + rowSpan / 2;
-          const safeTop = scroller.scrollTop + scroller.clientHeight * 0.2;
-          const safeBottom = scroller.scrollTop + scroller.clientHeight * 0.8;
-          if (noteCenter >= safeTop && noteCenter <= safeBottom) return;
+          const safeTop = scroller.scrollTop + scroller.clientHeight * 0.3;
+          const safeBottom = scroller.scrollTop + scroller.clientHeight * 0.7;
+          if (noteCenter >= safeTop && noteCenter <= safeBottom) {
+            const previous = liveVerticalScrollTargetsRef.current.get(scroller);
+            liveVerticalScrollTargetsRef.current.set(scroller, {
+              target: scroller.scrollTop,
+              velocity: previous?.velocity ?? 0,
+            });
+            return;
+          }
 
           const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
-          scroller.scrollTo({
-            top: Math.min(maxScrollTop, Math.max(0, noteCenter - scroller.clientHeight / 2)),
-            behavior: 'smooth',
-          });
+          const previous = liveVerticalScrollTargetsRef.current.get(scroller);
+          liveVerticalScrollTargetsRef.current.set(
+            scroller,
+            {
+              target: Math.min(
+                maxScrollTop,
+                Math.max(0, noteCenter - scroller.clientHeight / 2)
+              ),
+              velocity: previous?.velocity ?? 0,
+            }
+          );
         });
       }
+
+      const verticalDeltaSeconds = frameDelta / 1000;
+      const verticalStiffness = 95;
+      const verticalDamping = 19.5;
+      liveScrollerPairsRef.current.forEach(({ scroller }) => {
+        const motion = liveVerticalScrollTargetsRef.current.get(scroller);
+        if (!motion) return;
+
+        const distance = motion.target - scroller.scrollTop;
+        if (Math.abs(distance) < 0.35 && Math.abs(motion.velocity) < 2) {
+          scroller.scrollTop = motion.target;
+          motion.velocity = 0;
+          return;
+        }
+
+        const acceleration =
+          distance * verticalStiffness - motion.velocity * verticalDamping;
+        motion.velocity += acceleration * verticalDeltaSeconds;
+        const maxScrollTop = Math.max(0, scroller.scrollHeight - scroller.clientHeight);
+        const nextTop = Math.min(
+          maxScrollTop,
+          Math.max(0, scroller.scrollTop + motion.velocity * verticalDeltaSeconds)
+        );
+        if (nextTop === 0 || nextTop === maxScrollTop) {
+          motion.velocity = 0;
+        }
+        scroller.scrollTop = nextTop;
+      });
 
       livePianoPlayheadsRef.current.forEach((playhead) => {
         playhead.style.setProperty('--piano-step-index', `${smoothStep}`);
@@ -2321,7 +2441,8 @@ export function Composer() {
 
       liveScrollerPairsRef.current.forEach(({ scroller, header, stepSpan }) => {
         const playheadLeft = smoothStep * stepSpan + stepSpan / 2;
-        const targetLeft = Math.max(0, playheadLeft - scroller.clientWidth * 0.42);
+        const viewportWidth = scroller.clientWidth;
+        const targetLeft = Math.max(0, playheadLeft - viewportWidth * 0.42);
         scroller.scrollLeft = targetLeft;
 
         if (header) {
@@ -2332,7 +2453,8 @@ export function Composer() {
       liveDrumScrollersRef.current.forEach((scroller) => {
         const stepSpan = DRUM_STEP_WIDTH + 10;
         const playheadLeft = smoothStep * stepSpan + stepSpan / 2;
-        scroller.scrollLeft = Math.max(0, playheadLeft - scroller.clientWidth * 0.42);
+        const targetLeft = Math.max(0, playheadLeft - scroller.clientWidth * 0.42);
+        scroller.scrollLeft = targetLeft;
       });
 
       followScrollFrameRef.current = window.requestAnimationFrame(renderLivePlayhead);
@@ -2365,6 +2487,7 @@ export function Composer() {
       );
 
       if (playbackDomChanged || !hasCachedPlaybackDom) {
+        liveVerticalScrollTargetsRef.current.clear();
         livePianoPlayheadsRef.current = [
           ...document.querySelectorAll<HTMLElement>('.piano-roll-playhead'),
         ];
@@ -2401,14 +2524,19 @@ export function Composer() {
         ];
       }
 
-      const previousLiveStep = livePlayheadRef.current.step;
+      const now = window.performance.now();
+      const previousAnchor = livePlayheadRef.current;
+      const previousLiveStep = previousAnchor.eventStep;
+      const didLoop = step < previousLiveStep;
       livePlayheadRef.current = {
         step,
+        eventStep: step,
         bpm: typeof detail.bpm === 'number' ? detail.bpm : useSongStore.getState().bpm,
-        receivedAt: window.performance.now(),
+        receivedAt: now,
       };
+      liveFrameTimeRef.current = now;
 
-      if (step < previousLiveStep) {
+      if (didLoop) {
         liveScrollerPairsRef.current.forEach(({ scroller, header, stepSpan }) => {
           const targetLeft = Math.max(
             0,
@@ -5203,6 +5331,55 @@ export function Composer() {
     });
   };
 
+  const renderUnifiedPitchedRoll = (
+    instrument: PitchedTab,
+    notes: readonly string[],
+    grid: boolean[][],
+    lengths: number[][],
+    colors: readonly string[],
+    onToggle: (row: number, col: number, lengthSteps?: MelodyNoteLengthSteps) => void | Promise<void>,
+    onChordDrop?: (chord: string, col: number) => void | Promise<void>,
+    options: MelodySequencerOptions = {}
+  ) => {
+    const scrollKey = options.scrollKey ?? instrument;
+    return (
+      <section
+        className={`composer-roll-shell composer-roll-shell--melody is-tool-${pianoEditTool}`}
+        key={`${scrollKey}-unified-piano-roll`}
+      >
+        <PianoRoll
+          instrument={instrument}
+          grid={grid}
+          noteLengths={lengths}
+          noteLabels={notes}
+          accentColors={colors}
+          scrollKey={scrollKey}
+          editTool={pianoEditTool}
+          stepWidth={Math.round(64 * pianoZoom)}
+          sidebarWidth="var(--composer-track-panel-width)"
+          noteLengthSteps={options.noteLengthSteps ?? 4}
+          onNoteLengthChange={options.onNoteLengthChange}
+          onRequestZoom={changePianoZoom}
+          loopRange={loopRange}
+          onStepHeaderSelect={handleStepLoopSelect}
+          collabBarLocks={currentTabLockMap}
+          collabNoteColors={collabNoteColors}
+          collabNoteAuthors={collabNoteAuthorNames}
+          canEditCollab={!collabId || canSyncCollab}
+          onToggleNote={(row, col, length) => onToggle(row, col, length)}
+          onResizeNote={options.onResizeNote}
+          onDropChord={onChordDrop}
+          getCollabNoteKey={(row, col) =>
+            getCollabNoteColorKey(instrument, row, col, options.noteColorTrackId)
+          }
+          onHelpZoneEnter={handleHelpZoneEnter}
+          onHelpZoneMove={handleHelpZoneMove}
+          onHelpZoneLeave={handleHelpZoneLeave}
+        />
+      </section>
+    );
+  };
+
   const renderMelodyLikeSequencer = (
     instrument: PitchedTab,
     notes: readonly string[],
@@ -5228,8 +5405,12 @@ export function Composer() {
       (typeof window === 'undefined' ? 1280 : window.innerWidth) / stepSpan
     );
     const firstVisibleStep = Math.floor(scrollLeft / stepSpan);
-    const visibleStepStart = Math.max(0, firstVisibleStep - 6);
-    const visibleStepEnd = Math.min(steps, firstVisibleStep + viewportStepCount + 6);
+    const playbackStepOverscan = isPlaying ? Math.max(12, stepsPerBar + 6) : 6;
+    const visibleStepStart = Math.max(0, firstVisibleStep - playbackStepOverscan);
+    const visibleStepEnd = Math.min(
+      steps,
+      firstVisibleStep + viewportStepCount + playbackStepOverscan
+    );
     const visibleSteps = Array.from(
       { length: Math.max(0, visibleStepEnd - visibleStepStart) },
       (_, index) => visibleStepStart + index
@@ -5242,10 +5423,12 @@ export function Composer() {
     const firstVisibleRow = Math.floor(scrollTop / rowSpan);
     const visibleRowStart = Math.max(0, firstVisibleRow - 3);
     const visibleRowEnd = Math.min(notes.length, firstVisibleRow + viewportRowCount + 3);
-    const visibleRows = Array.from(
-      { length: Math.max(0, visibleRowEnd - visibleRowStart) },
-      (_, index) => visibleRowStart + index
-    );
+    const visibleRows = isPlaying
+      ? Array.from({ length: notes.length }, (_, row) => row)
+      : Array.from(
+          { length: Math.max(0, visibleRowEnd - visibleRowStart) },
+          (_, index) => visibleRowStart + index
+        );
     const visibleNoteInfo = new Map<
       number,
       Array<{ start: number; length: number } | null>
@@ -5415,36 +5598,41 @@ export function Composer() {
             className="piano-roll-melody-scroller"
             onScroll={(event) => {
               const nextScrollLeft = event.currentTarget.scrollLeft;
-              setPitchedRollScrollLeft((current) => {
-                const nextStoredScrollLeft = isPlayingRef.current
-                  ? getBarInfoAtStep(
-                      timeSignatureChanges,
-                      timeSignature,
-                      Math.floor(nextScrollLeft / stepSpan)
-                    ).start * stepSpan
-                  : nextScrollLeft;
-
-                if ((current[scrollKey] ?? 0) === nextStoredScrollLeft) {
-                  return current;
-                }
-
-                return {
-                  ...current,
+              const nextStoredScrollLeft = isPlayingRef.current
+                ? getBarInfoAtStep(
+                    timeSignatureChanges,
+                    timeSignature,
+                    Math.floor(nextScrollLeft / stepSpan)
+                  ).start * stepSpan
+                : nextScrollLeft;
+              if (
+                (pitchedRollScrollLeftRef.current[scrollKey] ?? 0) !==
+                nextStoredScrollLeft
+              ) {
+                const nextScrollState = {
+                  ...pitchedRollScrollLeftRef.current,
                   [scrollKey]: nextStoredScrollLeft,
                 };
-              });
+                pitchedRollScrollLeftRef.current = nextScrollState;
+                setPitchedRollScrollLeft(nextScrollState);
+              }
               const nextScrollTop = event.currentTarget.scrollTop;
-              setPitchedRollScrollTop((current) => {
-                const nextStoredScrollTop = Math.floor(nextScrollTop / (rowSpan * 3)) * rowSpan * 3;
-                if ((current[scrollKey] ?? 0) === nextStoredScrollTop) {
-                  return current;
-                }
-
-                return {
-                  ...current,
+              if (isPlayingRef.current) {
+                return;
+              }
+              const nextStoredScrollTop =
+                Math.floor(nextScrollTop / (rowSpan * 3)) * rowSpan * 3;
+              if (
+                (pitchedRollScrollTopRef.current[scrollKey] ?? 0) !==
+                nextStoredScrollTop
+              ) {
+                const nextScrollState = {
+                  ...pitchedRollScrollTopRef.current,
                   [scrollKey]: nextStoredScrollTop,
                 };
-              });
+                pitchedRollScrollTopRef.current = nextScrollState;
+                setPitchedRollScrollTop(nextScrollState);
+              }
             }}
           >
             <div className="piano-roll-sidebar">
@@ -5666,18 +5854,24 @@ export function Composer() {
     (typeof window === 'undefined' ? 1280 : window.innerWidth) / drumStepSpan
   );
   const drumFirstVisibleStep = Math.floor(drumRollScrollLeft / drumStepSpan);
-  const drumVisibleStepStart = Math.max(0, drumFirstVisibleStep - 4);
+  const drumVirtualOverscan = isPlaying ? 12 : 4;
+  const drumVisibleStepStart = Math.max(0, drumFirstVisibleStep - drumVirtualOverscan);
   const drumVisibleStepEnd = Math.min(
     steps,
-    drumFirstVisibleStep + drumViewportStepCount + 4
+    drumFirstVisibleStep + drumViewportStepCount + drumVirtualOverscan
   );
   const drumVisibleSteps = Array.from(
     { length: Math.max(0, drumVisibleStepEnd - drumVisibleStepStart) },
     (_, index) => drumVisibleStepStart + index
   );
   const handleDrumRollScroll = (scrollLeft: number) => {
-    const quantized = Math.floor(scrollLeft / (drumStepSpan * 2)) * drumStepSpan * 2;
-    setDrumRollScrollLeft((current) => (current === quantized ? current : quantized));
+    const chunkSteps = isPlayingRef.current ? 8 : 2;
+    const quantized =
+      Math.floor(scrollLeft / (drumStepSpan * chunkSteps)) * drumStepSpan * chunkSteps;
+    if (drumRollScrollLeftRef.current === quantized) return;
+
+    drumRollScrollLeftRef.current = quantized;
+    setDrumRollScrollLeft(quantized);
   };
 
   const renderExtraDrumSequencer = (track: ExtraInstrumentTrack) => (
@@ -6850,7 +7044,7 @@ export function Composer() {
             </section>
           ) : activeExtraTrack.instrument === 'drums' ? (
             renderExtraDrumSequencer(activeExtraTrack)
-          ) : (
+          ) : activeExtraTrack.id === LYRICS_MELODY_TRACK_ID ? (
             renderMelodyLikeSequencer(
               activeExtraTrack.instrument as PitchedTab,
               getExtraTrackNotes(activeExtraTrack.instrument),
@@ -6858,16 +7052,12 @@ export function Composer() {
               getExtraTrackColors(activeExtraTrack.instrument),
               (row, col, lengthSteps) =>
                 handleExtraTrackCellToggle(activeExtraTrack, row, col, lengthSteps),
-              activeExtraTrack.id === LYRICS_MELODY_TRACK_ID || activeExtraTrack.label.startsWith('AI 보컬')
-                ? undefined
-                : (chord, col) => handleExtraTrackChordDrop(activeExtraTrack, chord, col),
+              undefined,
               {
                 scrollKey: activeExtraTrack.id,
                 noteColorTrackId: activeExtraTrack.id,
+                showLyrics: true,
                 melodyLengths: activeExtraTrack.melodyLengths,
-                showLyrics:
-                  activeExtraTrack.id === LYRICS_MELODY_TRACK_ID ||
-                  activeExtraTrack.label.startsWith('AI 보컬'),
                 noteLengthSteps: extraTrackNoteLengths[activeExtraTrack.id] ?? 4,
                 onNoteLengthChange: (lengthSteps) =>
                   setExtraTrackNoteLengths((current) => ({
@@ -6875,9 +7065,36 @@ export function Composer() {
                     [activeExtraTrack.id]: lengthSteps,
                   })),
                 showNoteLengthControls: true,
-                showChordControls:
-                  activeExtraTrack.id !== LYRICS_MELODY_TRACK_ID &&
-                  !activeExtraTrack.label.startsWith('AI 보컬'),
+                showChordControls: false,
+                chordChipClassName: '',
+                onResizeNote: (row, col, length) =>
+                  handleExtraTrackNoteResize(activeExtraTrack, row, col, length),
+              }
+            )
+          ) : (
+            renderUnifiedPitchedRoll(
+              activeExtraTrack.instrument as PitchedTab,
+              getExtraTrackNotes(activeExtraTrack.instrument),
+              activeExtraTrack.grid,
+              activeExtraTrack.melodyLengths ?? [],
+              getExtraTrackColors(activeExtraTrack.instrument),
+              (row, col, lengthSteps) =>
+                handleExtraTrackCellToggle(activeExtraTrack, row, col, lengthSteps),
+              activeExtraTrack.label.startsWith('AI 보컬')
+                ? undefined
+                : (chord, col) => handleExtraTrackChordDrop(activeExtraTrack, chord, col),
+              {
+                scrollKey: activeExtraTrack.id,
+                noteColorTrackId: activeExtraTrack.id,
+                showLyrics: activeExtraTrack.label.startsWith('AI 보컬'),
+                noteLengthSteps: extraTrackNoteLengths[activeExtraTrack.id] ?? 4,
+                onNoteLengthChange: (lengthSteps) =>
+                  setExtraTrackNoteLengths((current) => ({
+                    ...current,
+                    [activeExtraTrack.id]: lengthSteps,
+                  })),
+                showNoteLengthControls: true,
+                showChordControls: !activeExtraTrack.label.startsWith('AI 보컬'),
                 chordChipClassName: '',
                 onResizeNote: (row, col, length) =>
                   handleExtraTrackNoteResize(activeExtraTrack, row, col, length),
@@ -7054,15 +7271,15 @@ export function Composer() {
         )}
 
         {activeTab === 'violin' && isActivePrimaryTabOpen &&
-          renderMelodyLikeSequencer(
+          renderUnifiedPitchedRoll(
             'violin',
             VIOLIN_NOTES,
             violin,
+            violinLengths,
             violinLaneColors,
             handleViolinCellToggle,
             (chord, col) => handlePrimaryPitchedChordDrop('violin', chord, col),
             {
-              melodyLengths: violinLengths,
               noteLengthSteps: primaryTrackNoteLengths.violin,
               onNoteLengthChange: (lengthSteps) =>
                 setPrimaryTrackNoteLengths((current) => ({ ...current, violin: lengthSteps })),
@@ -7074,15 +7291,15 @@ export function Composer() {
           )}
 
         {activeTab === 'saxophone' && isActivePrimaryTabOpen &&
-          renderMelodyLikeSequencer(
+          renderUnifiedPitchedRoll(
             'saxophone',
             SAXOPHONE_NOTES,
             saxophone,
+            saxophoneLengths,
             saxophoneLaneColors,
             handleSaxophoneCellToggle,
             (chord, col) => handlePrimaryPitchedChordDrop('saxophone', chord, col),
             {
-              melodyLengths: saxophoneLengths,
               noteLengthSteps: primaryTrackNoteLengths.saxophone,
               onNoteLengthChange: (lengthSteps) =>
                 setPrimaryTrackNoteLengths((current) => ({ ...current, saxophone: lengthSteps })),
@@ -7094,15 +7311,15 @@ export function Composer() {
           )}
 
         {activeTab === 'guitar' && isActivePrimaryTabOpen &&
-          renderMelodyLikeSequencer(
+          renderUnifiedPitchedRoll(
             'guitar',
             GUITAR_TRACK_LABELS,
             guitar,
+            guitarLengths,
             guitarLaneColors,
             handleGuitarCellToggle,
             (chord, col) => handlePrimaryPitchedChordDrop('guitar', chord, col),
             {
-              melodyLengths: guitarLengths,
               noteLengthSteps: primaryTrackNoteLengths.guitar,
               onNoteLengthChange: (lengthSteps) =>
                 setPrimaryTrackNoteLengths((current) => ({ ...current, guitar: lengthSteps })),
@@ -7120,15 +7337,15 @@ export function Composer() {
               ref={bassShellRef}
               className={`composer-bass-roll-host${getGuideHighlightClass('bass-grid')}`}
             >
-              {renderMelodyLikeSequencer(
+              {renderUnifiedPitchedRoll(
                 'bass',
                 BASS_NOTES,
                 bass,
+                bassLengths,
                 bassLaneColors,
                 handleBassCellToggle,
                 handleBassChordDrop,
                 {
-                  melodyLengths: bassLengths,
                   noteLengthSteps: primaryTrackNoteLengths.bass,
                   onNoteLengthChange: (lengthSteps) =>
                     setPrimaryTrackNoteLengths((current) => ({ ...current, bass: lengthSteps })),
