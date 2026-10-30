@@ -1555,6 +1555,57 @@ function handleManageCollabMember(projectId, payload) {
   broadcastSnapshot();
 }
 
+function handleLeaveCollabProject(request, projectId, payload) {
+  const userEmail = String(payload.userEmail).trim().toLowerCase();
+  if (!userEmail) throw createServerError(400, '사용자 정보가 필요합니다.');
+  maybeRequireSession(request, userEmail);
+
+  const project = state.projects.find((entry) => entry.id === projectId);
+  if (!project) throw createServerError(404, '작업실을 찾을 수 없습니다.');
+
+  const ownerEmail = String(project.ownerEmail).trim().toLowerCase();
+  if (ownerEmail === userEmail) {
+    throw createServerError(400, '방장은 작업실을 나갈 수 없습니다. 방 관리에서 작업실을 삭제해주세요.');
+  }
+
+  const isMember = project.members.some(
+    (member) => String(member.email).trim().toLowerCase() === userEmail
+  );
+  if (!isMember) return;
+
+  const timestamp = Date.now();
+  state = {
+    ...state,
+    version: timestamp,
+    projects: state.projects.map((entry) =>
+      entry.id === projectId
+        ? {
+            ...entry,
+            updatedAt: timestamp,
+            members: entry.members.filter(
+              (member) => String(member.email).trim().toLowerCase() !== userEmail
+            ),
+          }
+        : entry
+    ),
+  };
+
+  const remainingPresence = (presenceByProject[projectId] || []).filter(
+    (entry) => String(entry.email).trim().toLowerCase() !== userEmail
+  );
+  if (remainingPresence.length) presenceByProject[projectId] = remainingPresence;
+  else delete presenceByProject[projectId];
+
+  const remainingLocks = (composerLocksByProject[projectId] || []).filter(
+    (entry) => String(entry.email).trim().toLowerCase() !== userEmail
+  );
+  if (remainingLocks.length) composerLocksByProject[projectId] = remainingLocks;
+  else delete composerLocksByProject[projectId];
+
+  saveState();
+  broadcastSnapshot();
+}
+
 function handleDeleteCollabProject(projectId, payload) {
   const project = state.projects.find((entry) => entry.id === projectId);
   if (!project) throw createServerError(404, '작업실을 찾을 수 없습니다.');
@@ -2367,6 +2418,14 @@ const server = createServer(async (request, response) => {
     if (request.method === 'POST' && manageCollabMemberMatch) {
       const body = await readBody(request);
       handleManageCollabMember(manageCollabMemberMatch[1], body);
+      writeJson(response, 200, { ok: true, snapshot: createSnapshot() });
+      return;
+    }
+
+    const leaveCollabMatch = pathname.match(/^\/api\/collab\/projects\/([^/]+)\/leave$/);
+    if (request.method === 'POST' && leaveCollabMatch) {
+      const body = await readBody(request);
+      handleLeaveCollabProject(request, leaveCollabMatch[1], body);
       writeJson(response, 200, { ok: true, snapshot: createSnapshot() });
       return;
     }

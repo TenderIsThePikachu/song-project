@@ -78,6 +78,7 @@ export default function CollabRoomPage() {
   const connectionError = useCollabStore((state) => state.connectionError);
   const initializeRealtime = useCollabStore((state) => state.initializeRealtime);
   const joinProject = useCollabStore((state) => state.joinProject);
+  const leaveProject = useCollabStore((state) => state.leaveProject);
   const updateComposerSnapshot = useCollabStore((state) => state.updateComposerSnapshot);
   const setCollabMemberColor = useCollabStore((state) => state.setMemberColor);
   const addMessage = useCollabStore((state) => state.addMessage);
@@ -109,10 +110,12 @@ export default function CollabRoomPage() {
   const [openMemberMenuEmail, setOpenMemberMenuEmail] = useState<string | null>(null);
   const [isRoomEditOpen, setIsRoomEditOpen] = useState(false);
   const [isRoomDeleteOpen, setIsRoomDeleteOpen] = useState(false);
+  const [isLeaveRoomOpen, setIsLeaveRoomOpen] = useState(false);
   const [memberRemoveTarget, setMemberRemoveTarget] = useState<CollabMember | null>(null);
   const [isManagingRoom, setIsManagingRoom] = useState(false);
   const [roomEditForm, setRoomEditForm] = useState({ title: '', summary: '', genre: '', bpm: 120 });
   const messageListRef = useRef<HTMLDivElement>(null);
+  const isLeavingRoomRef = useRef(false);
 
   useEffect(() => {
     void initializeRealtime().catch(console.error);
@@ -238,7 +241,8 @@ export default function CollabRoomPage() {
       !user ||
       isMember ||
       isJoiningLocalGuest ||
-      localGuestJoinFailed
+      localGuestJoinFailed ||
+      isLeavingRoomRef.current
     ) return;
 
     setIsJoiningLocalGuest(true);
@@ -528,6 +532,28 @@ export default function CollabRoomPage() {
     } catch (error) {
       console.error(error);
       setRoomError(error instanceof Error ? error.message : '방을 삭제하지 못했습니다.');
+    } finally {
+      setIsManagingRoom(false);
+    }
+  };
+
+  const handleLeaveRoom = async () => {
+    if (!user || isOwner || isManagingRoom) return;
+    isLeavingRoomRef.current = true;
+    try {
+      setIsManagingRoom(true);
+      setRoomError('');
+      await leavePresence(project.id).catch(console.error);
+      await leaveProject(project.id, user.email);
+      window.localStorage.removeItem(
+        `collab-member-color:${project.id}:${user.email.toLowerCase()}`
+      );
+      setIsLeaveRoomOpen(false);
+      navigate('/collab', { replace: true });
+    } catch (error) {
+      isLeavingRoomRef.current = false;
+      console.error(error);
+      setRoomError(error instanceof Error ? error.message : '작업실에서 나가지 못했습니다.');
     } finally {
       setIsManagingRoom(false);
     }
@@ -909,7 +935,15 @@ export default function CollabRoomPage() {
                   <RoomIcon name="list" /> 협업 목록으로
                 </button>
 
-                <button type="button" className="collab-leave-button" onClick={() => navigate('/collab')}><RoomIcon name="exit" /> 나가기</button>
+                {!isOwner ? (
+                  <button
+                    type="button"
+                    className="collab-leave-button"
+                    onClick={() => setIsLeaveRoomOpen(true)}
+                  >
+                    <RoomIcon name="exit" /> 나가기
+                  </button>
+                ) : null}
               </div>
             </article>
 
@@ -1018,6 +1052,47 @@ export default function CollabRoomPage() {
               <button type="button" onClick={() => setIsRoomDeleteOpen(false)} disabled={isManagingRoom}>취소</button>
               <button type="button" className="is-danger" onClick={() => void handleDeleteRoom()} disabled={isManagingRoom}>
                 {isManagingRoom ? '삭제 중...' : '방 삭제'}
+              </button>
+            </div>
+          </section>
+        </div>
+      ) : null}
+
+      {isLeaveRoomOpen ? (
+        <div
+          className="collab-manage-overlay"
+          role="presentation"
+          onMouseDown={() => !isManagingRoom && setIsLeaveRoomOpen(false)}
+        >
+          <section
+            className="collab-manage-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="collab-room-leave-title"
+            onMouseDown={(event) => event.stopPropagation()}
+          >
+            <div>
+              <strong id="collab-room-leave-title">작업실에서 나갈까요?</strong>
+              <p>
+                <b>{project.title}</b>의 멤버 목록에서 제거되며 스튜디오의 협업 작업에서도
+                사라집니다.
+              </p>
+            </div>
+            <div className="collab-manage-actions">
+              <button
+                type="button"
+                onClick={() => setIsLeaveRoomOpen(false)}
+                disabled={isManagingRoom}
+              >
+                취소
+              </button>
+              <button
+                type="button"
+                className="is-danger"
+                onClick={() => void handleLeaveRoom()}
+                disabled={isManagingRoom}
+              >
+                {isManagingRoom ? '나가는 중...' : '나가기'}
               </button>
             </div>
           </section>

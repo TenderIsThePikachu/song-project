@@ -4,7 +4,7 @@ import { useSongStore, buildSongProjectSnapshot } from './songStore';
 import { db } from '../firebase'; 
 import { createRandomCollabMemberColor } from '../utils/collabMemberColor';
 import { isLocalDevelopmentHost } from '../utils/localEnvironment';
-import { APP_SERVER_URL } from '../utils/serverApi';
+import { APP_SERVER_URL, fetchServerJson } from '../utils/serverApi';
 import { 
   collection, doc, setDoc, updateDoc, deleteDoc, getDoc, getDocs, onSnapshot, increment, query, where, orderBy, limit, writeBatch
 } from 'firebase/firestore';
@@ -95,6 +95,7 @@ type CollabState = {
   initializeRealtime: () => Promise<void>;
   createFromComposerProject: (payload: CreateCollabFromComposerPayload) => Promise<string>;
   joinProject: (projectId: string, payload: { email: string; name: string }) => Promise<void>;
+  leaveProject: (projectId: string, userEmail: string) => Promise<void>;
   setMemberColor: (projectId: string, email: string, color: string) => Promise<void>;
   addMessage: (projectId: string, payload: { email: string; name: string; color?: string; content: string }) => Promise<void>;
   addTask: (projectId: string, payload: { content: string; assigneeName: string }) => Promise<void>;
@@ -253,21 +254,11 @@ let localEventSource: EventSource | null = null;
 let localInitPromise: Promise<void> | null = null;
 
 async function fetchLocalCollabJson<T>(path: string, init?: RequestInit) {
-  let response: Response;
-  try {
-    response = await fetch(`${APP_SERVER_URL}${path}`, {
-      ...init,
-      headers: { 'Content-Type': 'application/json', ...(init?.headers ?? {}) },
-    });
-  } catch {
-    throw new Error('로컬 협업 서버에 연결하지 못했습니다. npm.cmd run dev 실행 상태를 확인해주세요.');
-  }
-
-  const payload = await response.json().catch(() => null) as ({ error?: string } & Record<string, unknown>) | null;
-  if (!response.ok) {
-    throw new CollabRequestError(payload?.error || '협업 서버 요청이 실패했습니다.', response.status, payload);
-  }
-  return payload as T;
+  return fetchServerJson<T>(
+    path,
+    init,
+    '로컬 협업 서버에 연결하지 못했습니다. npm.cmd run dev 실행 상태를 확인해주세요.'
+  );
 }
 
 function applyLocalSnapshot(snapshot: CollabSnapshot) {
@@ -441,6 +432,59 @@ export const useCollabStore = create<CollabState>((set, get) => ({
       ],
       updatedAt: Date.now(),
     });
+  },
+
+  leaveProject: async (projectId, userEmail) => {
+    if (isLocalDevelopmentHost()) {
+      const response = await fetchLocalCollabJson<{ snapshot: CollabSnapshot }>(
+        `/api/collab/projects/${projectId}/leave`,
+        { method: 'POST', body: JSON.stringify({ userEmail }) }
+      );
+      applyLocalSnapshot(response.snapshot);
+      return;
+    }
+
+    const projectRef = doc(db, 'collab_projects', projectId);
+    const projectSnapshot = await getDoc(projectRef);
+    if (!projectSnapshot.exists()) {
+      throw new CollabRequestError('작업실을 찾을 수 없습니다.', 404);
+    }
+
+    const project = restoreFromFirestore({
+      id: projectSnapshot.id,
+      ...projectSnapshot.data(),
+    }) as CollabProject;
+    const normalizedUserEmail = normalizeEmail(userEmail);
+    if (normalizeEmail(project.ownerEmail) === normalizedUserEmail) {
+      throw new CollabRequestError(
+        '방장은 작업실을 나갈 수 없습니다. 방 관리에서 작업실을 삭제해주세요.',
+        400
+      );
+    }
+    if (!project.members.some((member) => normalizeEmail(member.email) === normalizedUserEmail)) {
+      return;
+    }
+
+    const members = project.members.filter(
+      (member) => normalizeEmail(member.email) !== normalizedUserEmail
+    );
+    const [presenceSnapshot, lockSnapshot] = await Promise.all([
+      getDocs(query(collection(db, 'collab_presence'), where('projectId', '==', projectId))),
+      getDocs(query(collection(db, 'collab_locks'), where('projectId', '==', projectId))),
+    ]);
+    const batch = writeBatch(db);
+    batch.update(projectRef, { members, updatedAt: Date.now() });
+    presenceSnapshot.docs.forEach((presenceDoc) => {
+      if (normalizeEmail(String(presenceDoc.data().email ?? '')) === normalizedUserEmail) {
+        batch.delete(presenceDoc.ref);
+      }
+    });
+    lockSnapshot.docs.forEach((lockDoc) => {
+      if (normalizeEmail(String(lockDoc.data().email ?? '')) === normalizedUserEmail) {
+        batch.delete(lockDoc.ref);
+      }
+    });
+    await batch.commit();
   },
 
   setMemberColor: async (projectId, email, color) => {
